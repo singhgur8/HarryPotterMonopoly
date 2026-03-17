@@ -1,17 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WSMessage } from "@shared/schema";
 
-// Build the WebSocket base URL. __PORT_5000__ is replaced at deploy time with "port/5000".
+// Build the WebSocket base URL.
+// __PORT_5000__ is replaced at deploy time with "port/5000" on Perplexity.
+// On Render (or any direct host), we connect straight to the same origin.
 function buildWsUrl(roomCode: string): string {
   const portToken = "__PORT_5000__";
   const isLocal = portToken.startsWith("__");
   
   if (isLocal) {
+    // Local dev or direct hosting (e.g. Render): connect to same origin
+    if (typeof location !== "undefined" && location.hostname !== "localhost") {
+      // Deployed on a direct host (Render, Railway, etc.)
+      const proto = location.protocol === "https:" ? "wss:" : "ws:";
+      return `${proto}//${location.host}/ws?room=${roomCode}`;
+    }
     // Local dev: connect directly to the Express server
     return `ws://localhost:5000/ws?room=${roomCode}`;
   }
   
-  // Deployed: construct URL through the proxy
+  // Perplexity deploy: construct URL through the proxy
   // Strip trailing filename (e.g. /index.html) from pathname
   const base = location.pathname.replace(/\/[^/]*\.[^/]*$/, '').replace(/\/$/, '');
   const proto = location.protocol === "https:" ? "wss:" : "ws:";

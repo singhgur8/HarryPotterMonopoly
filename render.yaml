@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: hp-monopoly-deal
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build && cp -r client/public/cards dist/public/cards
+    startCommand: node dist/index.cjs
+    envVars:
+      - key: NODE_ENV
+        value: production
