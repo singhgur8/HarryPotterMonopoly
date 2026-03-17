@@ -1,7 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WSMessage } from "@shared/schema";
 
-const WS_BASE = `${location.origin}${location.pathname.replace(/\/[^/]*$/, '')}/__PORT_5000__/ws`;
+// Build the WebSocket base URL. __PORT_5000__ is replaced at deploy time with "port/5000".
+function buildWsUrl(roomCode: string): string {
+  const portToken = "__PORT_5000__";
+  const isLocal = portToken.startsWith("__");
+  
+  if (isLocal) {
+    // Local dev: connect directly to the Express server
+    return `ws://localhost:5000/ws?room=${roomCode}`;
+  }
+  
+  // Deployed: construct URL through the proxy
+  // Strip trailing filename (e.g. /index.html) from pathname
+  const base = location.pathname.replace(/\/[^/]*\.[^/]*$/, '').replace(/\/$/, '');
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${location.host}${base}/${portToken}/ws?room=${roomCode}`;
+}
 
 export function useGameSocket(roomCode: string | null) {
   const wsRef = useRef<WebSocket | null>(null);
@@ -15,18 +30,7 @@ export function useGameSocket(roomCode: string | null) {
   const connect = useCallback(() => {
     if (!roomCode) return;
     
-    // Build WS URL
-    let url: string;
-    const portPlaceholder = "__PORT_5000__";
-    if (WS_BASE.includes(portPlaceholder)) {
-      // Local dev
-      url = `ws://localhost:5000/ws?room=${roomCode}`;
-    } else {
-      // Deployed — use origin-relative ws
-      const proto = location.protocol === "https:" ? "wss:" : "ws:";
-      const base = WS_BASE.replace(/^https?:/, proto);
-      url = `${base}?room=${roomCode}`;
-    }
+    const url = buildWsUrl(roomCode);
 
     const ws = new WebSocket(url);
     wsRef.current = ws;

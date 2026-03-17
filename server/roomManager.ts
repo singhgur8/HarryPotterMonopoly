@@ -435,7 +435,20 @@ function handleMessage(room: Room, client: RoomClient, msg: WSMessage) {
 // ========== SETUP ==========
 
 export function setupWebSocket(server: Server) {
-  const wss = new WebSocketServer({ server, path: "/ws" });
+  const wss = new WebSocketServer({ noServer: true });
+
+  // Handle upgrade manually to be flexible with proxy paths
+  server.on("upgrade", (req, socket, head) => {
+    const url = new URL(req.url || "/", `http://${req.headers.host}`);
+    // Accept any path ending with /ws (handles both /ws and /port/5000/ws)
+    if (url.pathname === "/ws" || url.pathname.endsWith("/ws")) {
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit("connection", ws, req);
+      });
+    } else {
+      socket.destroy();
+    }
+  });
 
   wss.on("connection", (ws: WebSocket, req) => {
     // Extract visitor ID from header (injected by proxy)
