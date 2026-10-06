@@ -47,17 +47,17 @@ export function MyArea({ flipId, onFlip, onPaySilencio, pay }: {
                 <div className="hp-ladder" title="Rent at each set size">
                   {ladder.map((v, i) => <span key={i} className={i === Math.min(n, ladder.length) - 1 ? "on" : ""}>{v}</span>)}
                 </div>
-                <div className={`rent ${full ? "full" : ""}`}>{full ? "Locked · rent " : "Rent "}{ladder[Math.min(n, ladder.length) - 1]}G{shield === color ? " · Shielded" : ""}</div>
-                <div className="worth">Worth {sumValue(cards)}G to pay with</div>
+                <div className={`rent ${full ? "full" : ""}`}>{full ? "Locked · rent " : "Rent "}{ladder[Math.min(n, ladder.length) - 1]}M{shield === color ? " · Shielded" : ""}</div>
+                <div className="worth">Worth {sumValue(cards)}M to pay with</div>
                 <div className="hp-stack" style={{ height: 134 + (n - 1) * STACK_STEP }}>
                   {cards.map((c, i) => {
                     const other = otherColor(c);
                     const style: CSSProperties = { top: i * STACK_STEP, zIndex: i + 1 };
-                    const card = <GameCard defId={c.defId} size="md" color={color} label={`${nameOf(c.defId)}, worth ${valueOf(c)}G`} />;
+                    const card = <GameCard defId={c.defId} size="md" color={color} label={`${nameOf(c.defId)}, worth ${valueOf(c)}M`} />;
                     if (pay.active) {
                       const on = pay.picked.includes(c.defId);
                       return (
-                        <div key={c.defId} style={style} className={`tap ${on ? "picked" : ""}`} {...tappable(on, `Pay with ${nameOf(c.defId)}, ${valueOf(c)}G`, () => pay.toggle(c.defId))}>
+                        <div key={c.defId} style={style} className={`tap ${on ? "picked" : ""}`} {...tappable(on, `Pay with ${nameOf(c.defId)}, ${valueOf(c)}M`, () => pay.toggle(c.defId))}>
                           {card}
                           {on && <span className="hp-paytag" aria-hidden="true">✓</span>}
                         </div>
@@ -92,10 +92,10 @@ export function MyArea({ flipId, onFlip, onPaySilencio, pay }: {
 
       <div className="hp-bankbox">
         <div className="hp-label">My bank</div>
-        <div className="hp-bank-total">{sumValue(me.bank)}G</div>
+        <div className="hp-bank-total">{sumValue(me.bank)}M</div>
         <div className="hp-coins">
           {coins.length ? coins.map(c => pay.active
-            ? <button key={c.defId} className="hp-cn" aria-pressed={pay.picked.includes(c.defId)} aria-label={`Pay with ${valueOf(c)}G from the bank`} onClick={() => pay.toggle(c.defId)}>{valueOf(c)}</button>
+            ? <button key={c.defId} className="hp-cn" aria-pressed={pay.picked.includes(c.defId)} aria-label={`Pay with ${valueOf(c)}M from the bank`} onClick={() => pay.toggle(c.defId)}>{valueOf(c)}</button>
             : <span key={c.defId} className="hp-cn" title={nameOf(c.defId)}>{valueOf(c)}</span>)
             : <span className="hp-muted" style={{ fontSize: 12.5 }}>Nothing banked yet</span>}
         </div>
@@ -105,8 +105,8 @@ export function MyArea({ flipId, onFlip, onPaySilencio, pay }: {
             <span>{role.power}</span>
             {me.isSilenced && (
               <>
-                <span className="hp-chip late" style={{ justifySelf: "start" }}>Silenced · power off</span>
-                <button className="hp-btn ghost" onClick={onPaySilencio} disabled={s.status !== "playing"}>Pay 10G to lift Silencio</button>
+                <span className="hp-chip late" style={{ justifySelf: "start" }}>Power Outage · power off</span>
+                <button className="hp-btn ghost" onClick={onPaySilencio} disabled={s.status !== "playing"}>Pay 10M to end the Power Outage</button>
               </>
             )}
           </div>

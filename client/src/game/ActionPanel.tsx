@@ -36,7 +36,7 @@ function PaymentPicker({ pay, amount, title, payLabel, onPay, onProtego, onCance
   onPay: (ids: string[]) => void;
   onProtego?: () => void;
   onCancel?: () => void;
-  mustCover?: boolean; // Silencio needs the full 10G, debts accept "everything you have"
+  mustCover?: boolean; // Silencio needs the full 10M, debts accept "everything you have"
 }) {
   const { me } = useGame();
   const { picked, toggle, set: setPicked } = pay;
@@ -67,13 +67,13 @@ function PaymentPicker({ pay, amount, title, payLabel, onPay, onProtego, onCance
         {me.properties.length ? groupSets(me.properties).flatMap(g => g.cards.map(c => chip(c, g.color))) : <span className="hp-muted">None</span>}
       </div>
       <div className="hp-row">
-        <b style={{ fontVariantNumeric: "tabular-nums" }}>Selected {total}G of {amount}G</b>
+        <b style={{ fontVariantNumeric: "tabular-nums" }}>Selected {total}M of {amount}M</b>
         <span className="hp-muted" style={{ fontSize: 12.5 }}>
           {nothing ? "You have nothing to pay with." : total === 0 ? "Tap the chips or your cards below." : total > amount ? "Overpaying. No change is given." : !mustCover && total < amount ? "If you can't cover it, pick everything you have." : ""}
         </span>
         <span style={{ flex: 1 }} />
         {!nothing && <button className="hp-btn ghost" onClick={() => setPicked(cheapestPick(me, amount))}>Pick cheapest for me</button>}
-        {onProtego && <button className="hp-btn ghost" onClick={onProtego}>🛡️ Protego</button>}
+        {onProtego && <button className="hp-btn ghost" onClick={onProtego}>🛡️ Just Say No</button>}
         {onCancel && <button className="hp-btn ghost" onClick={onCancel}>Cancel</button>}
         <button className="hp-btn gold" disabled={!ok} onClick={() => { onPay(picked); setPicked([]); }} data-testid="button-pay">
           {nothing && !mustCover ? "Pay nothing" : payLabel(total)}
@@ -104,7 +104,7 @@ function Tracker() {
           let cls = "", text = "Waiting";
           if (r) {
             cls = r.outcome === "paid" ? "paid" : "blocked";
-            text = r.outcome === "paid" ? `Paid ${r.amount}G` : r.outcome === "nothing" ? "Had nothing" : r.outcome === "shielded" ? "Shielded" : "Blocked";
+            text = r.outcome === "paid" ? `Paid ${r.amount}M` : r.outcome === "nothing" ? "Had nothing" : r.outcome === "shielded" ? "Shielded" : "Blocked";
           } else if (id === p.targetPlayerId) { cls = "now"; text = "Paying now"; }
           else if (remaining[0] === id) text = "Up next";
           return <span key={id} className={`hp-tchip ${cls}`}>{emoji} <b>{name}</b> {text}</span>;
@@ -128,18 +128,18 @@ function TargetPicker() {
   const card = nameOf(p.cardDefId ?? "");
 
   const cardButton = (o: PlayerState, c: Card, enabled: boolean, onClick: () => void) => (
-    <button key={c.defId} className="hp-cardpick" aria-disabled={!enabled} disabled={!enabled} onClick={onClick} title={`${nameOf(c.defId)}, worth ${valueOf(c)}G`}>
+    <button key={c.defId} className="hp-cardpick" aria-disabled={!enabled} disabled={!enabled} onClick={onClick} title={`${nameOf(c.defId)}, worth ${valueOf(c)}M`}>
       <GameCard defId={c.defId} size="sm" color={getEffectiveColor(c)} />
     </button>
   );
 
   const titles: Record<string, string> = {
-    choose_steal: "Accio: pick a property to take. Complete sets are locked unless you're Draco.",
-    choose_swap: own ? "Confundus: now pick the property you want in return." : "Confundus: first pick one of your properties to give away.",
-    choose_steal_set: "Expelliarmus: pick a complete set to take.",
-    choose_reducto: "Reducto: pick a property to destroy. Bank cards are safe.",
-    choose_silencio: "Silencio: pick who loses their role power.",
-    choose_goblin: "Gringotts Goblin: pick who owes you 5G.",
+    choose_steal: "Sly Deal: pick a property to take. Complete sets are locked unless you're Draco.",
+    choose_swap: own ? "Forced Deal: now pick the property you want in return." : "Forced Deal: first pick one of your properties to give away.",
+    choose_steal_set: "Deal Breaker: pick a complete set to take.",
+    choose_reducto: "Demolish: pick a property to destroy. Bank cards are safe.",
+    choose_silencio: "Power Outage: pick who loses their role power.",
+    choose_goblin: "Debt Collector: pick who owes you 5M.",
   };
 
   return (
@@ -162,13 +162,13 @@ function TargetPicker() {
             </button>
           )) : <span className="hp-muted">No complete sets you can take</span>;
         } else if (p.type === "choose_silencio") {
-          body = <button className="hp-btn gold" disabled={o.isSilenced} onClick={() => pick(o.visitorId)}>{o.isSilenced ? "Already silenced" : `Silence ${o.animal.name}`}</button>;
+          body = <button className="hp-btn gold" disabled={o.isSilenced} onClick={() => pick(o.visitorId)}>{o.isSilenced ? "Power already off" : `Cut ${o.animal.name}'s power`}</button>;
         } else if (p.type === "choose_goblin") {
-          body = <button className="hp-btn gold" onClick={() => pick(o.visitorId)}>Send to {o.animal.name} (bank {sumValue(o.bank)}G)</button>;
+          body = <button className="hp-btn gold" onClick={() => pick(o.visitorId)}>Send to {o.animal.name} (bank {sumValue(o.bank)}M)</button>;
         }
         return (
           <div key={o.visitorId} className="hp-target">
-            <div className="hp-row"><span>{o.animal.emoji}</span><b>{o.animal.name}</b><span className="hp-muted" style={{ fontSize: 12.5 }}>{o.role ? `· ${o.isSilenced ? "silenced" : CARD_DEF_MAP[`role_${o.role}`]?.name ?? o.role}` : ""}</span></div>
+            <div className="hp-row"><span>{o.animal.emoji}</span><b>{o.animal.name}</b><span className="hp-muted" style={{ fontSize: 12.5 }}>{o.role ? `· ${o.isSilenced ? "power off" : CARD_DEF_MAP[`role_${o.role}`]?.name ?? o.role}` : ""}</span></div>
             <div className="hp-row">{body}</div>
           </div>
         );
@@ -250,8 +250,8 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
         pay={pay}
         amount={10}
         mustCover
-        title={<><b>Lift Silencio.</b> Pay 10G from your bank or properties. The cards are discarded and your role power comes back.</>}
-        payLabel={n => `Pay ${n}G`}
+        title={<><b>End the Power Outage.</b> Pay 10M from your bank or properties. The cards are discarded and your role power comes back.</>}
+        payLabel={n => `Pay ${n}M`}
         onPay={ids => { send("pay_silencio", { cardDefIds: ids }); setSilencioOpen(false); }}
         onCancel={() => setSilencioOpen(false)}
       />
@@ -261,14 +261,14 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
     switch (p.type) {
       case "pay_rent": case "pay_birthday": case "pay_debt": {
         const why = p.type === "pay_rent" ? `charged ${p.data?.rentColor ? label(p.data.rentColor) + " " : ""}rent`
-          : p.type === "pay_birthday" ? "threw a Yule Ball" : "sent a Gringotts Goblin";
+          : p.type === "pay_birthday" ? "played It's My Birthday" : "played Debt Collector";
         prompt = (
           <>
             <PaymentPicker
               pay={pay}
               amount={p.amount ?? 0}
-              title={<><b>{source} {why}.</b> You owe {p.amount}G. Pick what to pay with{hasProtego(me) ? ", or block it with Protego" : ""}. Cards you give go to {source}.</>}
-              payLabel={n => `Pay ${n}G`}
+              title={<><b>{source} {why}.</b> You owe {p.amount}M. Pick what to pay with{hasProtego(me) ? ", or block it with Just Say No" : ""}. Cards you give go to {source}.</>}
+              payLabel={n => `Pay ${n}M`}
               onPay={ids => send("pay_with_cards", { cardDefIds: ids })}
               onProtego={hasProtego(me) ? () => send("play_protego") : undefined}
             />
@@ -285,10 +285,10 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
           <div className="hp-prompt alert">
             <div className="head">
               <p>{attacking
-                ? <><b>{playerName(s, orig.targetPlayerId)} blocked your {what} with Protego.</b> Cast Protego back to push it through?</>
-                : <><b>{source} {what}.</b> Block it with Protego?</>}</p>
+                ? <><b>{playerName(s, orig.targetPlayerId)} blocked your {what} with Just Say No.</b> Say Just Say No back to push it through?</>
+                : <><b>{source} {what}.</b> Block it with Just Say No?</>}</p>
               <button className="hp-btn ghost" onClick={() => send("decline_protego")}>{attacking ? "Let it go" : "Let it happen"}</button>
-              <button className="hp-btn gold" onClick={() => send("play_protego")}>🛡️ Cast Protego</button>
+              <button className="hp-btn gold" onClick={() => send("play_protego")}>🛡️ Just Say No</button>
             </div>
           </div>
         );
@@ -343,14 +343,14 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
         const pile = s.discardPile.filter(c => CARD_DEF_MAP[c.defId]?.actionType !== "time_turner");
         prompt = (
           <div className="hp-prompt alert">
-            <div className="head"><p><b>Time-Turner.</b> Take any card from the discard pile. You play it straight away, for free.</p><DiscardLink /></div>
+            <div className="head"><p><b>Rewind.</b> Take any card from the discard pile. You play it straight away, for free.</p><DiscardLink /></div>
             <div className="hp-row">
               {pile.map(c => (
                 <button key={c.defId} className="hp-cardpick" onClick={() => send("time_turner_choose", { cardDefId: c.defId })} title={`${nameOf(c.defId)}: ${cardBlurb(c.defId)}`}>
                   <GameCard defId={c.defId} size="sm" />
                 </button>
               ))}
-              <button className="hp-btn ghost" onClick={() => send("cancel_action")}>Take the Time-Turner back</button>
+              <button className="hp-btn ghost" onClick={() => send("cancel_action")}>Take Rewind back</button>
             </div>
           </div>
         );
@@ -403,14 +403,14 @@ function describeAction(s: any, a: any): string {
   if (!a) return "action";
   const target = playerName(s, a.targetPlayerId);
   switch (a.type) {
-    case "choose_steal": return `is using Accio on ${a.targetPlayerId === s.waitingOn ? "your" : target + "'s"} ${nameOf(a.data?.targetCardDefId)}`;
-    case "choose_swap": return `is using Confundus to swap ${nameOf(a.data?.ownCardDefId)} for ${nameOf(a.data?.targetCardDefId)}`;
-    case "choose_steal_set": return `is using Expelliarmus on the ${label(a.data?.color)} set`;
-    case "choose_reducto": return `is using Reducto on ${nameOf(a.data?.targetCardDefId)}`;
-    case "choose_silencio": return "is casting Silencio";
-    case "pay_rent": return `charged ${a.amount}G rent`;
-    case "pay_birthday": return "threw a Yule Ball (2G)";
-    case "pay_debt": return "sent a Gringotts Goblin (5G)";
+    case "choose_steal": return `is using Sly Deal on ${a.targetPlayerId === s.waitingOn ? "your" : target + "'s"} ${nameOf(a.data?.targetCardDefId)}`;
+    case "choose_swap": return `is using Forced Deal to swap ${nameOf(a.data?.ownCardDefId)} for ${nameOf(a.data?.targetCardDefId)}`;
+    case "choose_steal_set": return `is using Deal Breaker on the ${label(a.data?.color)} set`;
+    case "choose_reducto": return `is using Demolish on ${nameOf(a.data?.targetCardDefId)}`;
+    case "choose_silencio": return "is playing Power Outage";
+    case "pay_rent": return `charged ${a.amount}M rent`;
+    case "pay_birthday": return "played It's My Birthday (2M)";
+    case "pay_debt": return "played Debt Collector (5M)";
     default: return "action";
   }
 }

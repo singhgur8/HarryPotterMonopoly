@@ -10,13 +10,14 @@ import "./game-card.css";
 export const CARD_WIDTHS = { xs: 32, sm: 64, md: 96, lg: 148, xl: 180 } as const;
 export type CardSize = keyof typeof CARD_WIDTHS;
 
-const METALS: Record<number, [string, string]> = {
-  1: ["#9c5f36", "Bronze"],
-  2: ["#7f8891", "Silver"],
-  3: ["#b48a22", "Gold"],
-  4: ["#2b7d53", "Emerald"],
-  5: ["#2d5aa8", "Sapphire"],
-  10: ["#6f4699", "Amethyst"],
+// Money colours from the Monopoly Deal deck: [fill, text on fill].
+const MONEY: Record<number, [string, string]> = {
+  1: ["#f3e7b4", "#3b2f0a"],
+  2: ["#f2a19b", "#3d1210"],
+  3: ["#b9dd9c", "#1d3310"],
+  4: ["#a6d5f0", "#10283a"],
+  5: ["#b8a2d4", "#24143d"],
+  10: ["#f7b25c", "#3a2104"],
 };
 
 const TARGET_LABEL = { self: "You", one: "1 player", all: "All players", reaction: "Reaction" } as const;
@@ -34,7 +35,7 @@ function Art({ svg, ground = false }: { svg?: string; ground?: boolean }) {
 
 function Coin({ value }: { value: number }) {
   if (value <= 0) return null;
-  return <div className="coin">{value}<small>G</small></div>;
+  return <div className="coin">{value}<small>M</small></div>;
 }
 
 function Band({ kicker, name, short, className = "", style }: { kicker: string; name: string; short?: string; className?: string; style?: CSSProperties }) {
@@ -54,7 +55,7 @@ const setVars = (c: PropertyColor) => ({
   "--glyph": SET_STYLE[c].ink,
 }) as CSSProperties;
 
-const rentLine = (c: PropertyColor) => `${RENT_TABLE[c].join(" · ")}G`;
+const rentLine = (c: PropertyColor) => `${RENT_TABLE[c].join(" · ")}M`;
 const firstWord = (c: PropertyColor) => SET_STYLE[c].label.split(" ")[0];
 
 function Pips({ count }: { count: number }) {
@@ -76,7 +77,7 @@ function PropertyFace({ def }: { def: CardDef }) {
           {rent.map((r, i) => (
             <li key={i} className={i === rent.length - 1 ? "full" : ""}>
               <span className="dots">{Array.from({ length: size }, (_, j) => <i key={j} className={j <= i ? "on" : ""} />)}</span>
-              <span>{r}G</span>
+              <span>{r}M</span>
             </li>
           ))}
         </ul>
@@ -160,17 +161,17 @@ function ActionFace({ def }: { def: CardDef }) {
 }
 
 function MoneyFace({ def }: { def: CardDef }) {
-  const [fill, metal] = METALS[def.value] ?? ["#7f8891", "Money"];
+  const [fill, on] = MONEY[def.value] ?? ["#d9d9d9", "#222"];
   return (
-    <div className="gc-face t-money" style={{ "--set": fill, "--on": "#fff" } as CSSProperties}>
+    <div className="gc-face t-money" style={{ "--set": fill, "--on": on } as CSSProperties}>
       <Coin value={def.value} />
       <div className="art">
         <div>
           <div className="num">{def.value}</div>
-          <div className="unit">{def.value === 1 ? "Galleon" : "Galleons"}</div>
+          <div className="unit">Million</div>
         </div>
       </div>
-      <footer className="foot"><span className="ftxt">Money</span><span>{metal}</span></footer>
+      <footer className="foot"><span className="ftxt">Money</span></footer>
     </div>
   );
 }

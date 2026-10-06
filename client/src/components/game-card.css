@@ -76,7 +76,7 @@
 .gc-face .ladder .dots i.on { background: currentColor; opacity: 1; }
 
 /* money */
-.gc-face.t-money { background: var(--set); border-color: var(--set); outline-color: rgba(255,255,255,.35); color: var(--on); grid-template-rows: 1fr auto; }
+.gc-face.t-money { background: var(--set); border-color: color-mix(in srgb, var(--set) 70%, #000); outline-color: rgba(255,255,255,.35); color: var(--on); grid-template-rows: 1fr auto; }
 .gc-face.t-money .band { display: none; }
 .gc-face.t-money .art { background: transparent; border: 0; color: var(--on); align-content: center; }
 .gc-face.t-money .num { font: 800 46cqw/0.9 var(--f-display); font-variant-numeric: tabular-nums; text-align: center; }
@@ -112,7 +112,7 @@
   background: var(--paper); color: var(--ink); border-radius: 10cqw; padding: 1.6cqw 4cqw;
   font: 800 6cqw/1 var(--f-label); letter-spacing: .12em; box-shadow: 0 .6cqw 1.6cqw rgba(0,0,0,.25);
 }
-.gc-rainbow { background: linear-gradient(90deg, #7a4a2a 0 10%, #8fc6e8 0 20%, #e58fb3 0 30%, #e8893a 0 40%, #b8322f 0 50%, #e9c440 0 60%, #2f7d4f 0 70%, #23397a 0 80%, #3b3f46 0 90%, #7d5bb5 0) !important; }
+.gc-rainbow { background: linear-gradient(90deg, #955436 0 10%, #aae0fa 0 20%, #d93a96 0 30%, #f7941d 0 40%, #ed1b24 0 50%, #fef200 0 60%, #1fb25a 0 70%, #0072bb 0 80%, #231f20 0 90%, #c5e3a8 0) !important; }
 .gc-rainbow-text { text-shadow: 0 .4cqw 1.2cqw rgba(0,0,0,.6); }
 
 /* card back */
