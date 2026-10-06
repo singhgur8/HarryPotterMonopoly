@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage, EventLogEntry, PropertyColor } from "@shared/schema";
 import { SET_STYLE } from "@shared/schema";
+import { variationOf } from "@shared/variations";
 import { useGame } from "./context";
 import { Opponents } from "./Opponents";
 import { ActionPanel } from "./ActionPanel";
@@ -156,7 +157,7 @@ export function GameTable() {
     <div className="hp-game" data-testid="game-board">
       <header className="hp-top">
         <HomeButton inGame={!!me && s.status === "playing"} roomCode={s.roomCode} />
-        <span className="room hp-desk-only">Monopoly Deal</span>
+        <span className="room hp-desk-only">Monopoly Deal · {variationOf(s.variation).name}</span>
         <span className="hp-muted" style={{ fontSize: 13 }}>Room <b style={{ letterSpacing: ".1em" }}>{s.roomCode}</b></span>
         {!connected && <span className="hp-chip late">Reconnecting…</span>}
         <span style={{ flex: 1 }} />

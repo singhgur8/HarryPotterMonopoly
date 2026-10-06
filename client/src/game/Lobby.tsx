@@ -1,5 +1,6 @@
 import { useRoom } from "./context";
-import { ROLE_INFO } from "./helpers";
+import { roleInfo } from "./helpers";
+import { VARIATIONS, VARIATION_IDS, variationOf } from "@shared/variations";
 import { Crest, HomeButton } from "./Brand";
 
 const SPEEDS = [
@@ -34,6 +35,7 @@ export function Lobby() {
   }
 
   const seats: any[] = gameState.seats || [];
+  const variation = variationOf(gameState.variation);
   const isHost = gameState.hostVisitorId === myVisitorId;
   const mySeat = seats.findIndex(s => s?.visitorId === myVisitorId);
   const seated = seats.filter(Boolean);
@@ -105,9 +107,21 @@ export function Lobby() {
         </div>
 
         <div style={{ display: "grid", gap: 8 }}>
+          <div className="hp-label">Game{isHost ? "" : " · picked by the host"}</div>
+          <div className="hp-seg">
+            {VARIATION_IDS.map(id => (
+              <button key={id} aria-pressed={variation.id === id} disabled={!isHost} onClick={() => send("set_variation", { variation: id })} data-testid={`variation-${id}`}>
+                {VARIATIONS[id].name}
+              </button>
+            ))}
+          </div>
+          <span className="hp-muted" style={{ fontSize: 13 }}>{variation.description}</span>
+        </div>
+
+        <div style={{ display: "grid", gap: 8 }}>
           <div className="hp-label">Roles · dealt at random when the game starts</div>
           <div className="hp-roles">
-            {Object.values(ROLE_INFO).map(r => (
+            {variation.roles.map(id => roleInfo(id)).map(r => r && (
               <div key={r.name} className="hp-rolec"><b>{r.name}</b>{r.power}</div>
             ))}
           </div>

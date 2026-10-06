@@ -3,7 +3,7 @@ import { GameCard } from "@/components/GameCard";
 import { useGame } from "./context";
 import {
   groupSets, SET_SIZES, RENT_TABLE, label, fillOf, sumValue, valueOf, nameOf, otherColor, RAINBOW,
-  completeSets, ROLE_INFO, shieldOf, type PaySelection,
+  completeSets, roleInfo, shieldOf, type PaySelection,
 } from "./helpers";
 
 const STACK_STEP = 30;
@@ -28,7 +28,7 @@ export function MyArea({ flipId, onFlip, onPaySilencio, pay }: {
   const canFlip = isMyTurn && s.status === "playing" && !pay.active && !me.isSleeping;
   const sets = groupSets(me.properties);
   const coins = [...me.bank].sort((a, b) => valueOf(b) - valueOf(a));
-  const role = me.role ? ROLE_INFO[me.role] : undefined;
+  const role = roleInfo(me.role);
   const shield = shieldOf(me);
 
   return (
