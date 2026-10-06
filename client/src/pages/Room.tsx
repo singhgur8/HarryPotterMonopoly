@@ -7,8 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { getCardImage, cardImageUrl, preloadCardImages, getCardName, getCardDef, groupPropertiesByColor, groupBankCards, totalBankValue, COLOR_MAP } from "@/lib/cardUtils";
+import { getCardName, getCardDef, groupPropertiesByColor, groupBankCards, totalBankValue, COLOR_MAP } from "@/lib/cardUtils";
 import { CARD_DEF_MAP } from "@shared/cardDefs";
+import { GameCard as CardView, type CardSize } from "@/components/GameCard";
 import { SET_SIZES, PROPERTY_COLORS } from "@shared/schema";
 import type { GameCard, PlayerState, PropertyColor, PendingAction, EventLogEntry } from "@shared/schema";
 
@@ -34,42 +35,22 @@ function useRoom() {
 }
 
 // ========== CARD COMPONENT ==========
+
 function CardImg({ defId, size = "md", onClick, className = "", glow = false, stacked }: {
   defId: string;
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: CardSize;
   onClick?: () => void;
   className?: string;
   glow?: boolean;
   stacked?: number;
 }) {
-  const src = getCardImage(defId);
-  const isHidden = defId === "__hidden__";
-  const sizeClasses = {
-    sm: "w-16 h-24",
-    md: "w-24 h-36",
-    lg: "w-32 h-48",
-    xl: "w-40 h-60",
-  };
-
-  if (isHidden) {
-    return (
-      <div className={`${sizeClasses[size]} rounded-lg bg-gradient-to-br from-indigo-900 to-purple-900 border-2 border-indigo-700 flex items-center justify-center flex-shrink-0 ${className}`}>
-        <span className="text-2xl">⚡</span>
-      </div>
-    );
-  }
-
   return (
     <div className={`relative inline-block flex-shrink-0 ${onClick ? "cursor-pointer" : ""} ${className}`} onClick={onClick}>
-      <img
-        src={src}
-        alt={getCardName(defId)}
-        decoding="async"
-        className={`${sizeClasses[size]} object-cover rounded-lg transition-transform ${onClick ? "hover:scale-105 hover:-translate-y-1" : ""} ${glow ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""}`}
-        draggable={false}
-      />
+      <div className={`rounded-[6%] transition-transform ${onClick ? "hover:scale-105 hover:-translate-y-1" : ""} ${glow ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""}`}>
+        <CardView defId={defId} size={size} label={getCardName(defId)} />
+      </div>
       {stacked && stacked > 1 && (
-        <Badge className="absolute -top-1 -right-1 text-[10px] px-1.5 min-w-0 bg-primary text-primary-foreground">
+        <Badge className="absolute -top-1 -right-1 z-10 text-[10px] px-1.5 min-w-0 bg-primary text-primary-foreground">
           x{stacked}
         </Badge>
       )}
@@ -295,7 +276,7 @@ function GameView() {
               return (
                 <div key={color} className="mb-3">
                   <div className="flex items-center gap-1 mb-1">
-                    <div className={`w-2.5 h-2.5 rounded-full ${COLOR_MAP[color]?.bg}`} />
+                    <div className={`w-2.5 h-2.5 rounded-full`} style={{ background: COLOR_MAP[color]?.fill }} />
                     <span className="text-[11px] font-medium">{COLOR_MAP[color]?.label}</span>
                     <span className="text-[10px] text-muted-foreground">{cards.length}/{SET_SIZES[color]}</span>
                     {complete && <span className="text-[10px]">✅</span>}
@@ -370,7 +351,7 @@ function GameView() {
                   {(() => {
                     const pg = groupPropertiesByColor(opp.properties);
                     return Array.from(pg.entries()).map(([color, cards]) => (
-                      <div key={color} className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${COLOR_MAP[color]?.bg} text-white ${cards.length >= SET_SIZES[color] ? "ring-1 ring-yellow-400" : ""}`}>
+                      <div key={color} className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${cards.length >= SET_SIZES[color] ? "ring-1 ring-yellow-400" : ""}`} style={{ background: COLOR_MAP[color]?.fill, color: COLOR_MAP[color]?.on }}>
                         {cards.length}/{SET_SIZES[color]}
                       </div>
                     ));
@@ -439,7 +420,7 @@ function GameView() {
                   <div key={evt.id} className="flex items-start gap-1.5 py-0.5">
                     <span>{evt.playerEmoji}</span>
                     <span className="flex-1"><b>{evt.playerName}</b> {evt.message}</span>
-                    {evt.cardImage && <img src={cardImageUrl(evt.cardImage)} alt="" loading="lazy" className="w-8 h-12 rounded object-cover" />}
+                    {evt.cardDefId && <CardView defId={evt.cardDefId} size="xs" label={getCardName(evt.cardDefId)} />}
                   </div>
                 ))}
               </ScrollArea>
@@ -524,7 +505,7 @@ function GameView() {
                   return Array.from(pg.entries()).map(([color, cards]) => (
                     <div key={color} className="mb-2">
                       <div className="flex items-center gap-1 mb-1">
-                        <div className={`w-3 h-3 rounded-full ${COLOR_MAP[color]?.bg}`} />
+                        <div className={`w-3 h-3 rounded-full`} style={{ background: COLOR_MAP[color]?.fill }} />
                         <span className="text-xs font-medium">{COLOR_MAP[color]?.label} {cards.length}/{SET_SIZES[color]} {cards.length >= SET_SIZES[color] ? "✅" : ""}</span>
                       </div>
                       <div className="flex gap-1 flex-wrap">{cards.map((c, j) => <CardImg key={j} defId={c.defId} size="md" />)}</div>
@@ -553,7 +534,7 @@ function GameView() {
             <div className="grid grid-cols-2 gap-2">
               {colorPicker.colors.map(c => (
                 <Button key={c} variant="outline" className="h-12 gap-2" onClick={() => handleColorSelect(c)}>
-                  <div className={`w-4 h-4 rounded-full ${COLOR_MAP[c]?.bg}`} /> {COLOR_MAP[c]?.label}
+                  <div className={`w-4 h-4 rounded-full`} style={{ background: COLOR_MAP[c]?.fill }} /> {COLOR_MAP[c]?.label}
                 </Button>
               ))}
             </div>
@@ -717,7 +698,7 @@ function TargetDialog({ pending, players, myVisitorId, send }: { pending: Pendin
                     if (count < SET_SIZES[color]) return null;
                     return (
                       <Button key={color} size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={() => send("choose_target", { targetPlayerId: p.visitorId, targetCardDefId: color })}>
-                        <div className={`w-3 h-3 rounded-full ${COLOR_MAP[color]?.bg}`} /> {COLOR_MAP[color]?.label}
+                        <div className={`w-3 h-3 rounded-full`} style={{ background: COLOR_MAP[color]?.fill }} /> {COLOR_MAP[color]?.label}
                       </Button>
                     );
                   })}
@@ -770,10 +751,6 @@ function TimeTurnerDialog({ discardPile, send, myVisitorId }: { discardPile: Gam
 export default function Room({ roomCode }: { roomCode: string }) {
   const socket = useGameSocket(roomCode);
   const { toast } = useToast();
-
-  useEffect(() => {
-    preloadCardImages();
-  }, []);
 
   useEffect(() => {
     if (socket.lastError) {

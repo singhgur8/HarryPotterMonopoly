@@ -1,47 +1,9 @@
 import type { PropertyColor, GameCard } from "@shared/schema";
+import { SET_STYLE } from "@shared/schema";
 import { CARD_DEF_MAP } from "@shared/cardDefs";
 
-// Color display names and CSS classes
-export const COLOR_MAP: Record<PropertyColor, { label: string; bg: string; text: string; border: string }> = {
-  brown:      { label: "Brown",       bg: "bg-amber-800",    text: "text-amber-800",    border: "border-amber-800" },
-  light_blue: { label: "Light Blue",  bg: "bg-sky-400",      text: "text-sky-400",      border: "border-sky-400" },
-  pink:       { label: "Pink",        bg: "bg-pink-400",     text: "text-pink-400",     border: "border-pink-400" },
-  orange:     { label: "Orange",      bg: "bg-orange-400",   text: "text-orange-400",   border: "border-orange-400" },
-  red:        { label: "Red",         bg: "bg-red-500",      text: "text-red-500",      border: "border-red-500" },
-  yellow:     { label: "Yellow",      bg: "bg-yellow-400",   text: "text-yellow-400",   border: "border-yellow-400" },
-  green:      { label: "Green",       bg: "bg-emerald-500",  text: "text-emerald-500",  border: "border-emerald-500" },
-  dark_blue:  { label: "Dark Blue",   bg: "bg-blue-700",     text: "text-blue-700",     border: "border-blue-700" },
-  transport:  { label: "Transport",   bg: "bg-gray-800",     text: "text-gray-300",     border: "border-gray-600" },
-  utility:    { label: "Utility",     bg: "bg-violet-500",   text: "text-violet-400",   border: "border-violet-500" },
-};
-
-// Bump when card artwork changes: card URLs are served with a long-lived
-// immutable cache header, so the query string is what busts browser caches.
-const CARD_ASSET_VERSION = "2";
-
-export function cardImageUrl(image: string): string {
-  return `/cards/${image}?v=${CARD_ASSET_VERSION}`;
-}
-
-export function getCardImage(defId: string): string {
-  if (defId === "__hidden__") return "";
-  const def = CARD_DEF_MAP[defId];
-  return def ? cardImageUrl(def.image) : "";
-}
-
-// Warm the browser cache with every card face so cards appear instantly
-// the first time they are dealt or played.
-let cardsPreloaded = false;
-export function preloadCardImages() {
-  if (cardsPreloaded) return;
-  cardsPreloaded = true;
-  const images = new Set(Object.values(CARD_DEF_MAP).map((def) => def.image));
-  images.forEach((image) => {
-    const img = new Image();
-    img.decoding = "async";
-    img.src = cardImageUrl(image);
-  });
-}
+// Set labels and colours, shared with the card frame so dots and chips match the cards
+export const COLOR_MAP: Record<PropertyColor, { label: string; fill: string; on: string }> = SET_STYLE;
 
 export function getCardName(defId: string): string {
   if (defId === "__hidden__") return "Hidden";
@@ -72,8 +34,8 @@ export function groupBankCards(bank: GameCard[]): { defId: string; count: number
   const groups = new Map<string, { defId: string; count: number; value: number }>();
   for (const card of bank) {
     const def = CARD_DEF_MAP[card.defId];
-    // Group by image (same denomination)
-    const key = def?.image || card.defId;
+    // Group copies of the same card (same denomination)
+    const key = def ? `${def.type}:${def.name}` : card.defId;
     if (groups.has(key)) {
       groups.get(key)!.count++;
     } else {
