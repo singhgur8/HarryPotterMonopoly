@@ -12,7 +12,8 @@ import {
   createInitialGameState, drawCards, playCard, bankCard, endTurn,
   flipWild, payWithCards, playProtego, declineProtego, chooseTarget,
   harryProtectColor, cedricChooseSource, timeTurnerChoose, paySilencio,
-  discardCards, sanitizeStateForPlayer,
+  discardCards, sanitizeStateForPlayer, putToSleep, wakeUp, botStep, getWaitingOn,
+  cancelChoice,
 } from "./gameEngine";
 
 export interface Env {
@@ -42,6 +43,8 @@ interface Room {
   lastActivity: number;
   // Not persisted: how to reach the room's open sockets.
   sockets: () => { ws: WebSocket; visitorId: string }[];
+  lastWaitingOn: string | null; // whose move the game was last waiting on
+  botDueAt: number | null; // when a sleeping player's next bot move is due
 }
 
 type StoredRoom = Omit<Room, "clients" | "sockets"> & { clients: RoomClient[] };
@@ -369,32 +372,74 @@ function handleSendChat(room: Room, client: RoomClient, payload: any) {
 
 function handlePutToSleep(room: Room, client: RoomClient, payload: any) {
   if (!room.gameState) return;
-  const { targetPlayerId } = payload || {};
-  const target = room.gameState.players.find(p => p.visitorId === targetPlayerId);
-  if (!target) return;
-  
-  // Can only put to sleep if their timer is at 0
-  if (room.gameState.turnTimer > 0) return sendError(room, client, "Timer hasn't expired yet");
-  
-  const currentPlayer = room.gameState.players[room.gameState.currentTurnIndex];
-  if (currentPlayer?.visitorId !== targetPlayerId) return sendError(room, client, "Can only sleep the current player");
-
-  target.isSleeping = true;
+  const result = putToSleep(room.gameState, client.visitorId, payload?.targetPlayerId);
+  if (!result.success) return sendError(room, client, result.error!);
   broadcastGameState(room);
 }
 
 function handleWakeUp(room: Room, client: RoomClient) {
   if (!room.gameState) return;
-  const player = room.gameState.players.find(p => p.visitorId === client.visitorId);
-  if (!player) return;
-  player.isSleeping = false;
+  const result = wakeUp(room.gameState, client.visitorId);
+  if (!result.success) return sendError(room, client, result.error!);
   room.gameState.turnTimer = room.gameState.gameSpeed;
   broadcastGameState(room);
 }
 
+// ========== AFTER EVERY GAME CHANGE ==========
+// The turn timer restarts whenever the game starts waiting on someone new,
+// and a sleeping player's moves are made by the bot, one step at a time.
+
+const BOT_STEP_MS = 900;
+
+function afterGameChange(room: Room) {
+  const state = room.gameState;
+  if (!state || state.status !== "playing") {
+    room.botDueAt = null;
+    return;
+  }
+  const waitingOn = getWaitingOn(state);
+  if (waitingOn !== room.lastWaitingOn) {
+    room.lastWaitingOn = waitingOn;
+    state.turnTimer = state.gameSpeed;
+    room.timerSetAt = Date.now();
+    broadcastGameState(room);
+  }
+  // The bot step itself runs from the Durable Object alarm (see GameRoom.alarm)
+  const waiting = state.players.find(p => p.visitorId === waitingOn);
+  if (waiting?.isSleeping) {
+    room.botDueAt ??= Date.now() + BOT_STEP_MS;
+  } else {
+    room.botDueAt = null;
+  }
+}
+
+function runBotStep(room: Room) {
+  room.botDueAt = null;
+  if (!room.gameState) return;
+  if (botStep(room.gameState)) broadcastGameState(room);
+  afterGameChange(room);
+}
+
+// Messages that count as a player taking part in the game (and wake them up)
+const GAME_ACTIONS = new Set([
+  "draw_cards", "play_card", "bank_card", "end_turn", "flip_wild", "pay_with_cards",
+  "play_protego", "decline_protego", "choose_target", "harry_protect_color",
+  "cedric_choose_source", "time_turner_choose", "pay_silencio", "discard_cards", "cancel_action",
+]);
+
 // ========== MAIN ROUTER ==========
 
 function handleMessage(room: Room, client: RoomClient, msg: WSMessage) {
+  const { type } = msg;
+  if (room.gameState && GAME_ACTIONS.has(type)) {
+    const me = room.gameState.players.find(p => p.visitorId === client.visitorId);
+    if (me?.isSleeping) wakeUp(room.gameState, client.visitorId);
+  }
+  routeMessage(room, client, msg);
+  afterGameChange(room);
+}
+
+function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
   const { type, payload } = msg;
 
   switch (type) {
@@ -415,11 +460,18 @@ function handleMessage(room: Room, client: RoomClient, msg: WSMessage) {
     case "choose_target": return handleChooseTarget(room, client, payload);
     case "harry_protect_color": return handleHarryProtectColor(room, client, payload);
     case "cedric_choose_source": return handleCedricChooseSource(room, client, payload);
+    case "time_turner_choose": return handleTimeTurnerChoose(room, client, payload);
     case "send_chat": return handleSendChat(room, client, payload);
     case "put_to_sleep": return handlePutToSleep(room, client, payload);
     case "wake_up": return handleWakeUp(room, client);
     case "pay_silencio": return handlePaySilencio(room, client, payload);
     case "discard_cards": return handleDiscardCards(room, client, payload);
+    case "cancel_action": {
+      if (!room.gameState) return;
+      const result = cancelChoice(room.gameState, client.visitorId);
+      if (!result.success) return sendError(room, client, result.error!);
+      return broadcastGameState(room);
+    }
     default:
       sendError(room, client, `Unknown message type: ${type}`);
   }
@@ -442,6 +494,8 @@ export class GameRoom extends DurableObject<Env> {
     return {
       ...stored,
       clients: new Map(stored.clients.map(c => [c.visitorId, c])),
+      lastWaitingOn: stored.lastWaitingOn ?? null,
+      botDueAt: stored.botDueAt ?? null,
       sockets: () => this.ctx.getWebSockets().map(ws => ({
         ws,
         visitorId: (ws.deserializeAttachment() as { visitorId: string }).visitorId,
@@ -457,6 +511,8 @@ export class GameRoom extends DurableObject<Env> {
       clients: [],
       gameState: null,
       usedAnimals: [],
+      lastWaitingOn: null,
+      botDueAt: null,
       timerSetAt: Date.now(),
       lastActivity: Date.now(),
     });
@@ -469,9 +525,8 @@ export class GameRoom extends DurableObject<Env> {
     const stored: StoredRoom = { ...rest, clients: [...room.clients.values()] };
     await this.ctx.storage.put("room", stored);
 
-    const deadline = turnDeadline(room);
-    const expiry = room.lastActivity + ROOM_TTL_MS;
-    await this.ctx.storage.setAlarm(deadline !== null ? Math.min(deadline, expiry) : expiry);
+    const due = [turnDeadline(room), room.botDueAt, room.lastActivity + ROOM_TTL_MS];
+    await this.ctx.storage.setAlarm(Math.min(...due.filter((t): t is number => t !== null)));
   }
 
   // ----- RPC from the Worker -----
@@ -600,9 +655,14 @@ export class GameRoom extends DurableObject<Env> {
       return;
     }
 
-    // Turn timer ran out — show everyone the expired timer
     tickTurnTimer(room);
-    broadcastGameState(room);
+    if (room.botDueAt !== null && Date.now() >= room.botDueAt) {
+      // A sleeping player's move
+      runBotStep(room);
+    } else {
+      // Turn timer ran out — show everyone the expired timer
+      broadcastGameState(room);
+    }
     await this.save(room, false);
   }
 }

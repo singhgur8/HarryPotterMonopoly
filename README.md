@@ -10,6 +10,7 @@ It runs on Cloudflare Workers. Each room is a Durable Object (`worker/gameRoom.t
 npm install
 npm run dev        # http://localhost:5173, Worker and Durable Objects included
 npm run check      # typecheck client and worker
+npm run test:engine  # play bot games and check the tricky rules
 ```
 
 ## Deploy

@@ -25,10 +25,9 @@ function AppRouter() {
 
 function ThemeInitializer() {
   useEffect(() => {
-    // Default to dark mode for HP atmosphere
-    if (!document.documentElement.classList.contains("dark") && !document.documentElement.classList.contains("light")) {
-      document.documentElement.classList.add("dark");
-    }
+    // The table is designed for a light background
+    document.documentElement.classList.remove("dark");
+    document.documentElement.classList.add("light");
   }, []);
   return null;
 }
