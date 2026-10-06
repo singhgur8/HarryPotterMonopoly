@@ -251,6 +251,7 @@ export type WSMessageType =
   | "send_chat"
   | "time_turner_choose"
   | "cancel_action"
+  | "forfeit"
   // Server -> Client
   | "game_state"
   | "error"

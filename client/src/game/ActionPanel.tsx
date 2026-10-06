@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { GameCard as Card, PlayerState, PropertyColor, PaymentResult } from "@shared/schema";
 import { GameCard } from "@/components/GameCard";
+import { SET_SIZES } from "@shared/schema";
+import { countCompleteSets } from "@shared/cardDefs";
 import { useGame } from "./context";
 import { CardInfo, DiscardLink, DiscardPile } from "./DiscardPile";
 import {
@@ -233,7 +235,9 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
       <div className="hp-prompt win">
         <div style={{ fontSize: 40 }}>🏆</div>
         <h2 style={{ font: "800 24px var(--display)" }}>{winner.visitorId === meId ? "You win!" : `${winner.animal.name} wins!`}</h2>
-        <p className="hp-muted" style={{ margin: 0 }}>Three complete sets. Head back to the start page to play again.</p>
+        <p className="hp-muted" style={{ margin: 0 }}>
+          {countCompleteSets(winner.properties, SET_SIZES) >= 3 ? "Three complete sets." : "Won by forfeit."} Head back to the start page to play again.
+        </p>
         <a className="hp-btn gold" href="#/">New game</a>
       </div>
     );

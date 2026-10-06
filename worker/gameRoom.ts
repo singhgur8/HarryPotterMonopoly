@@ -14,7 +14,7 @@ import {
   flipWild, payWithCards, playProtego, declineProtego, chooseTarget,
   harryProtectColor, cedricChooseSource, timeTurnerChoose, paySilencio,
   discardCards, sanitizeStateForPlayer, putToSleep, wakeUp, botStep, getWaitingOn,
-  cancelChoice,
+  cancelChoice, forfeit,
 } from "./gameEngine";
 import { parseMessage, MessageRateLimiter, MAX_SOCKETS_PER_ROOM, MAX_SOCKETS_PER_VISITOR } from "./security";
 
@@ -450,6 +450,16 @@ function handleWakeUp(room: Room, client: RoomClient) {
   broadcastGameState(room);
 }
 
+// A player who forfeits leaves the table for good and watches from then on
+function handleForfeit(room: Room, client: RoomClient) {
+  if (!room.gameState) return;
+  const result = forfeit(room.gameState, client.visitorId);
+  if (!result.success) return sendError(room, client, result.error!);
+  client.seatIndex = null;
+  client.isReady = false;
+  broadcastGameState(room);
+}
+
 // ========== AFTER EVERY GAME CHANGE ==========
 // The turn timer restarts whenever the game starts waiting on someone new,
 // and a sleeping player's moves are made by the bot, one step at a time.
@@ -545,6 +555,7 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
     case "send_chat": return handleSendChat(room, client, payload);
     case "put_to_sleep": return handlePutToSleep(room, client, payload);
     case "wake_up": return handleWakeUp(room, client);
+    case "forfeit": return handleForfeit(room, client);
     case "pay_silencio": return handlePaySilencio(room, client, payload);
     case "discard_cards": return handleDiscardCards(room, client, payload);
     case "cancel_action": {
