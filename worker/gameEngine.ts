@@ -262,11 +262,10 @@ export function cedricChooseSource(state: GameState, visitorId: string, source: 
   return drawCards(state, visitorId);
 }
 
-/** The draw timer ran out: draw for the current player (Cedric draws from the deck). */
+/** The draw timer ran out: draw for the current player. Never makes a choice for them (e.g. Cedric's). */
 export function autoDraw(state: GameState): Result {
   const player = getCurrentPlayer(state);
   if (!player) return fail("No one to draw for");
-  if (state.pendingAction?.type === "cedric_draw_choice") return cedricChooseSource(state, player.visitorId, "deck");
   return drawCards(state, player.visitorId);
 }
 

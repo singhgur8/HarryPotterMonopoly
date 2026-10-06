@@ -63,7 +63,7 @@ interface Room {
   // Not persisted: how to reach the room's open sockets.
   sockets: () => { ws: WebSocket; visitorId: string }[];
   lastWaitingOn: string | null; // whose move the game was last waiting on
-  lastDrawStep: boolean; // whether that was the draw step at the start of a turn
+  lastDrawStep: boolean; // whether the current player hadn't drawn yet (the timer restarts once they do)
   botDueAt: number | null; // when a sleeping player's next bot move is due
   moveBonuses: number; // extra-time bonuses given since the game last started waiting on someone new
   finishedAt: number | null; // when the game ended
@@ -501,10 +501,10 @@ function afterGameChange(room: Room) {
     return;
   }
   const waitingOn = getWaitingOn(state);
-  const drawStep = inDrawStep(state);
-  if (waitingOn !== room.lastWaitingOn || drawStep !== room.lastDrawStep) {
+  const beforeDraw = !state.drawnThisTurn;
+  if (waitingOn !== room.lastWaitingOn || beforeDraw !== room.lastDrawStep) {
     room.lastWaitingOn = waitingOn;
-    room.lastDrawStep = drawStep;
+    room.lastDrawStep = beforeDraw;
     state.turnTimer = freshTurnTimer(state);
     room.timerSetAt = Date.now();
     room.moveBonuses = 0;

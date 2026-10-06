@@ -378,7 +378,7 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
         const top = s.discardPile.slice(-2).reverse();
         prompt = (
           <div className="hp-prompt wait">
-            <div className="head"><p><b>Cedric's choice.</b> Draw {drawCount(me)} from the deck, or take the top {top.length} of the discard pile. When the timer runs out you draw from the deck.</p></div>
+            <div className="head"><p><b>Cedric's choice.</b> Draw {drawCount(me)} from the deck, or take the top {top.length} of the discard pile.</p></div>
             <div className="hp-cardinfos">
               {top.map((c, i) => <CardInfo key={c.defId} defId={c.defId} tag={i === 0 ? "Top" : undefined} />)}
             </div>

@@ -438,6 +438,17 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.ok(endTurn(s, p0.visitorId).success);
   assert.ok(inDrawStep(s));
   assert.equal(s.turnTimer, DRAW_SECONDS);
+  // Cedric choosing deck or discard pile has a real choice: no draw timer
+  const c = newGame(2);
+  c.players.forEach(p => { p.role = undefined; });
+  c.players[1].role = "cedric";
+  c.discardPile.push(c.drawPile.pop()!);
+  while (c.players[0].hand.length > 7) c.players[0].hand.pop();
+  assert.ok(autoDraw(c).success);
+  assert.ok(endTurn(c, "p0").success);
+  assert.equal(c.pendingAction?.type, "cedric_draw_choice");
+  assert.ok(!inDrawStep(c));
+  assert.equal(c.turnTimer, 60);
   console.log("draw timer: ok");
 }
 
