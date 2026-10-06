@@ -247,8 +247,8 @@ const roleCards: CardDef[] = [
     value: 0,
     roleType: "harry",
     shortName: "Harry",
-    text: "At the end of your turn, shield one colour. It can't be stolen or charged rent until your next turn.",
-    rolePower: "Protect one color at end of turn — immune to steal/rent actions. Can still voluntarily pay with protected properties. Owes nothing if only protected properties remain.",
+    text: "Shield one colour. It can't be stolen or charged rent. It stays until you move it at the end of one of your turns.",
+    rolePower: "Shield one color; it stays until Harry moves or drops it at the end of a turn — immune to steal/rent actions. Can still voluntarily pay with protected properties. Owes nothing if only protected properties remain.",
   },
   {
     id: "role_hermione",

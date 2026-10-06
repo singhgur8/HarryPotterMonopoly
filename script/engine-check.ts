@@ -204,7 +204,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
 
 // ---------- 10. Harry shields at end of turn ----------
 {
-  const s = setup();
+  const s = setup(2);
   const [a] = s.players;
   a.role = "harry";
   give(s, a, "properties", "prop_red_1");
@@ -213,6 +213,24 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.ok(harryProtectColor(s, "p0", "red").success);
   assert.equal(a.protectedColor, "red");
   assert.equal(s.currentTurnIndex, 1);
+  // The shield stays through his next turn and is kept unless he moves it
+  give(s, a, "properties", "prop_darkblue_1");
+  s.players[1].role = "luna"; s.drawnThisTurn = true;
+  assert.ok(endTurn(s, "p1").success);
+  assert.equal(s.currentTurnIndex, 0);
+  assert.equal(a.protectedColor, "red", "shield survives into his next turn");
+  s.drawnThisTurn = true;
+  assert.ok(endTurn(s, "p0").success);
+  assert.ok(harryProtectColor(s, "p0").success, "no answer keeps the shield");
+  assert.equal(a.protectedColor, "red");
+  s.currentTurnIndex = 0; s.drawnThisTurn = true; s.pendingAction = null;
+  assert.ok(endTurn(s, "p0").success);
+  assert.ok(harryProtectColor(s, "p0", "dark_blue").success);
+  assert.equal(a.protectedColor, "dark_blue", "moved");
+  s.currentTurnIndex = 0; s.drawnThisTurn = true; s.pendingAction = null;
+  assert.ok(endTurn(s, "p0").success);
+  assert.ok(harryProtectColor(s, "p0", null).success);
+  assert.equal(a.protectedColor, undefined, "dropped");
   void drawCards;
   console.log("harry shield: ok");
 }
