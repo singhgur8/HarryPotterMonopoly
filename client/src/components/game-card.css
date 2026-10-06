@@ -97,7 +97,10 @@
 .gc-face.t-rent .rentmini b { width: 3.6cqw; height: 3.6cqw; border-radius: 50%; flex: none; }
 
 /* wild (two-ended) */
-.gc-face.t-wild { grid-template-rows: 1fr 1fr; }
+.gc-face.t-wild { grid-template-rows: 1fr 1fr; transition: transform .45s cubic-bezier(.3,1.4,.5,1); }
+.gc-face.t-wild.turned { transform: rotate(180deg); }
+.gc-face.t-wild.turned .seal { transform: translate(-50%,-50%) rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .gc-face.t-wild { transition: none; } }
 .gc-face.t-wild .half { background: var(--hset); color: var(--hon); padding: 4cqw 5cqw 3cqw 27cqw; position: relative; display: flex; flex-direction: column; gap: 1.4cqw; }
 .gc-face.t-wild .half.top { border-radius: 4cqw 4cqw 0 0; }
 .gc-face.t-wild .half.bot { transform: rotate(180deg); border-radius: 4cqw 4cqw 0 0; }

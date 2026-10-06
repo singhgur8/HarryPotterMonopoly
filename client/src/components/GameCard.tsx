@@ -86,14 +86,16 @@ function PropertyFace({ def }: { def: CardDef }) {
   );
 }
 
-function WildFace({ def }: { def: CardDef }) {
+// `color` is the colour a played wild counts as. A two-colour wild turns so
+// that colour sits upright on top, like turning the real card around.
+function WildFace({ def, color }: { def: CardDef; color?: PropertyColor }) {
   if (def.wildColors === "rainbow") {
     return (
       <div className="gc-face t-property" style={{ "--set": "var(--ink)", "--on": "#fff", "--tint": "#efe7f5", "--glyph": "#5d3f93" } as CSSProperties}>
         <Band kicker="Wild" name={def.name} short={def.shortName} className="gc-rainbow gc-rainbow-text" style={{ paddingLeft: "6cqw" }} />
         <Art svg={CARD_ART[def.name]} />
         <div className="body"><p className="text">{def.text}</p></div>
-        <footer className="foot"><span className="ftxt">Can't be banked</span><span>Any</span></footer>
+        <footer className="foot"><span className="ftxt">Can't be banked</span><span>{color ? `Now ${firstWord(color)}` : "Any"}</span></footer>
       </div>
     );
   }
@@ -108,7 +110,7 @@ function WildFace({ def }: { def: CardDef }) {
     </div>
   );
   return (
-    <div className="gc-face t-wild">
+    <div className={`gc-face t-wild ${color === b ? "turned" : ""}`}>
       {half(a, "top")}
       {half(b, "bot")}
       <span className="seal">Wild</span>
@@ -188,12 +190,12 @@ function BackFace() {
   return <div className="gc-face t-back"><div className="crest">W</div></div>;
 }
 
-export function CardFace({ defId }: { defId: string }) {
+export function CardFace({ defId, color }: { defId: string; color?: PropertyColor }) {
   const def = CARD_DEF_MAP[defId];
   if (!def) return <BackFace />;
   switch (def.type) {
     case "property": return <PropertyFace def={def} />;
-    case "wild": return <WildFace def={def} />;
+    case "wild": return <WildFace def={def} color={color} />;
     case "rent": return <RentFace def={def} />;
     case "action": return <ActionFace def={def} />;
     case "money": return <MoneyFace def={def} />;
@@ -202,10 +204,11 @@ export function CardFace({ defId }: { defId: string }) {
 }
 
 // A card at a fixed size. Unknown ids (including "__hidden__") show the card back.
-export function GameCard({ defId, size = "md", label, children }: { defId: string; size?: CardSize; label?: string; children?: ReactNode }) {
+// Pass `color` for a wild on the table so it shows the side it counts as.
+export function GameCard({ defId, size = "md", label, color, children }: { defId: string; size?: CardSize; label?: string; color?: PropertyColor; children?: ReactNode }) {
   return (
     <div className="gc" style={{ "--w": `${CARD_WIDTHS[size]}px` } as CSSProperties} role="img" aria-label={label}>
-      <CardFace defId={defId} />
+      <CardFace defId={defId} color={color} />
       {children}
     </div>
   );

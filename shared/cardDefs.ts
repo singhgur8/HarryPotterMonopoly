@@ -91,8 +91,8 @@ const propertyCards: CardDef[] = [
 // ========== WILD CARDS (11) ==========
 const wildCards: CardDef[] = [
   // 2x Rainbow Wild (Polyjuice Potion)
-  { id: "wild_rainbow_1", type: "wild", name: "Polyjuice Potion", shortName: "Polyjuice", text: "Counts as any colour. You can move it between sets at any time.", value: 0, wildColors: "rainbow" },
-  { id: "wild_rainbow_2", type: "wild", name: "Polyjuice Potion", shortName: "Polyjuice", text: "Counts as any colour. You can move it between sets at any time.", value: 0, wildColors: "rainbow" },
+  { id: "wild_rainbow_1", type: "wild", name: "Polyjuice Potion", shortName: "Polyjuice", text: "Counts as any colour. You can move it between sets on your turn.", value: 0, wildColors: "rainbow" },
+  { id: "wild_rainbow_2", type: "wild", name: "Polyjuice Potion", shortName: "Polyjuice", text: "Counts as any colour. You can move it between sets on your turn.", value: 0, wildColors: "rainbow" },
   // Light Blue / Brown
   { id: "wild_lb_brown_1", type: "wild", name: "Light Blue / Brown Wild", value: 1, wildColors: ["light_blue", "brown"] },
   // Light Blue / Transport
@@ -216,7 +216,7 @@ const actionCards: CardDef[] = [
     name: "Reducto",
     value: 4,
     actionType: "reducto" as const,
-    text: "Destroy one card from another player's properties or bank. Not from a complete set.",
+    text: "Destroy one of another player's properties. Not from a complete set, and never bank cards.",
     target: "one" as const,
   })),
   // 2x Silencio

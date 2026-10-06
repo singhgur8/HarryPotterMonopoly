@@ -104,6 +104,9 @@ export function waitingText(s: GameState, meId: string): string {
   }
 }
 
+/** Shared selection for paying: chips in the panel and cards on my table. */
+export type PaySelection = { active: boolean; picked: string[]; toggle: (id: string) => void; set: (ids: string[]) => void };
+
 export const isPayment = (p: PendingAction | null) => !!p && ["pay_rent", "pay_debt", "pay_birthday"].includes(p.type);
 
 export function hasProtego(p: PlayerState) {
