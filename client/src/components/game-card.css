@@ -1,0 +1,151 @@
+/* Card frame for every card in the deck. One template; the card picks how much
+   detail to show from its own width (container queries): full at 120px and up,
+   compact from 64px, chip below that. Colours are fixed so cards look the same
+   in light and dark mode. */
+.gc {
+  --paper: #f6f1e4;
+  --paper-2: #ebe3cf;
+  --ink: #23202f;
+  --ink-soft: #57506a;
+  --gold: #b8892e;
+  --gold-hi: #e4c071;
+  --plum: #4a2342;
+  --f-display: "Alegreya", Georgia, serif;
+  --f-body: "Alegreya Sans", system-ui, sans-serif;
+  --f-label: "Alegreya Sans SC", "Alegreya Sans", system-ui, sans-serif;
+}
+/* ========== THE CARD ========== */
+.gc { width: var(--w); max-width: 100%; aspect-ratio: 5 / 7; container-type: inline-size; position: relative; flex-shrink: 0; }
+.gc-face {
+  --set: var(--ink); --on: #fff; --tint: #ece6d6; --glyph: var(--ink);
+  width: 100%; height: 100%;
+  position: relative;
+  border-radius: 6cqw;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 1px 0 rgba(0,0,0,.08), 0 4px 14px rgba(20,16,40,.18);
+  overflow: hidden;
+  display: grid; grid-template-rows: auto 1fr auto auto;
+  font-family: var(--f-body);
+  border: 1.6cqw solid var(--paper);
+  outline: .6cqw solid rgba(35,32,47,.18); outline-offset: -2.4cqw;
+}
+.gc-face .band {
+  background: var(--set); color: var(--on);
+  padding: 4cqw 5cqw 4.2cqw 27cqw; min-height: 25cqw;
+  border-radius: 4cqw 4cqw 0 0;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.gc-face .kicker { font: 800 5.4cqw/1 var(--f-label); letter-spacing: .1em; opacity: .85; }
+.gc-face .name { font: 800 9.4cqw/1.02 var(--f-label); letter-spacing: .01em; margin-top: 1.2cqw; text-wrap: balance; }
+.gc-face .short { display: none; }
+.gc-face .coin {
+  position: absolute; z-index: 2; left: 3.2cqw; top: 3.2cqw;
+  width: 20cqw; height: 20cqw; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--gold-hi), var(--gold) 70%);
+  color: var(--ink); border: .9cqw solid var(--paper);
+  display: flex; align-items: center; justify-content: center;
+  font: 800 9.6cqw/1 var(--f-body); font-variant-numeric: tabular-nums;
+  box-shadow: 0 .6cqw 1.2cqw rgba(0,0,0,.25);
+}
+.gc-face .coin small { font-size: .55em; font-weight: 800; margin-left: .3cqw; }
+.gc-face .art {
+  background: var(--tint); color: var(--glyph);
+  display: grid; place-items: center; min-height: 0; overflow: hidden;
+  border-bottom: .5cqw solid rgba(35,32,47,.12);
+}
+.gc-face .art svg { width: 62%; height: auto; max-height: 90%; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.gc-face .art .ground { stroke-width: 1.2; opacity: .45; }
+.gc-face .art .mono { font: 700 22cqw/1 var(--f-display); opacity: .85; }
+.gc-face .body { padding: 3.5cqw 6cqw 2cqw; font-size: 6.6cqw; line-height: 1.25; }
+.gc-face .text { margin: 0; text-wrap: pretty; }
+.gc-face .foot {
+  display: flex; justify-content: space-between; align-items: center; gap: 2cqw;
+  padding: 2.4cqw 6cqw 3.4cqw; font: 700 4.6cqw/1 var(--f-label); letter-spacing: .08em; color: var(--ink-soft);
+}
+.gc-face .pips { display: inline-flex; gap: 1.4cqw; }
+.gc-face .pips i { width: 3.6cqw; height: 3.6cqw; border-radius: 50%; background: var(--set); box-shadow: 0 0 0 .5cqw rgba(35,32,47,.25); }
+
+/* rent ladder */
+.gc-face .ladder { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.4cqw; font-variant-numeric: tabular-nums; }
+.gc-face .ladder li { display: flex; justify-content: space-between; align-items: center; padding: .8cqw 2.4cqw; border-radius: 2cqw; font-weight: 700; font-size: 6.6cqw; }
+.gc-face .ladder li:nth-child(odd) { background: rgba(35,32,47,.05); }
+.gc-face .ladder li.full { background: var(--set); color: var(--on); }
+.gc-face .ladder .dots { display: inline-flex; gap: 1.2cqw; }
+.gc-face .ladder .dots i { width: 3.4cqw; height: 4.6cqw; border-radius: .8cqw; border: .6cqw solid currentColor; opacity: .55; }
+.gc-face .ladder .dots i.on { background: currentColor; opacity: 1; }
+
+/* money */
+.gc-face.t-money { background: var(--set); border-color: var(--set); outline-color: rgba(255,255,255,.35); color: var(--on); grid-template-rows: 1fr auto; }
+.gc-face.t-money .band { display: none; }
+.gc-face.t-money .art { background: transparent; border: 0; color: var(--on); align-content: center; }
+.gc-face.t-money .num { font: 800 46cqw/0.9 var(--f-display); font-variant-numeric: tabular-nums; text-align: center; }
+.gc-face.t-money .unit { font: 800 7cqw/1 var(--f-label); letter-spacing: .14em; text-align: center; margin-top: 3cqw; opacity: .9; }
+.gc-face.t-money .foot { color: var(--on); opacity: .8; }
+.gc-face.t-money .body { display: none; }
+
+/* action + role */
+.gc-face.t-action .art svg, .gc-face.t-role .art svg { stroke: var(--gold-hi); }
+.gc-face.t-action .art { background: radial-gradient(circle at 50% 55%, #3b3652, var(--ink) 75%); }
+.gc-face.t-role .art { background: radial-gradient(circle at 50% 55%, #6b3a5f, var(--plum) 75%); color: var(--gold-hi); }
+.gc-face.t-action .band, .gc-face.t-role .band { color: var(--gold-hi); }
+.gc-face .chip-tag { border: .5cqw solid currentColor; border-radius: 10cqw; padding: .8cqw 2.4cqw; }
+
+/* rent */
+.gc-face.t-rent .rentmini { display: grid; gap: 1cqw; font-size: 5.6cqw; font-variant-numeric: tabular-nums; margin-top: 2.4cqw; }
+.gc-face.t-rent .rentmini div { display: flex; align-items: center; gap: 2cqw; }
+.gc-face.t-rent .rentmini b { width: 3.6cqw; height: 3.6cqw; border-radius: 50%; flex: none; }
+
+/* wild (two-ended) */
+.gc-face.t-wild { grid-template-rows: 1fr 1fr; }
+.gc-face.t-wild .half { background: var(--hset); color: var(--hon); padding: 4cqw 5cqw 3cqw 27cqw; position: relative; display: flex; flex-direction: column; gap: 1.4cqw; }
+.gc-face.t-wild .half.top { border-radius: 4cqw 4cqw 0 0; }
+.gc-face.t-wild .half.bot { transform: rotate(180deg); border-radius: 4cqw 4cqw 0 0; }
+.gc-face.t-wild .half .name { margin: 0; font-size: 8.4cqw; }
+.gc-face.t-wild .half .mini { font: 700 5.6cqw/1.2 var(--f-body); font-variant-numeric: tabular-nums; opacity: .92; }
+.gc-face.t-wild .half .coin { left: 3.2cqw; top: 3.2cqw; }
+.gc-face.t-wild .seal {
+  position: absolute; z-index: 3; left: 50%; top: 50%; transform: translate(-50%,-50%);
+  background: var(--paper); color: var(--ink); border-radius: 10cqw; padding: 1.6cqw 4cqw;
+  font: 800 6cqw/1 var(--f-label); letter-spacing: .12em; box-shadow: 0 .6cqw 1.6cqw rgba(0,0,0,.25);
+}
+.gc-rainbow { background: linear-gradient(90deg, #7a4a2a 0 10%, #8fc6e8 0 20%, #e58fb3 0 30%, #e8893a 0 40%, #b8322f 0 50%, #e9c440 0 60%, #2f7d4f 0 70%, #23397a 0 80%, #3b3f46 0 90%, #7d5bb5 0) !important; }
+.gc-rainbow-text { text-shadow: 0 .4cqw 1.2cqw rgba(0,0,0,.6); }
+
+/* card back */
+.gc-face.t-back { background: var(--ink); border-color: var(--ink); outline-color: rgba(228,192,113,.4); grid-template-rows: 1fr; place-items: center; color: var(--gold-hi); }
+.gc-face.t-back .crest { width: 56cqw; aspect-ratio: 1; border: .8cqw solid currentColor; border-radius: 50%; display: grid; place-items: center; font: 700 30cqw/1 var(--f-display); }
+
+/* ---- density tiers: same markup, the card decides by its own width ---- */
+@container (max-width: 119px) {
+  .gc-face .body .text, .gc-face .ladder, .gc-face.t-rent .rentmini, .gc-face.t-wild .half .mini { display: none; }
+  .gc-face .band { padding: 3.5cqw 4cqw 3.5cqw 27cqw; min-height: 27cqw; }
+  .gc-face .kicker { display: none; }
+  .gc-face .name { display: none; }
+  .gc-face .short { display: block; font: 800 11cqw/1.02 var(--f-label); }
+  .gc-face.t-wild .half .name { display: none; }
+  .gc-face.t-wild .half .short { font-size: 10cqw; }
+  .gc-face .coin { width: 24cqw; height: 24cqw; font-size: 12cqw; }
+  .gc-face .body { padding: 0; }
+  .gc-face .foot { padding: 3cqw 6cqw 5cqw; font-size: 7cqw; }
+  .gc-face .foot .ftxt { display: none; }
+  .gc-face .pips i { width: 6cqw; height: 6cqw; }
+  .gc-face .art svg { width: 64%; stroke-width: 2.4; }
+  .gc-face { grid-template-rows: auto 1fr auto auto; }
+  .gc-face.t-wild .seal { font-size: 9cqw; }
+}
+@container (max-width: 63px) {
+  .gc-face .band, .gc-face .body, .gc-face .foot, .gc-face .art svg, .gc-face .art .mono, .gc-face.t-wild .half > *:not(.coin), .gc-face.t-wild .seal, .gc-face.t-money .unit, .gc-face.t-back .crest { display: none !important; }
+  .gc-face { border-width: 3cqw; border-radius: 10cqw; outline: none; }
+  .gc-face { grid-template-rows: 1fr; }
+  .gc-face.t-wild { grid-template-rows: 1fr 1fr; }
+  .gc-face:not(.t-wild):not(.t-back) { background: var(--set); border-color: var(--set); }
+  .gc-face:not(.t-money):not(.t-wild):not(.t-back) .art { background: transparent; border: 0; }
+  .gc-face .coin small { display: none; }
+  .gc-face .coin { width: 60cqw; height: 60cqw; font-size: 30cqw; left: 50%; top: 50%; transform: translate(-50%,-50%); border-width: 2cqw; }
+  .gc-face.t-wild .half .coin { display: none; }
+  .gc-face.t-wild .half.bot .coin { display: grid !important; transform: translate(-50%,-50%) rotate(180deg); left: 50%; top: 100%; }
+  .gc-face.t-money .num { font-size: 60cqw; }
+  .gc-face.t-money .coin { display: none; }
+}
+
