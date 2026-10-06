@@ -327,9 +327,16 @@ function handleDrawCards(room: Room, client: RoomClient) {
 
 function handlePlayCard(room: Room, client: RoomClient, payload: any) {
   if (!room.gameState) return;
-  const { cardDefId, asProperty, targetColor } = payload || {};
+  const { cardDefId, asProperty, targetColor, targetPlayerId, targetCardDefId, ownCardDefId } = payload || {};
   const result = playCard(room.gameState, client.visitorId, cardDefId, asProperty, targetColor);
   if (!result.success) return sendError(room, client, result.error!);
+  // Played by tapping what to take on an opponent's table: aim it straight away.
+  // If that target doesn't work, the usual picker stays open.
+  const pending = room.gameState.pendingAction;
+  if (typeof targetPlayerId === "string" && pending?.type.startsWith("choose_") && pending.sourcePlayerId === client.visitorId) {
+    const aimed = chooseTarget(room.gameState, client.visitorId, targetPlayerId, targetCardDefId, ownCardDefId);
+    if (!aimed.success) sendError(room, client, aimed.error!);
+  }
   broadcastGameState(room);
 }
 
