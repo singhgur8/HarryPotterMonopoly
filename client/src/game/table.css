@@ -177,6 +177,17 @@
 .hp-mpeek b { color: #fff; }
 .hp-mobile-only { display: none; }
 
+/* discard pile */
+.hp-discard { position: relative; }
+.hp-discard-n { position: absolute; right: -6px; top: -6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: var(--fg); color: #fff; font: 800 11px/20px var(--body); text-align: center; }
+.hp-linkbtn { all: unset; cursor: pointer; font-size: 13px; font-weight: 700; color: var(--gold); text-decoration: underline; text-underline-offset: 3px; }
+.hp-linkbtn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 4px; }
+.hp-cardinfos { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(220px, 320px)); }
+.hp-cardinfo { display: flex; gap: 10px; align-items: center; text-align: left; }
+.hp-cardinfo > div:last-child { display: grid; gap: 3px; justify-items: start; font-size: 13px; min-width: 0; }
+.hp-cardinfo .nm { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.hp-cardinfo > div > span:last-child { color: var(--muted); }
+
 /* inspect dialog */
 .hp-inspect { display: grid; gap: 12px; max-height: 70dvh; overflow-y: auto; }
 .hp-inspect .cards { display: flex; gap: 6px; flex-wrap: wrap; }

@@ -232,13 +232,15 @@ export function cedricChooseSource(state: GameState, visitorId: string, source: 
   state.pendingAction = null;
 
   if (source === "discard" && roleActive(player, "cedric") && state.discardPile.length > 0) {
-    let drawn = 0;
+    // The discard pile is face up, so everyone sees what Cedric picked up
+    const taken: string[] = [];
     for (let i = 0; i < 2 && state.discardPile.length > 0; i++) {
-      player.hand.push(state.discardPile.pop()!);
-      drawn++;
+      const card = state.discardPile.pop()!;
+      player.hand.push(card);
+      taken.push(CARD_DEF_MAP[card.defId]?.name ?? "a card");
     }
     state.drawnThisTurn = true;
-    log(state, player, `used Cedric's power to take ${drawn} from the discard pile`);
+    log(state, player, `used Cedric's power to take ${taken.join(" and ")} from the discard pile`);
     return ok;
   }
   return drawCards(state, visitorId);
