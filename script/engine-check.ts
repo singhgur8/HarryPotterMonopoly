@@ -8,6 +8,7 @@ import {
   createInitialGameState, botStep, payWithCards, playProtego, declineProtego,
   chooseTarget, playCard, drawCards, paySilencio, getWaitingOn, flipWild,
   harryProtectColor, endTurn, timeTurnerChoose, bankCard, cancelChoice, cedricChooseSource, wakeUp, forfeit, autoDraw,
+  sleepForDisconnect,
 } from "../worker/gameEngine";
 import { ANIMALS, SET_SIZES, DRAW_SECONDS, inDrawStep, freshTurnTimer } from "../shared/schema";
 import type { GameState, PlayerState } from "../shared/schema";
@@ -203,7 +204,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
 
 // ---------- 10. Harry shields at end of turn ----------
 {
-  const s = setup();
+  const s = setup(2);
   const [a] = s.players;
   a.role = "harry";
   give(s, a, "properties", "prop_red_1");
@@ -212,6 +213,24 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.ok(harryProtectColor(s, "p0", "red").success);
   assert.equal(a.protectedColor, "red");
   assert.equal(s.currentTurnIndex, 1);
+  // The shield stays through his next turn and is kept unless he moves it
+  give(s, a, "properties", "prop_darkblue_1");
+  s.players[1].role = "luna"; s.drawnThisTurn = true;
+  assert.ok(endTurn(s, "p1").success);
+  assert.equal(s.currentTurnIndex, 0);
+  assert.equal(a.protectedColor, "red", "shield survives into his next turn");
+  s.drawnThisTurn = true;
+  assert.ok(endTurn(s, "p0").success);
+  assert.ok(harryProtectColor(s, "p0").success, "no answer keeps the shield");
+  assert.equal(a.protectedColor, "red");
+  s.currentTurnIndex = 0; s.drawnThisTurn = true; s.pendingAction = null;
+  assert.ok(endTurn(s, "p0").success);
+  assert.ok(harryProtectColor(s, "p0", "dark_blue").success);
+  assert.equal(a.protectedColor, "dark_blue", "moved");
+  s.currentTurnIndex = 0; s.drawnThisTurn = true; s.pendingAction = null;
+  assert.ok(endTurn(s, "p0").success);
+  assert.ok(harryProtectColor(s, "p0", null).success);
+  assert.equal(a.protectedColor, undefined, "dropped");
   void drawCards;
   console.log("harry shield: ok");
 }
@@ -405,6 +424,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
 // ---------- Draw timer: a turn starts with a short draw step, then the full turn length ----------
 {
   const s = newGame(3);
+  s.players.forEach(p => { p.role = undefined; }); // plain players: draw 2, no end-of-turn questions
   assert.ok(inDrawStep(s));
   assert.equal(s.turnTimer, DRAW_SECONDS);
   const p0 = s.players[0];
@@ -419,6 +439,22 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.ok(inDrawStep(s));
   assert.equal(s.turnTimer, DRAW_SECONDS);
   console.log("draw timer: ok");
+}
+
+// ---------- Dropped players are handed to the bot, and get it back ----------
+{
+  const s = newGame(2);
+  const p1 = s.players[1];
+  assert.equal(sleepForDisconnect(s, "p1"), false, "a connected player stays in control");
+  p1.isConnected = false;
+  assert.equal(sleepForDisconnect(s, "p1"), true);
+  assert.ok(p1.isSleeping);
+  assert.match(s.eventLog.at(-1)!.message, /lost connection/);
+  assert.equal(sleepForDisconnect(s, "p1"), false, "only logged once");
+  p1.isConnected = true;
+  assert.ok(wakeUp(s, "p1").success);
+  assert.ok(!p1.isSleeping);
+  console.log("disconnect takeover: ok");
 }
 
 console.log("all engine checks passed");
