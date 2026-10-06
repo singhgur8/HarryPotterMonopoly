@@ -583,7 +583,7 @@ export class GameRoom extends DurableObject<Env> {
     if (!room) {
       // Create room (first person is host)
       room = this.room = this.newRoom(roomCode, visitorId);
-    } else if (room.clients.size === 0) {
+    } else if (room.clients.size === 0 || !room.hostVisitorId) {
       // First connection to an empty room — adopt as host
       room.hostVisitorId = visitorId;
     }
@@ -653,7 +653,10 @@ export class GameRoom extends DurableObject<Env> {
     if (!room) return;
     const { visitorId } = ws.deserializeAttachment() as { visitorId: string };
     const stillOpen = room.sockets().some(s => s.ws !== ws && s.visitorId === visitorId);
-    if (room.gameState && !stillOpen) {
+    if (stillOpen) return;
+
+    if (room.gameState) {
+      // Mid-game the seat is kept: they can rejoin, or be put to sleep and played by the bot
       const player = room.gameState.players.find(p => p.visitorId === visitorId);
       if (player) {
         player.isConnected = false;
@@ -661,7 +664,17 @@ export class GameRoom extends DurableObject<Env> {
         broadcastGameState(room);
         await this.save(room);
       }
+      return;
     }
+
+    // In the lobby, someone who leaves gives up their seat, and the host role
+    // passes to someone still here so the game can still be started.
+    room.clients.delete(visitorId);
+    if (room.hostVisitorId === visitorId) {
+      room.hostVisitorId = room.sockets().find(s => s.ws !== ws)?.visitorId ?? "";
+    }
+    broadcastLobbyState(room);
+    await this.save(room);
   }
 
   async webSocketError(ws: WebSocket) {
