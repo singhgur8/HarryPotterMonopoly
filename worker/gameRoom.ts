@@ -45,6 +45,7 @@ interface Room {
   sockets: () => { ws: WebSocket; visitorId: string }[];
   lastWaitingOn: string | null; // whose move the game was last waiting on
   botDueAt: number | null; // when a sleeping player's next bot move is due
+  moveBonuses: number; // extra-time bonuses given since the game last started waiting on someone new
 }
 
 type StoredRoom = Omit<Room, "clients" | "sockets"> & { clients: RoomClient[] };
@@ -146,6 +147,15 @@ function turnDeadline(room: Room): number | null {
   if (!state || state.status !== "playing" || state.turnTimer <= 0) return null;
   return room.timerSetAt + state.turnTimer * 1000;
 }
+
+// Each move a player makes while the game waits on them adds a little time,
+// so someone actively playing isn't rushed. Capped per stretch so taking a
+// card back and replaying it can't stall the table forever.
+const MOVE_BONUS_SECONDS = 10;
+const MAX_MOVE_BONUSES = 5;
+const TIMED_MOVES = new Set([
+  "draw_cards", "play_card", "bank_card", "choose_target", "cedric_choose_source", "time_turner_choose",
+]);
 
 // ========== MESSAGE HANDLERS ==========
 
@@ -402,6 +412,7 @@ function afterGameChange(room: Room) {
     room.lastWaitingOn = waitingOn;
     state.turnTimer = state.gameSpeed;
     room.timerSetAt = Date.now();
+    room.moveBonuses = 0;
     broadcastGameState(room);
   }
   // The bot step itself runs from the Durable Object alarm (see GameRoom.alarm)
@@ -435,7 +446,18 @@ function handleMessage(room: Room, client: RoomClient, msg: WSMessage) {
     const me = room.gameState.players.find(p => p.visitorId === client.visitorId);
     if (me?.isSleeping) wakeUp(room.gameState, client.visitorId);
   }
+  // Add the move bonus up front so the broadcast after the move carries it;
+  // take it back if the move was refused (nothing new in the log).
+  const state = room.gameState;
+  const bonus = !!state && state.status === "playing" && TIMED_MOVES.has(type) &&
+    room.moveBonuses < MAX_MOVE_BONUSES && getWaitingOn(state) === client.visitorId;
+  const lastEvent = state?.eventLog.at(-1)?.id;
+  if (bonus && state) state.turnTimer += MOVE_BONUS_SECONDS;
   routeMessage(room, client, msg);
+  if (bonus && state) {
+    if (state.eventLog.at(-1)?.id === lastEvent) state.turnTimer -= MOVE_BONUS_SECONDS;
+    else room.moveBonuses++;
+  }
   afterGameChange(room);
 }
 
@@ -496,6 +518,7 @@ export class GameRoom extends DurableObject<Env> {
       clients: new Map(stored.clients.map(c => [c.visitorId, c])),
       lastWaitingOn: stored.lastWaitingOn ?? null,
       botDueAt: stored.botDueAt ?? null,
+      moveBonuses: stored.moveBonuses ?? 0,
       sockets: () => this.ctx.getWebSockets().map(ws => ({
         ws,
         visitorId: (ws.deserializeAttachment() as { visitorId: string }).visitorId,
@@ -513,6 +536,7 @@ export class GameRoom extends DurableObject<Env> {
       usedAnimals: [],
       lastWaitingOn: null,
       botDueAt: null,
+      moveBonuses: 0,
       timerSetAt: Date.now(),
       lastActivity: Date.now(),
     });
@@ -559,7 +583,7 @@ export class GameRoom extends DurableObject<Env> {
     if (!room) {
       // Create room (first person is host)
       room = this.room = this.newRoom(roomCode, visitorId);
-    } else if (room.clients.size === 0) {
+    } else if (room.clients.size === 0 || !room.hostVisitorId) {
       // First connection to an empty room — adopt as host
       room.hostVisitorId = visitorId;
     }
@@ -629,7 +653,10 @@ export class GameRoom extends DurableObject<Env> {
     if (!room) return;
     const { visitorId } = ws.deserializeAttachment() as { visitorId: string };
     const stillOpen = room.sockets().some(s => s.ws !== ws && s.visitorId === visitorId);
-    if (room.gameState && !stillOpen) {
+    if (stillOpen) return;
+
+    if (room.gameState) {
+      // Mid-game the seat is kept: they can rejoin, or be put to sleep and played by the bot
       const player = room.gameState.players.find(p => p.visitorId === visitorId);
       if (player) {
         player.isConnected = false;
@@ -637,7 +664,17 @@ export class GameRoom extends DurableObject<Env> {
         broadcastGameState(room);
         await this.save(room);
       }
+      return;
     }
+
+    // In the lobby, someone who leaves gives up their seat, and the host role
+    // passes to someone still here so the game can still be started.
+    room.clients.delete(visitorId);
+    if (room.hostVisitorId === visitorId) {
+      room.hostVisitorId = room.sockets().find(s => s.ws !== ws)?.visitorId ?? "";
+    }
+    broadcastLobbyState(room);
+    await this.save(room);
   }
 
   async webSocketError(ws: WebSocket) {

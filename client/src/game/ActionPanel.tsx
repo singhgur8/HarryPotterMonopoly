@@ -136,7 +136,7 @@ function TargetPicker() {
     choose_steal: "Accio: pick a property to take. Complete sets are locked unless you're Draco.",
     choose_swap: own ? "Confundus: now pick the property you want in return." : "Confundus: first pick one of your properties to give away.",
     choose_steal_set: "Expelliarmus: pick a complete set to take.",
-    choose_reducto: "Reducto: pick a property or bank card to destroy.",
+    choose_reducto: "Reducto: pick a property to destroy. Bank cards are safe.",
     choose_silencio: "Silencio: pick who loses their role power.",
     choose_goblin: "Gringotts Goblin: pick who owes you 5G.",
   };
@@ -151,16 +151,8 @@ function TargetPicker() {
 
       {(p.type !== "choose_swap" || own) && others.map(o => {
         let body: React.ReactNode = null;
-        if (p.type === "choose_steal" || p.type === "choose_swap") {
+        if (p.type === "choose_steal" || p.type === "choose_swap" || p.type === "choose_reducto") {
           body = o.properties.length ? o.properties.map(c => cardButton(o, c, canTake(me, o, c), () => pick(o.visitorId, c.defId, own ?? undefined))) : <span className="hp-muted">No properties</span>;
-        } else if (p.type === "choose_reducto") {
-          body = (
-            <>
-              {o.properties.map(c => cardButton(o, c, canTake(me, o, c), () => pick(o.visitorId, c.defId)))}
-              {o.bank.map(c => cardButton(o, c, true, () => pick(o.visitorId, c.defId)))}
-              {!o.properties.length && !o.bank.length && <span className="hp-muted">Nothing to destroy</span>}
-            </>
-          );
         } else if (p.type === "choose_steal_set") {
           const sets = COLORS.filter(c => isComplete(o, c) && shieldOf(o) !== c);
           body = sets.length ? sets.map(c => (

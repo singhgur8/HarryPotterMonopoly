@@ -216,7 +216,7 @@ const actionCards: CardDef[] = [
     name: "Reducto",
     value: 4,
     actionType: "reducto" as const,
-    text: "Destroy one card from another player's properties or bank. Not from a complete set.",
+    text: "Destroy one of another player's properties. Not from a complete set, and never bank cards.",
     target: "one" as const,
   })),
   // 2x Silencio
