@@ -229,4 +229,22 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   console.log("take back: ok");
 }
 
+// ---------- 12. Reducto only destroys properties, never bank cards ----------
+{
+  const s = setup();
+  const [a, b] = s.players;
+  a.role = "luna"; b.role = "hermione";
+  give(s, a, "hand", "action_reducto_1");
+  give(s, b, "bank", "money_5g_1");
+  assert.equal(playCard(s, "p0", "action_reducto_1").success, false, "money alone isn't a Reducto target");
+  give(s, b, "properties", "prop_green_1");
+  assert.ok(playCard(s, "p0", "action_reducto_1").success);
+  assert.equal(chooseTarget(s, "p0", "p1", "money_5g_1").success, false, "bank cards are safe");
+  assert.ok(chooseTarget(s, "p0", "p1", "prop_green_1").success);
+  assert.ok(declineProtego(s, "p1").success || s.pendingAction === null);
+  assert.ok(!b.properties.some(c => c.defId === "prop_green_1"), "the property is destroyed");
+  assert.ok(b.bank.some(c => c.defId === "money_5g_1"), "the bank is untouched");
+  console.log("reducto: ok");
+}
+
 console.log("all engine checks passed");
