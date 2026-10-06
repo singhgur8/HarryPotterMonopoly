@@ -1,4 +1,4 @@
-import type { CardDef, PropertyColor } from "./schema";
+import type { CardDef, PropertyColor, RoleType } from "./schema";
 
 // ========== MONEY CARDS (20) ==========
 const moneyCards: CardDef[] = [
@@ -257,6 +257,7 @@ const roleCards: CardDef[] = [
     value: 0,
     roleType: "hermione",
     shortName: "Hermione",
+    text: "Play up to 4 actions a turn instead of 3.",
     rolePower: "Play up to 4 actions per turn instead of 3.",
   },
   {
@@ -286,7 +287,27 @@ const roleCards: CardDef[] = [
     value: 0,
     roleType: "luna",
     shortName: "Luna",
+    text: "Draw 3 cards at the start of your turn instead of 2.",
     rolePower: "Draw 3 cards at start of turn instead of 2.",
+  },
+  // ----- GG roles -----
+  // Powers still to come. A role's power lives in worker/gameEngine.ts
+  // (search roleActive); until then these roles play with no power.
+  {
+    id: "role_ganda",
+    type: "role",
+    name: "Ganda",
+    value: 0,
+    roleType: "ganda",
+    text: "Power coming soon.",
+  },
+  {
+    id: "role_lucha",
+    type: "role",
+    name: "Lucha",
+    value: 0,
+    roleType: "lucha",
+    text: "Power coming soon.",
   },
 ];
 
@@ -306,12 +327,14 @@ for (const def of ALL_CARD_DEFS) {
   CARD_DEF_MAP[def.id] = def;
 }
 
-// Get all non-role cards for the play deck (roles are dealt separately)
-export function getPlayDeckCardIds(): string[] {
-  return ALL_CARD_DEFS
-    .filter((c) => c.type !== "role")
-    .map((c) => c.id);
-}
+// The Classic Harry Potter play deck: every card above except roles (roles
+// are dealt separately). Variations in shared/variations.ts build on it.
+export const CLASSIC_DECK: string[] = [
+  ...moneyCards, ...propertyCards, ...wildCards, ...rentCards, ...actionCards,
+].map((c) => c.id);
+
+/** The role card for a role, e.g. role_harry. */
+export const roleDef = (role: RoleType): CardDef | undefined => CARD_DEF_MAP[`role_${role}`];
 
 // Utility: get the effective color for a game card (handles wilds)
 export function getEffectiveColor(card: { defId: string; assignedColor?: PropertyColor }): PropertyColor | undefined {

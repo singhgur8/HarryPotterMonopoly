@@ -5,10 +5,11 @@
 import { v4 as uuidv4 } from "uuid";
 import type {
   GameState, PlayerState, GameCard, PendingAction, PaymentResult,
-  PropertyColor, RoleType, AnimalProfile,
+  PropertyColor, RoleType, AnimalProfile, VariationId,
 } from "../shared/schema";
 import { SET_SIZES, RENT_TABLE, PROPERTY_COLORS } from "../shared/schema";
-import { CARD_DEF_MAP, getPlayDeckCardIds, getEffectiveColor, countCompleteSets } from "../shared/cardDefs";
+import { CARD_DEF_MAP, getEffectiveColor, countCompleteSets } from "../shared/cardDefs";
+import { variationOf } from "../shared/variations";
 
 type Result = { success: boolean; error?: string };
 const ok: Result = { success: true };
@@ -143,9 +144,11 @@ export function createInitialGameState(
   roomCode: string,
   players: { visitorId: string; seatIndex: number; animal: AnimalProfile; isBot?: boolean }[],
   gameSpeed: number,
+  variationId?: VariationId,
 ): GameState {
-  const drawPile: GameCard[] = shuffle(getPlayDeckCardIds()).map(id => ({ defId: id }));
-  const roleTypes: RoleType[] = shuffle(["harry", "hermione", "draco", "cedric", "luna"] as RoleType[]);
+  const variation = variationOf(variationId);
+  const drawPile: GameCard[] = shuffle(variation.deck).map(id => ({ defId: id }));
+  const roleTypes: RoleType[] = shuffle(variation.roles);
 
   const playerStates: PlayerState[] = players.map((p, i) => ({
     visitorId: p.visitorId,
@@ -180,6 +183,7 @@ export function createInitialGameState(
     eventLog: [],
     chatMessages: [],
     winnerId: null,
+    variation: variation.id,
     roleCards: roleTypes,
     freePlayCardId: null,
   };
@@ -547,6 +551,11 @@ function advanceTurn(state: GameState) {
   if (currentPlayer) log(state, currentPlayer, "ended their turn");
 
   state.currentTurnIndex = (state.currentTurnIndex + 1) % state.players.length;
+  beginTurn(state);
+}
+
+// Start the turn of whoever currentTurnIndex now points at
+function beginTurn(state: GameState) {
   state.actionsUsed = 0;
   state.drawnThisTurn = false;
   state.pendingAction = null;
@@ -985,6 +994,67 @@ export function wakeUp(state: GameState, visitorId: string): Result {
   player.isSleeping = false;
   log(state, player, "is back");
   return ok;
+}
+
+// ========== FORFEIT ==========
+
+/**
+ * A player gives up. Their hand, properties and bank are shuffled back into
+ * the draw pile (nobody gets them until they're drawn again) and they leave
+ * the table for good; they can still watch. Anything they were in the middle
+ * of is dropped. If one player is left, or only practice bots, the game ends.
+ */
+export function forfeit(state: GameState, visitorId: string): Result {
+  if (state.status !== "playing") return fail("The game is over");
+  const player = getPlayer(state, visitorId);
+  if (!player) return fail("Only players can forfeit");
+
+  const idx = state.players.indexOf(player);
+  const wasTurn = idx === state.currentTurnIndex;
+  state.players.splice(idx, 1);
+  if (idx < state.currentTurnIndex) state.currentTurnIndex--;
+  else if (wasTurn) state.currentTurnIndex = idx % state.players.length;
+
+  const returned = [...player.hand, ...player.properties, ...player.bank].map(c => ({ defId: c.defId }));
+  state.drawPile = shuffle([...state.drawPile, ...returned]);
+  addEvent(state, "🏳️", player.animal.name, player.animal.colorClass,
+    `forfeited. Their ${returned.length} cards were shuffled back into the draw pile`);
+
+  const left = state.players;
+  if (left.length > 1 && !left.every(p => p.isBot)) {
+    if (wasTurn) beginTurn(state);
+    else dropFromPending(state, visitorId);
+  } else {
+    const sets = (p: PlayerState) => countCompleteSets(p.properties, SET_SIZES);
+    const winner = [...left].sort((a, b) => sets(b) - sets(a) || worth(b) - worth(a))[0];
+    state.status = "finished";
+    state.pendingAction = null;
+    state.winnerId = winner?.visitorId ?? null;
+    if (winner) addEvent(state, "🏆", winner.animal.name, winner.animal.colorClass,
+      left.length === 1 ? "won the game. Everyone else forfeited!" : "won the game as the bot closest to three sets");
+  }
+  return ok;
+}
+
+// Take a player who just left out of whatever the game is waiting on
+function dropFromPending(state: GameState, visitorId: string) {
+  const pending = state.pendingAction;
+  if (!pending) return;
+  const original: PendingAction = pending.type === "protego_response" ? pending.data.originalAction : pending;
+  if (original.sourcePlayerId === visitorId) {
+    state.pendingAction = null;
+    return;
+  }
+  if (PAYMENT_TYPES.includes(original.type)) {
+    const data = original.data = original.data ?? {};
+    data.remainingTargets = (data.remainingTargets ?? []).filter((id: string) => id !== visitorId);
+    data.allTargets = (data.allTargets ?? []).filter((id: string) => id !== visitorId);
+    data.results = (data.results ?? []).filter((r: PaymentResult) => r.playerId !== visitorId);
+    // The next payer in line is asked straight away
+    if (original.targetPlayerId === visitorId) nextPayer(state, original);
+    return;
+  }
+  if (original.targetPlayerId === visitorId) state.pendingAction = null;
 }
 
 // The bot pays with the cheapest cards: bank first, then loose properties,

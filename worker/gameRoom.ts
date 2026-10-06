@@ -6,14 +6,15 @@
  */
 import { DurableObject } from "cloudflare:workers";
 import { v4 as uuidv4 } from "uuid";
-import type { GameState, WSMessage, AnimalProfile } from "../shared/schema";
+import type { GameState, WSMessage, AnimalProfile, VariationId } from "../shared/schema";
 import { ANIMALS } from "../shared/schema";
+import { DEFAULT_VARIATION, isVariationId } from "../shared/variations";
 import {
   createInitialGameState, drawCards, playCard, bankCard, endTurn,
   flipWild, payWithCards, playProtego, declineProtego, chooseTarget,
   harryProtectColor, cedricChooseSource, timeTurnerChoose, paySilencio,
   discardCards, sanitizeStateForPlayer, putToSleep, wakeUp, botStep, getWaitingOn,
-  cancelChoice, sleepForDisconnect,
+  cancelChoice, forfeit, sleepForDisconnect,
 } from "./gameEngine";
 import { parseMessage, MessageRateLimiter, MAX_SOCKETS_PER_ROOM, MAX_SOCKETS_PER_VISITOR } from "./security";
 
@@ -53,6 +54,7 @@ interface Room {
   code: string;
   hostVisitorId: string;
   gameSpeed: number;
+  variation: VariationId;
   clients: Map<string, RoomClient>;
   gameState: GameState | null;
   usedAnimals: number[];
@@ -149,6 +151,7 @@ function getLobbyState(room: Room): any {
     roomCode: room.code,
     hostVisitorId: room.hostVisitorId,
     gameSpeed: room.gameSpeed,
+    variation: room.variation,
     seats,
     spectators,
     status: room.gameState ? "playing" : "lobby",
@@ -257,6 +260,15 @@ function handleSetGameSpeed(room: Room, client: RoomClient, payload: any) {
   broadcastLobbyState(room);
 }
 
+function handleSetVariation(room: Room, client: RoomClient, payload: any) {
+  if (client.visitorId !== room.hostVisitorId) return sendError(room, client, "Only the host can change the game");
+  if (room.gameState) return sendError(room, client, "Game in progress");
+  if (!isVariationId(payload?.variation)) return sendError(room, client, "Unknown game version");
+
+  room.variation = payload.variation;
+  broadcastLobbyState(room);
+}
+
 // ----- Practice bots: seats with no person behind them, played by botStep -----
 
 const BOT_PREFIX = "bot_";
@@ -300,7 +312,7 @@ function handleStartGame(room: Room, client: RoomClient) {
   // Sort by seat index
   seatedPlayers.sort((a, b) => a.seatIndex - b.seatIndex);
 
-  room.gameState = createInitialGameState(room.code, seatedPlayers, room.gameSpeed);
+  room.gameState = createInitialGameState(room.code, seatedPlayers, room.gameSpeed, room.variation);
   room.timerSetAt = Date.now();
   broadcastGameState(room);
 }
@@ -455,6 +467,16 @@ function handleWakeUp(room: Room, client: RoomClient) {
   broadcastGameState(room);
 }
 
+// A player who forfeits leaves the table for good and watches from then on
+function handleForfeit(room: Room, client: RoomClient) {
+  if (!room.gameState) return;
+  const result = forfeit(room.gameState, client.visitorId);
+  if (!result.success) return sendError(room, client, result.error!);
+  client.seatIndex = null;
+  client.isReady = false;
+  broadcastGameState(room);
+}
+
 // ========== AFTER EVERY GAME CHANGE ==========
 // The turn timer restarts whenever the game starts waiting on someone new,
 // and a sleeping player's moves are made by the bot, one step at a time.
@@ -546,6 +568,7 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
     case "stand_up": return handleStandUp(room, client);
     case "toggle_ready": return handleToggleReady(room, client);
     case "set_game_speed": return handleSetGameSpeed(room, client, payload);
+    case "set_variation": return handleSetVariation(room, client, payload);
     case "start_game": return handleStartGame(room, client);
     case "add_bot": return handleAddBot(room, client);
     case "remove_bot": return handleRemoveBot(room, client, payload);
@@ -564,6 +587,7 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
     case "send_chat": return handleSendChat(room, client, payload);
     case "put_to_sleep": return handlePutToSleep(room, client, payload);
     case "wake_up": return handleWakeUp(room, client);
+    case "forfeit": return handleForfeit(room, client);
     case "pay_silencio": return handlePaySilencio(room, client, payload);
     case "discard_cards": return handleDiscardCards(room, client, payload);
     case "cancel_action": {
@@ -607,6 +631,7 @@ export class GameRoom extends DurableObject<Env> {
       lastWaitingOn: stored.lastWaitingOn ?? null,
       botDueAt: stored.botDueAt ?? null,
       moveBonuses: stored.moveBonuses ?? 0,
+      variation: isVariationId(stored.variation) ? stored.variation : DEFAULT_VARIATION,
       finishedAt: stored.finishedAt ?? null,
       dropDeadlines: stored.dropDeadlines ?? {},
       heartbeatDueAt: stored.heartbeatDueAt ?? null,
@@ -622,6 +647,7 @@ export class GameRoom extends DurableObject<Env> {
       code,
       hostVisitorId,
       gameSpeed: 60,
+      variation: DEFAULT_VARIATION,
       clients: [],
       gameState: null,
       usedAnimals: [],

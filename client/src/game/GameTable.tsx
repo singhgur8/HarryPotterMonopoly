@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage, EventLogEntry, PropertyColor } from "@shared/schema";
 import { SET_STYLE } from "@shared/schema";
+import { variationOf } from "@shared/variations";
 import { useGame } from "./context";
 import { Opponents } from "./Opponents";
 import { ActionPanel } from "./ActionPanel";
@@ -10,6 +11,10 @@ import { usePhone } from "./useMedia";
 import { isPayment } from "./helpers";
 import { useGameSounds } from "./sounds";
 import { HomeButton } from "./Brand";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type Entry = { id: string; ts: number; who: string; text: string; chat: boolean };
 
@@ -24,6 +29,34 @@ function LogText({ text }: { text: string }) {
     const name = parts[i + 1];
     return <span key={i} className="hp-logchip" style={{ background: st.fill, color: st.on }} title={name || undefined}>{st.label}</span>;
   })}</>;
+}
+
+/** Give up the game: your cards go back into the draw pile and you watch from then on. */
+function ForfeitButton() {
+  const { send } = useGame();
+  const [confirm, setConfirm] = useState(false);
+  return (
+    <>
+      <button className="hp-btn ghost" style={{ padding: "2px 10px" }} onClick={() => setConfirm(true)} title="Forfeit the game" data-testid="button-forfeit">
+        🏳️<span className="hp-desk-only"> Forfeit</span>
+      </button>
+      <AlertDialog open={confirm} onOpenChange={setConfirm}>
+        <AlertDialogContent className="hp-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Forfeit this game?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your hand, properties and money are shuffled back into the draw pile, so nobody gets them unless they draw them.
+              You can't rejoin as a player, but you can stay and watch.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep playing</AlertDialogCancel>
+            <AlertDialogAction onClick={() => send("forfeit")} data-testid="button-confirm-forfeit">Forfeit</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
 }
 
 const RAIL_KEY = "hp-log-open";
@@ -156,7 +189,7 @@ export function GameTable() {
     <div className="hp-game" data-testid="game-board">
       <header className="hp-top">
         <HomeButton inGame={!!me && s.status === "playing"} roomCode={s.roomCode} />
-        <span className="room hp-desk-only">Monopoly Deal</span>
+        <span className="room hp-desk-only">Monopoly Deal · {variationOf(s.variation).name}</span>
         <span className="hp-muted" style={{ fontSize: 13 }}>Room <b style={{ letterSpacing: ".1em" }}>{s.roomCode}</b></span>
         {!connected && <span className="hp-chip late">Reconnecting…</span>}
         <span style={{ flex: 1 }} />
@@ -168,6 +201,7 @@ export function GameTable() {
             👀 {watchers} watching
           </span>
         )}
+        {me && s.status === "playing" && <ForfeitButton />}
         <button className="hp-btn ghost" style={{ padding: "2px 10px" }} onClick={toggleMute} aria-pressed={muted} aria-label={muted ? "Turn sounds on" : "Mute sounds"} title={muted ? "Sounds off" : "Sounds on"}>
           {muted ? "🔇" : "🔊"}
         </button>
