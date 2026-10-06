@@ -13,6 +13,8 @@ npm run check      # typecheck client and worker
 npm run test:engine  # play bot games and check the tricky rules
 ```
 
+To play-test on your own, create a room, take a seat, and press **Add a bot** for each opponent you want. Bots draw, play properties, bank money, charge rent, throw Yule Balls, send Goblins and use Protego. They never steal or destroy cards. To play as two people, open the room in a normal window and a private window.
+
 ## Deploy
 
 One-time setup with a free Cloudflare account:
