@@ -15,9 +15,12 @@ import {
   discardCards, sanitizeStateForPlayer, putToSleep, wakeUp, botStep, getWaitingOn,
   cancelChoice,
 } from "./gameEngine";
+import { parseMessage, MessageRateLimiter, MAX_SOCKETS_PER_ROOM, MAX_SOCKETS_PER_VISITOR } from "./security";
 
 export interface Env {
   ROOMS: DurableObjectNamespace<GameRoom>;
+  // Per-IP limit on creating and joining rooms (see wrangler.jsonc)
+  ROOM_LIMITER?: RateLimit;
 }
 
 // Rooms nobody has connected to for this long are deleted.
@@ -315,7 +318,7 @@ function handleFlipWild(room: Room, client: RoomClient, payload: any) {
 function handlePayWithCards(room: Room, client: RoomClient, payload: any) {
   if (!room.gameState) return;
   const { cardDefIds } = payload || {};
-  const result = payWithCards(room.gameState, client.visitorId, cardDefIds || []);
+  const result = payWithCards(room.gameState, client.visitorId, Array.isArray(cardDefIds) ? cardDefIds : []);
   if (!result.success) return sendError(room, client, result.error!);
   broadcastGameState(room);
 }
@@ -370,7 +373,7 @@ function handleTimeTurnerChoose(room: Room, client: RoomClient, payload: any) {
 function handlePaySilencio(room: Room, client: RoomClient, payload: any) {
   if (!room.gameState) return;
   const { cardDefIds } = payload || {};
-  const result = paySilencio(room.gameState, client.visitorId, cardDefIds || []);
+  const result = paySilencio(room.gameState, client.visitorId, Array.isArray(cardDefIds) ? cardDefIds : []);
   if (!result.success) return sendError(room, client, result.error!);
   broadcastGameState(room);
 }
@@ -378,7 +381,7 @@ function handlePaySilencio(room: Room, client: RoomClient, payload: any) {
 function handleDiscardCards(room: Room, client: RoomClient, payload: any) {
   if (!room.gameState) return;
   const { cardDefIds } = payload || {};
-  const result = discardCards(room.gameState, client.visitorId, cardDefIds || []);
+  const result = discardCards(room.gameState, client.visitorId, Array.isArray(cardDefIds) ? cardDefIds : []);
   if (!result.success) return sendError(room, client, result.error!);
   room.gameState.turnTimer = room.gameState.gameSpeed;
   broadcastGameState(room);
@@ -523,7 +526,7 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
       return broadcastGameState(room);
     }
     default:
-      sendError(room, client, `Unknown message type: ${type}`);
+      sendError(room, client, "Unknown message type");
   }
 }
 
@@ -531,6 +534,7 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
 
 export class GameRoom extends DurableObject<Env> {
   private room: Room | null = null;
+  private rateLimiter = new MessageRateLimiter();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -602,6 +606,11 @@ export class GameRoom extends DurableObject<Env> {
     const roomCode = url.searchParams.get("room")!;
     const visitorId = url.searchParams.get("visitor")!;
 
+    const open = this.ctx.getWebSockets();
+    if (open.length >= MAX_SOCKETS_PER_ROOM || this.ctx.getWebSockets(visitorId).length >= MAX_SOCKETS_PER_VISITOR) {
+      return new Response("Room is full", { status: 429 });
+    }
+
     const pair = new WebSocketPair();
     const [clientWs, serverWs] = Object.values(pair);
     this.ctx.acceptWebSocket(serverWs, [visitorId]);
@@ -659,15 +668,23 @@ export class GameRoom extends DurableObject<Env> {
     const client = room.clients.get(visitorId);
     if (!client) return;
 
-    let msg: WSMessage;
-    try {
-      msg = JSON.parse(typeof data === "string" ? data : new TextDecoder().decode(data));
-    } catch {
-      return sendError(room, client, "Invalid message format");
+    const msg = parseMessage(data);
+    if (typeof msg === "string") return sendError(room, client, msg);
+
+    const rate = this.rateLimiter.check(visitorId, msg.type);
+    if (rate !== "ok") {
+      if (rate === "warn") sendError(room, client, "You're sending moves too fast. Slow down a little");
+      return;
     }
 
     tickTurnTimer(room);
-    handleMessage(room, client, msg);
+    try {
+      handleMessage(room, client, msg);
+    } catch (err) {
+      // A bad move must not take the room down; keep whatever state it left
+      console.error("Message handler failed", msg.type, err);
+      sendError(room, client, "Something went wrong with that move");
+    }
     await this.save(room);
   }
 
@@ -690,8 +707,11 @@ export class GameRoom extends DurableObject<Env> {
         player.isConnected = false;
         tickTurnTimer(room);
         broadcastGameState(room);
-        await this.save(room);
+      } else {
+        // A spectator leaving is forgotten, so drive-by visitors can't pile up in storage
+        room.clients.delete(visitorId);
       }
+      await this.save(room);
       return;
     }
 
