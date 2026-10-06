@@ -136,9 +136,15 @@
 .hp-set .worth { font-size: 11.5px; color: var(--muted); }
 .hp-stack { position: relative; width: 96px; }
 .hp-stack > * { position: absolute; left: 0; }
-.hp-stack .flip { cursor: pointer; border-radius: 8px; }
-.hp-stack .flip.sel { outline: 3px solid var(--gold); outline-offset: 1px; z-index: 5; }
-.hp-fliptag { position: absolute; right: 4px; bottom: 6px; z-index: 4; font-size: 10px; font-weight: 800; color: #fff; text-shadow: 0 1px 1px #0008; border-radius: 4px; padding: 1px 5px; border: 1px solid #fff; pointer-events: none; }
+.hp-stack .tap { cursor: pointer; border-radius: 8px; transition: transform .15s; }
+.hp-stack .tap:hover { transform: translateX(3px); }
+.hp-stack .tap.sel, .hp-stack .tap.picked { outline: 3px solid var(--gold); outline-offset: 1px; }
+.hp-stack .tap.picked { transform: translateX(8px); }
+.hp-paytag { position: absolute; right: -6px; top: -6px; z-index: 4; width: 20px; height: 20px; display: grid; place-items: center; font-size: 12px; font-weight: 800; color: #fff; background: var(--gold); border: 2px solid #fff; border-radius: 50%; pointer-events: none; }
+.hp-mine.paying { outline: 2px dashed var(--gold-line); outline-offset: 6px; border-radius: 12px; }
+button.hp-cn { cursor: pointer; padding: 2px 9px; font-size: 13px; }
+button.hp-cn[aria-pressed="true"] { background: var(--gold); color: #fff; border-color: var(--gold); }
+.hp-fliptag { position: absolute; left: 4px; bottom: 6px; z-index: 4; font-size: 10px; font-weight: 800; color: #fff; text-shadow: 0 1px 1px #0008; border-radius: 4px; padding: 1px 5px; border: 1px solid #fff; pointer-events: none; }
 .hp-bankbox { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: grid; gap: 8px; align-content: start; }
 .hp-bank-total { font: 800 26px var(--display); color: var(--gold); line-height: 1; }
 .hp-myrole { border-top: 1px solid var(--sunk); padding-top: 8px; font-size: 13px; color: var(--muted); display: grid; gap: 4px; }
@@ -147,6 +153,10 @@
 
 /* hand dock */
 .hp-hand { background: var(--panel); border-top: 1px solid var(--line); padding: 8px 14px 12px; display: grid; gap: 6px; flex-shrink: 0; }
+.hp-hand.off { background: var(--sunk); }
+.hp-hand-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hp-hand-head .hp-chip { letter-spacing: normal; text-transform: none; font-size: 12px; padding: 2px 10px; }
+.hp-chip.offturn { background: var(--panel); color: var(--fg); border: 1px solid var(--line); }
 .hp-hand-row { display: flex; gap: 8px; overflow-x: auto; padding: 14px 2px 4px; }
 .hp-hand-row .hp-cardpick { transition: transform .15s; }
 .hp-hand-row .hp-cardpick:hover:not([aria-disabled="true"]) { transform: translateY(-5px); }

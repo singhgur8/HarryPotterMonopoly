@@ -6,6 +6,7 @@ import { ActionPanel } from "./ActionPanel";
 import { MyArea } from "./MyArea";
 import { HandDock } from "./HandDock";
 import { usePhone } from "./useMedia";
+import { isPayment } from "./helpers";
 import { useGameSounds } from "./sounds";
 
 type Entry = { id: string; ts: number; who: string; text: string; chat: boolean };
@@ -62,7 +63,7 @@ function LogBody({ entries, tab, setTab, unreadChat }: { entries: Entry[]; tab: 
 }
 
 export function GameTable() {
-  const { s, me, connected } = useGame();
+  const { s, me, connected, isMyTurn } = useGame();
   const mobile = usePhone();
   const entries = useEntries();
   const { muted, toggleMute } = useGameSounds();
@@ -112,6 +113,17 @@ export function GameTable() {
   useEffect(() => { if (!discardActive) setPicked([]); }, [discardActive]);
   useEffect(() => { if (!me?.isSilenced) setSilencioOpen(false); }, [me?.isSilenced]);
 
+  // Paying: the picker in the panel and the cards on my table share one selection
+  const pend = s.pendingAction;
+  const payDue = !!me && !me.isSleeping && !!pend && isPayment(pend) && s.waitingOn === me.visitorId;
+  const payKey = silencioOpen && me?.isSilenced ? "silencio"
+    : payDue ? `${pend!.type}-${pend!.sourcePlayerId}-${pend!.cardDefId}-${pend!.targetPlayerId}` : "";
+  const [payPicked, setPayPicked] = useState<string[]>([]);
+  useEffect(() => setPayPicked([]), [payKey]);
+  useEffect(() => { if (!isMyTurn) setFlipId(null); }, [isMyTurn]);
+  const togglePay = (id: string) => setPayPicked(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
+  const pay = { active: !!payKey, picked: payPicked, toggle: togglePay, set: setPayPicked };
+
   const togglePick = (id: string) => setPicked(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
   const openLog = (t: "all" | "chat" = tab) => {
     setTab(t);
@@ -145,8 +157,8 @@ export function GameTable() {
         <div className="hp-table">
           <div className="hp-scroll">
             <Opponents />
-            <ActionPanel discardPicked={picked} silencioOpen={silencioOpen} setSilencioOpen={setSilencioOpen} />
-            <MyArea flipId={flipId} onFlip={id => { setSel(null); setFlipId(id); }} onPaySilencio={() => setSilencioOpen(true)} />
+            <ActionPanel discardPicked={picked} silencioOpen={silencioOpen} setSilencioOpen={setSilencioOpen} pay={pay} />
+            <MyArea flipId={flipId} onFlip={id => { setSel(null); setFlipId(id); }} onPaySilencio={() => setSilencioOpen(true)} pay={pay} />
           </div>
           <HandDock sel={sel} setSel={setSel} flipId={flipId} setFlip={setFlipId} discard={{ active: discardActive, picked, toggle: togglePick }} />
         </div>
