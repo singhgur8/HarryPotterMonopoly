@@ -11,7 +11,8 @@ import {
 } from "../worker/gameEngine";
 import { ANIMALS, SET_SIZES } from "../shared/schema";
 import type { GameState, PlayerState } from "../shared/schema";
-import { CARD_DEF_MAP, countCompleteSets } from "../shared/cardDefs";
+import { CARD_DEF_MAP, countCompleteSets, roleDef } from "../shared/cardDefs";
+import { VARIATIONS } from "../shared/variations";
 
 function newGame(n: number): GameState {
   const players = Array.from({ length: n }, (_, i) => ({ visitorId: `p${i}`, seatIndex: i, animal: ANIMALS[i] }));
@@ -293,6 +294,32 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.ok(botStep(t));
   assert.ok(!y.hand.some(c => c.defId === "action_protego_1"), "bot used its Protego");
   console.log("practice bots: ok");
+}
+
+// ---------- Game versions: each deals its own roles and deck ----------
+{
+  const players = Array.from({ length: 5 }, (_, i) => ({ visitorId: `p${i}`, seatIndex: i, animal: ANIMALS[i] }));
+  for (const v of Object.values(VARIATIONS)) {
+    for (const id of v.deck) assert.ok(CARD_DEF_MAP[id] && CARD_DEF_MAP[id].type !== "role", `${v.id} deck has a bad card ${id}`);
+    for (const r of v.roles) assert.equal(roleDef(r)?.roleType, r, `${v.id} role ${r} needs a role_${r} card`);
+    assert.equal(new Set(v.deck).size, v.deck.length, `${v.id} deck lists a card id twice`);
+
+    let wins = 0;
+    for (let g = 0; g < 40; g++) {
+      const s = createInitialGameState("TEST", players.slice(0, 2 + (g % 4)), 60, v.id);
+      assert.equal(s.variation, v.id);
+      assert.equal(countCards(s), v.deck.length);
+      assert.ok(s.players.every(p => p.role && v.roles.includes(p.role)), `${v.id} dealt a role from another version`);
+      s.players.forEach(p => { p.isSleeping = true; p.isBot = true; });
+      let steps = 0;
+      while (s.status === "playing" && steps < 5000) { assert.ok(botStep(s)); steps++; }
+      if (s.status === "finished") wins++;
+    }
+    assert.ok(wins > 5, `${v.id} bot games should reach a winner`);
+  }
+  // No version given (older saves) means classic
+  assert.equal(newGame(2).variation, "classic");
+  console.log("game versions: ok");
 }
 
 console.log("all engine checks passed");

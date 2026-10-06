@@ -1,6 +1,6 @@
-import type { GameCard, GameState, PlayerState, PropertyColor, PendingAction } from "@shared/schema";
+import type { GameCard, GameState, PlayerState, PropertyColor, PendingAction, RoleType } from "@shared/schema";
 import { SET_SIZES, RENT_TABLE, SET_STYLE, PROPERTY_COLORS } from "@shared/schema";
-import { CARD_DEF_MAP, getEffectiveColor } from "@shared/cardDefs";
+import { CARD_DEF_MAP, getEffectiveColor, roleDef } from "@shared/cardDefs";
 
 export const COLORS = PROPERTY_COLORS as readonly PropertyColor[];
 export const label = (c: PropertyColor) => SET_STYLE[c].label;
@@ -11,14 +11,12 @@ export const valueOf = (card: GameCard | string) => CARD_DEF_MAP[typeof card ===
 export const sumValue = (cards: GameCard[]) => cards.reduce((s, c) => s + valueOf(c), 0);
 export const nameOf = (defId: string) => CARD_DEF_MAP[defId]?.name ?? "Card";
 
-export const ROLE_INFO: Record<string, { name: string; power: string }> = {
-  harry: { name: "Harry Potter", power: "Shield one colour at the end of your turn. It can't be stolen or charged rent until your next turn." },
-  hermione: { name: "Hermione Granger", power: "Play up to 4 actions a turn instead of 3." },
-  draco: { name: "Draco Malfoy", power: "Sly Deal, Forced Deal and Demolish can target complete sets." },
-  cedric: { name: "Cedric Diggory", power: "Start your turn by drawing from the deck or taking the top 2 of the discard pile." },
-  luna: { name: "Luna Lovegood", power: "Draw 3 cards at the start of your turn instead of 2." },
-};
-export const roleName = (r?: string) => (r ? ROLE_INFO[r]?.name ?? r : "");
+/** A role's name and power, read from its role card. */
+export function roleInfo(role?: string): { name: string; power: string } | undefined {
+  const def = role ? roleDef(role as RoleType) : undefined;
+  return def && { name: def.name, power: def.text ?? def.rolePower ?? "" };
+}
+export const roleName = (r?: string) => (r ? roleInfo(r)?.name ?? r : "");
 
 /** Properties grouped by the colour they currently count as, in board order. */
 export function groupSets(properties: GameCard[]): { color: PropertyColor; cards: GameCard[] }[] {

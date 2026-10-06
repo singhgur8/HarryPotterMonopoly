@@ -6,8 +6,9 @@
  */
 import { DurableObject } from "cloudflare:workers";
 import { v4 as uuidv4 } from "uuid";
-import type { GameState, WSMessage, AnimalProfile } from "../shared/schema";
+import type { GameState, WSMessage, AnimalProfile, VariationId } from "../shared/schema";
 import { ANIMALS } from "../shared/schema";
+import { DEFAULT_VARIATION, isVariationId } from "../shared/variations";
 import {
   createInitialGameState, drawCards, playCard, bankCard, endTurn,
   flipWild, payWithCards, playProtego, declineProtego, chooseTarget,
@@ -45,6 +46,7 @@ interface Room {
   code: string;
   hostVisitorId: string;
   gameSpeed: number;
+  variation: VariationId;
   clients: Map<string, RoomClient>;
   gameState: GameState | null;
   usedAnimals: number[];
@@ -139,6 +141,7 @@ function getLobbyState(room: Room): any {
     roomCode: room.code,
     hostVisitorId: room.hostVisitorId,
     gameSpeed: room.gameSpeed,
+    variation: room.variation,
     seats,
     spectators,
     status: room.gameState ? "playing" : "lobby",
@@ -240,6 +243,15 @@ function handleSetGameSpeed(room: Room, client: RoomClient, payload: any) {
   broadcastLobbyState(room);
 }
 
+function handleSetVariation(room: Room, client: RoomClient, payload: any) {
+  if (client.visitorId !== room.hostVisitorId) return sendError(room, client, "Only the host can change the game");
+  if (room.gameState) return sendError(room, client, "Game in progress");
+  if (!isVariationId(payload?.variation)) return sendError(room, client, "Unknown game version");
+
+  room.variation = payload.variation;
+  broadcastLobbyState(room);
+}
+
 // ----- Practice bots: seats with no person behind them, played by botStep -----
 
 const BOT_PREFIX = "bot_";
@@ -283,7 +295,7 @@ function handleStartGame(room: Room, client: RoomClient) {
   // Sort by seat index
   seatedPlayers.sort((a, b) => a.seatIndex - b.seatIndex);
 
-  room.gameState = createInitialGameState(room.code, seatedPlayers, room.gameSpeed);
+  room.gameState = createInitialGameState(room.code, seatedPlayers, room.gameSpeed, room.variation);
   room.timerSetAt = Date.now();
   broadcastGameState(room);
 }
@@ -514,6 +526,7 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
     case "stand_up": return handleStandUp(room, client);
     case "toggle_ready": return handleToggleReady(room, client);
     case "set_game_speed": return handleSetGameSpeed(room, client, payload);
+    case "set_variation": return handleSetVariation(room, client, payload);
     case "start_game": return handleStartGame(room, client);
     case "add_bot": return handleAddBot(room, client);
     case "remove_bot": return handleRemoveBot(room, client, payload);
@@ -574,6 +587,7 @@ export class GameRoom extends DurableObject<Env> {
       lastWaitingOn: stored.lastWaitingOn ?? null,
       botDueAt: stored.botDueAt ?? null,
       moveBonuses: stored.moveBonuses ?? 0,
+      variation: isVariationId(stored.variation) ? stored.variation : DEFAULT_VARIATION,
       finishedAt: stored.finishedAt ?? null,
       sockets: () => this.ctx.getWebSockets().map(ws => ({
         ws,
@@ -587,6 +601,7 @@ export class GameRoom extends DurableObject<Env> {
       code,
       hostVisitorId,
       gameSpeed: 60,
+      variation: DEFAULT_VARIATION,
       clients: [],
       gameState: null,
       usedAnimals: [],

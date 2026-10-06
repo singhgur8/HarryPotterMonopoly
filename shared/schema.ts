@@ -43,6 +43,9 @@ export const RENT_TABLE: Record<PropertyColor, number[]> = {
   utility:    [1, 2],
 };
 
+// Versions of the game the host can pick in the lobby (see shared/variations.ts)
+export type VariationId = "classic" | "gg";
+
 // Card types
 export type CardType = "money" | "property" | "wild" | "rent" | "action" | "role";
 
@@ -51,8 +54,11 @@ export type ActionType =
   | "protego" | "gringotts_goblin" | "yule_ball"
   | "reducto" | "silencio" | "time_turner";
 
-export type RoleType = 
-  | "harry" | "hermione" | "draco" | "cedric" | "luna";
+export type RoleType =
+  // Classic Harry Potter
+  | "harry" | "hermione" | "draco" | "cedric" | "luna"
+  // GG
+  | "ganda" | "lucha";
 
 // Rent card color pairs
 export type RentColors = [PropertyColor, PropertyColor] | "rainbow";
@@ -206,6 +212,7 @@ export interface GameState {
   eventLog: EventLogEntry[];
   chatMessages: ChatMessage[];
   winnerId: string | null;
+  variation?: VariationId;     // Which version of the game this is (missing on older saves = classic)
   roleCards: RoleType[];       // Available role cards (for assignment)
   freePlayCardId?: string | null; // Card taken with the Time-Turner, played next for free
   // Sent to clients only
@@ -221,6 +228,7 @@ export type WSMessageType =
   | "stand_up"
   | "toggle_ready"
   | "set_game_speed"
+  | "set_variation"
   | "start_game"
   | "add_bot"
   | "remove_bot"

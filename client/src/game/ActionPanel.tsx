@@ -4,7 +4,7 @@ import { GameCard } from "@/components/GameCard";
 import { useGame } from "./context";
 import { CardInfo, DiscardLink, DiscardPile } from "./DiscardPile";
 import {
-  CARD_DEF_MAP, COLORS, label, fillOf, valueOf, sumValue, nameOf, groupSets, canTake, isComplete, shieldOf,
+  CARD_DEF_MAP, COLORS, label, fillOf, valueOf, sumValue, nameOf, groupSets, canTake, isComplete, shieldOf, roleName,
   payableCards, playerName, waitingText, isPayment, hasProtego, drawCount, tileFill, getEffectiveColor, cardBlurb,
   type PaySelection,
 } from "./helpers";
@@ -168,7 +168,7 @@ function TargetPicker() {
         }
         return (
           <div key={o.visitorId} className="hp-target">
-            <div className="hp-row"><span>{o.animal.emoji}</span><b>{o.animal.name}</b><span className="hp-muted" style={{ fontSize: 12.5 }}>{o.role ? `· ${o.isSilenced ? "power off" : CARD_DEF_MAP[`role_${o.role}`]?.name ?? o.role}` : ""}</span></div>
+            <div className="hp-row"><span>{o.animal.emoji}</span><b>{o.animal.name}</b><span className="hp-muted" style={{ fontSize: 12.5 }}>{o.role ? `· ${o.isSilenced ? "power off" : roleName(o.role)}` : ""}</span></div>
             <div className="hp-row">{body}</div>
           </div>
         );

@@ -5,10 +5,11 @@
 import { v4 as uuidv4 } from "uuid";
 import type {
   GameState, PlayerState, GameCard, PendingAction, PaymentResult,
-  PropertyColor, RoleType, AnimalProfile,
+  PropertyColor, RoleType, AnimalProfile, VariationId,
 } from "../shared/schema";
 import { SET_SIZES, RENT_TABLE, PROPERTY_COLORS } from "../shared/schema";
-import { CARD_DEF_MAP, getPlayDeckCardIds, getEffectiveColor, countCompleteSets } from "../shared/cardDefs";
+import { CARD_DEF_MAP, getEffectiveColor, countCompleteSets } from "../shared/cardDefs";
+import { variationOf } from "../shared/variations";
 
 type Result = { success: boolean; error?: string };
 const ok: Result = { success: true };
@@ -143,9 +144,11 @@ export function createInitialGameState(
   roomCode: string,
   players: { visitorId: string; seatIndex: number; animal: AnimalProfile; isBot?: boolean }[],
   gameSpeed: number,
+  variationId?: VariationId,
 ): GameState {
-  const drawPile: GameCard[] = shuffle(getPlayDeckCardIds()).map(id => ({ defId: id }));
-  const roleTypes: RoleType[] = shuffle(["harry", "hermione", "draco", "cedric", "luna"] as RoleType[]);
+  const variation = variationOf(variationId);
+  const drawPile: GameCard[] = shuffle(variation.deck).map(id => ({ defId: id }));
+  const roleTypes: RoleType[] = shuffle(variation.roles);
 
   const playerStates: PlayerState[] = players.map((p, i) => ({
     visitorId: p.visitorId,
@@ -180,6 +183,7 @@ export function createInitialGameState(
     eventLog: [],
     chatMessages: [],
     winnerId: null,
+    variation: variation.id,
     roleCards: roleTypes,
     freePlayCardId: null,
   };
