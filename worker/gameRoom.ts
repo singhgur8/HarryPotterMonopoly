@@ -7,14 +7,14 @@
 import { DurableObject } from "cloudflare:workers";
 import { v4 as uuidv4 } from "uuid";
 import type { GameState, WSMessage, AnimalProfile, VariationId } from "../shared/schema";
-import { ANIMALS } from "../shared/schema";
+import { ANIMALS, freshTurnTimer, inDrawStep } from "../shared/schema";
 import { DEFAULT_VARIATION, isVariationId } from "../shared/variations";
 import {
   createInitialGameState, drawCards, playCard, bankCard, endTurn,
   flipWild, payWithCards, playProtego, declineProtego, chooseTarget,
   harryProtectColor, cedricChooseSource, timeTurnerChoose, paySilencio,
-  discardCards, sanitizeStateForPlayer, putToSleep, wakeUp, botStep, getWaitingOn,
-  cancelChoice, forfeit,
+  discardCards, sanitizeStateForPlayer, putToSleep, wakeUp, botStep, getWaitingOn, autoDraw,
+  cancelChoice, forfeit, sleepForDisconnect,
 } from "./gameEngine";
 import { parseMessage, MessageRateLimiter, MAX_SOCKETS_PER_ROOM, MAX_SOCKETS_PER_VISITOR } from "./security";
 
@@ -32,6 +32,14 @@ const FINISHED_TTL_MS = 60 * 60 * 1000;
 
 // Close code the client reads as "this room is gone, don't reconnect".
 export const ROOM_CLOSED_CODE = 4000;
+
+// A player who drops mid-game gets this long to come back before the bot takes their seat.
+const DROP_GRACE_MS = 20 * 1000;
+// Clients send "ping" every 10s and the runtime answers "pong" without waking the room.
+// During a game the room checks for sockets that have gone quiet (a phone locked,
+// Wi-Fi lost) and treats them as dropped, since those never send a close.
+const HEARTBEAT_CHECK_MS = 15 * 1000;
+const HEARTBEAT_STALE_MS = 45 * 1000;
 
 // ========== TYPES ==========
 
@@ -55,9 +63,12 @@ interface Room {
   // Not persisted: how to reach the room's open sockets.
   sockets: () => { ws: WebSocket; visitorId: string }[];
   lastWaitingOn: string | null; // whose move the game was last waiting on
+  lastDrawStep: boolean; // whether that was the draw step at the start of a turn
   botDueAt: number | null; // when a sleeping player's next bot move is due
   moveBonuses: number; // extra-time bonuses given since the game last started waiting on someone new
   finishedAt: number | null; // when the game ended
+  dropDeadlines: Record<string, number>; // visitorId -> when the bot takes over a dropped player
+  heartbeatDueAt: number | null; // when to next look for sockets that have gone quiet
 }
 
 type StoredRoom = Omit<Room, "clients" | "sockets"> & { clients: RoomClient[] };
@@ -188,9 +199,16 @@ function handleJoinRoom(room: Room, client: RoomClient, payload: any) {
   if (room.gameState) {
     const existingPlayer = room.gameState.players.find(p => p.visitorId === client.visitorId);
     if (existingPlayer) {
-      // Reconnection during game
+      // Reconnection during game: cancel the bot takeover, or take back over from the bot
+      const wasOffline = !existingPlayer.isConnected;
       existingPlayer.isConnected = true;
       client.seatIndex = existingPlayer.seatIndex;
+      delete room.dropDeadlines[client.visitorId];
+      if (wasOffline && existingPlayer.isSleeping && room.gameState.status === "playing") {
+        wakeUp(room.gameState, client.visitorId);
+        if (getWaitingOn(room.gameState) === client.visitorId) room.gameState.turnTimer = freshTurnTimer(room.gameState);
+        afterGameChange(room);
+      }
     }
     broadcastGameState(room);
   } else {
@@ -329,7 +347,7 @@ function handleEndTurn(room: Room, client: RoomClient) {
   if (!result.success) return sendError(room, client, result.error!);
   
   // Reset timer
-  room.gameState.turnTimer = room.gameState.gameSpeed;
+  room.gameState.turnTimer = freshTurnTimer(room.gameState);
   broadcastGameState(room);
 }
 
@@ -374,9 +392,10 @@ function handleChooseTarget(room: Room, client: RoomClient, payload: any) {
 function handleHarryProtectColor(room: Room, client: RoomClient, payload: any) {
   if (!room.gameState) return;
   const { color } = payload || {};
-  const result = harryProtectColor(room.gameState, client.visitorId, color);
+  // No colour keeps the shield where it is; null drops it
+  const result = harryProtectColor(room.gameState, client.visitorId, color === null ? null : color || undefined);
   if (!result.success) return sendError(room, client, result.error!);
-  room.gameState.turnTimer = room.gameState.gameSpeed;
+  room.gameState.turnTimer = freshTurnTimer(room.gameState);
   broadcastGameState(room);
 }
 
@@ -409,7 +428,7 @@ function handleDiscardCards(room: Room, client: RoomClient, payload: any) {
   const { cardDefIds } = payload || {};
   const result = discardCards(room.gameState, client.visitorId, Array.isArray(cardDefIds) ? cardDefIds : []);
   if (!result.success) return sendError(room, client, result.error!);
-  room.gameState.turnTimer = room.gameState.gameSpeed;
+  room.gameState.turnTimer = freshTurnTimer(room.gameState);
   broadcastGameState(room);
 }
 
@@ -446,7 +465,7 @@ function handleWakeUp(room: Room, client: RoomClient) {
   if (!room.gameState) return;
   const result = wakeUp(room.gameState, client.visitorId);
   if (!result.success) return sendError(room, client, result.error!);
-  room.gameState.turnTimer = room.gameState.gameSpeed;
+  room.gameState.turnTimer = freshTurnTimer(room.gameState);
   broadcastGameState(room);
 }
 
@@ -461,8 +480,9 @@ function handleForfeit(room: Room, client: RoomClient) {
 }
 
 // ========== AFTER EVERY GAME CHANGE ==========
-// The turn timer restarts whenever the game starts waiting on someone new,
-// and a sleeping player's moves are made by the bot, one step at a time.
+// The turn timer restarts whenever the game starts waiting on someone new
+// or the current player finishes drawing (the short draw timer hands over to
+// the turn length the host picked), and a sleeping player's moves are made by the bot, one step at a time.
 
 const BOT_STEP_MS = 900;
 
@@ -474,9 +494,11 @@ function afterGameChange(room: Room) {
     return;
   }
   const waitingOn = getWaitingOn(state);
-  if (waitingOn !== room.lastWaitingOn) {
+  const drawStep = inDrawStep(state);
+  if (waitingOn !== room.lastWaitingOn || drawStep !== room.lastDrawStep) {
     room.lastWaitingOn = waitingOn;
-    state.turnTimer = state.gameSpeed;
+    room.lastDrawStep = drawStep;
+    state.turnTimer = freshTurnTimer(state);
     room.timerSetAt = Date.now();
     room.moveBonuses = 0;
     broadcastGameState(room);
@@ -487,6 +509,21 @@ function afterGameChange(room: Room) {
     room.botDueAt ??= Date.now() + BOT_STEP_MS;
   } else {
     room.botDueAt = null;
+  }
+}
+
+/** Hand every player whose grace period ran out to the bot. */
+function takeOverDropped(room: Room) {
+  const state = room.gameState;
+  const now = Date.now();
+  for (const [visitorId, due] of Object.entries(room.dropDeadlines)) {
+    if (due > now) continue;
+    delete room.dropDeadlines[visitorId];
+    if (state) sleepForDisconnect(state, visitorId);
+  }
+  if (state) {
+    broadcastGameState(room);
+    afterGameChange(room);
   }
 }
 
@@ -584,6 +621,7 @@ export class GameRoom extends DurableObject<Env> {
   private rateLimiter = new MessageRateLimiter();
 
   constructor(ctx: DurableObjectState, env: Env) {
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
       const stored = await ctx.storage.get<StoredRoom>("room");
@@ -596,10 +634,13 @@ export class GameRoom extends DurableObject<Env> {
       ...stored,
       clients: new Map(stored.clients.map(c => [c.visitorId, c])),
       lastWaitingOn: stored.lastWaitingOn ?? null,
+      lastDrawStep: stored.lastDrawStep ?? false,
       botDueAt: stored.botDueAt ?? null,
       moveBonuses: stored.moveBonuses ?? 0,
       variation: isVariationId(stored.variation) ? stored.variation : DEFAULT_VARIATION,
       finishedAt: stored.finishedAt ?? null,
+      dropDeadlines: stored.dropDeadlines ?? {},
+      heartbeatDueAt: stored.heartbeatDueAt ?? null,
       sockets: () => this.ctx.getWebSockets().map(ws => ({
         ws,
         visitorId: (ws.deserializeAttachment() as { visitorId: string }).visitorId,
@@ -617,9 +658,12 @@ export class GameRoom extends DurableObject<Env> {
       gameState: null,
       usedAnimals: [],
       lastWaitingOn: null,
+      lastDrawStep: false,
       botDueAt: null,
       moveBonuses: 0,
       finishedAt: null,
+      dropDeadlines: {},
+      heartbeatDueAt: null,
       timerSetAt: Date.now(),
       lastActivity: Date.now(),
     });
@@ -628,11 +672,19 @@ export class GameRoom extends DurableObject<Env> {
   /** Save the room and schedule the next alarm (turn timer expiry or room expiry). */
   private async save(room: Room, isActivity = true) {
     if (isActivity) room.lastActivity = Date.now();
+    const playing = room.gameState?.status === "playing" && this.ctx.getWebSockets().length > 0;
+    if (!playing) room.heartbeatDueAt = null;
+    else room.heartbeatDueAt ??= Date.now() + HEARTBEAT_CHECK_MS;
+
     const { sockets, ...rest } = room;
     const stored: StoredRoom = { ...rest, clients: [...room.clients.values()] };
     await this.ctx.storage.put("room", stored);
 
-    const due = [turnDeadline(room), room.botDueAt, expiresAt(room)];
+    const deadlines = Object.values(room.dropDeadlines);
+    const due = [
+      turnDeadline(room), room.botDueAt, expiresAt(room), room.heartbeatDueAt,
+      deadlines.length ? Math.min(...deadlines) : null,
+    ];
     await this.ctx.storage.setAlarm(Math.min(...due.filter((t): t is number => t !== null)));
   }
 
@@ -665,7 +717,7 @@ export class GameRoom extends DurableObject<Env> {
     const pair = new WebSocketPair();
     const [clientWs, serverWs] = Object.values(pair);
     this.ctx.acceptWebSocket(serverWs, [visitorId]);
-    serverWs.serializeAttachment({ visitorId });
+    serverWs.serializeAttachment({ visitorId, openedAt: Date.now() });
 
     let room = this.room;
     if (!room) {
@@ -744,20 +796,31 @@ export class GameRoom extends DurableObject<Env> {
     }
     const room = this.room;
     if (!room) return;
+    this.socketGone(room, ws);
+    await this.save(room, !room.gameState);
+  }
+
+  /** Someone's socket closed or went quiet. */
+  private socketGone(room: Room, ws: WebSocket) {
     const { visitorId } = ws.deserializeAttachment() as { visitorId: string };
     const stillOpen = room.sockets().some(s => s.ws !== ws && s.visitorId === visitorId);
     if (stillOpen) return;
 
     if (room.gameState) {
-      // Mid-game the seat is kept: they can rejoin, or be put to sleep and played by the bot.
+      // Mid-game the seat is kept. If they aren't back within DROP_GRACE_MS the bot plays
+      // for them, and it hands control back as soon as they reconnect.
       // Someone who was only watching just leaves.
       const player = room.gameState.players.find(p => p.visitorId === visitorId);
-      if (player) player.isConnected = false;
+      if (player) {
+        player.isConnected = false;
+        if (room.gameState.status === "playing" && !player.isSleeping) {
+          room.dropDeadlines[visitorId] = Date.now() + DROP_GRACE_MS;
+        }
+      }
       // A spectator leaving is forgotten, so drive-by visitors can't pile up in storage
       else room.clients.delete(visitorId);
       tickTurnTimer(room);
       broadcastGameState(room);
-      await this.save(room);
       return;
     }
 
@@ -768,7 +831,22 @@ export class GameRoom extends DurableObject<Env> {
       room.hostVisitorId = room.sockets().find(s => s.ws !== ws)?.visitorId ?? "";
     }
     broadcastLobbyState(room);
-    await this.save(room);
+  }
+
+  /** Close sockets that stopped answering pings; they count as dropped. */
+  private dropQuietSockets(room: Room) {
+    const now = Date.now();
+    for (const ws of this.ctx.getWebSockets()) {
+      const { openedAt } = ws.deserializeAttachment() as { openedAt?: number };
+      const lastPing = this.ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? openedAt ?? now;
+      if (now - lastPing < HEARTBEAT_STALE_MS) continue;
+      try {
+        ws.close(1001, "No heartbeat");
+      } catch {
+        // Already closed
+      }
+      this.socketGone(room, ws);
+    }
   }
 
   async webSocketError(ws: WebSocket) {
@@ -794,11 +872,25 @@ export class GameRoom extends DurableObject<Env> {
       return;
     }
 
+    const now = Date.now();
+    const timerDue = turnDeadline(room);
     tickTurnTimer(room);
-    if (room.botDueAt !== null && Date.now() >= room.botDueAt) {
+    if (room.heartbeatDueAt !== null && now >= room.heartbeatDueAt) {
+      room.heartbeatDueAt = null;
+      this.dropQuietSockets(room);
+    }
+    if (Object.values(room.dropDeadlines).some(t => t <= now)) {
+      // A dropped player didn't come back in time: the bot takes over
+      takeOverDropped(room);
+    }
+    if (room.botDueAt !== null && now >= room.botDueAt) {
       // A sleeping player's move
       runBotStep(room);
-    } else {
+    } else if (room.gameState && inDrawStep(room.gameState) && room.gameState.turnTimer <= 0) {
+      // Draw timer ran out: draw for them so the turn gets going
+      if (autoDraw(room.gameState).success) broadcastGameState(room);
+      afterGameChange(room);
+    } else if (timerDue !== null && now >= timerDue) {
       // Turn timer ran out — show everyone the expired timer
       broadcastGameState(room);
     }

@@ -7,7 +7,7 @@ import type {
   GameState, PlayerState, GameCard, PendingAction, PaymentResult,
   PropertyColor, RoleType, AnimalProfile, VariationId,
 } from "../shared/schema";
-import { SET_SIZES, RENT_TABLE, PROPERTY_COLORS } from "../shared/schema";
+import { SET_SIZES, RENT_TABLE, PROPERTY_COLORS, freshTurnTimer } from "../shared/schema";
 import { CARD_DEF_MAP, getEffectiveColor, countCompleteSets } from "../shared/cardDefs";
 import { variationOf } from "../shared/variations";
 
@@ -196,6 +196,7 @@ export function createInitialGameState(
   }
 
   state.maxActions = maxActionsFor(getCurrentPlayer(state)!);
+  state.turnTimer = freshTurnTimer(state);
   addEvent(state, "⚡", "System", "#FFD700", "The game begins! Wands at the ready...");
   return state;
 }
@@ -259,6 +260,14 @@ export function cedricChooseSource(state: GameState, visitorId: string, source: 
     return ok;
   }
   return drawCards(state, visitorId);
+}
+
+/** The draw timer ran out: draw for the current player (Cedric draws from the deck). */
+export function autoDraw(state: GameState): Result {
+  const player = getCurrentPlayer(state);
+  if (!player) return fail("No one to draw for");
+  if (state.pendingAction?.type === "cedric_draw_choice") return cedricChooseSource(state, player.visitorId, "deck");
+  return drawCards(state, player.visitorId);
 }
 
 // Time-Turner: the retrieved card is played for free, and must be played next
@@ -562,15 +571,13 @@ function beginTurn(state: GameState) {
   state.freePlayCardId = null;
 
   const next = getCurrentPlayer(state)!;
-  // Harry's shield lasts until the start of his next turn
-  if (next.role === "harry") next.protectedColor = undefined;
   state.maxActions = maxActionsFor(next);
-  state.turnTimer = state.gameSpeed;
   log(state, next, "starts their turn");
 
   if (roleActive(next, "cedric") && state.discardPile.length > 0 && next.hand.length > 0) {
     state.pendingAction = { type: "cedric_draw_choice", sourcePlayerId: next.visitorId, targetPlayerId: next.visitorId };
   }
+  state.turnTimer = freshTurnTimer(state);
 }
 
 // ========== FLIP WILD ==========
@@ -870,15 +877,22 @@ export function chooseTarget(state: GameState, visitorId: string, targetPlayerId
 
 // ========== SPECIAL ACTIONS ==========
 
-export function harryProtectColor(state: GameState, visitorId: string, color?: PropertyColor): Result {
+// Harry's shield stays put until he moves it. At the end of each turn he
+// keeps it (no colour), moves it (a colour) or drops it (null).
+export function harryProtectColor(state: GameState, visitorId: string, color?: PropertyColor | null): Result {
   const pending = state.pendingAction;
   if (!pending || pending.type !== "harry_protect" || pending.targetPlayerId !== visitorId) return fail("Nothing to shield right now");
   const player = getPlayer(state, visitorId)!;
   if (!roleActive(player, "harry")) return fail("Only Harry can shield a colour");
   if (color && !PROPERTY_COLORS.includes(color)) return fail("Invalid colour");
 
-  player.protectedColor = color || undefined;
-  if (color) log(state, player, `shielded ${colorTag(color)} until their next turn`);
+  if (color === null) {
+    if (player.protectedColor) log(state, player, `dropped their shield on ${colorTag(player.protectedColor)}`);
+    player.protectedColor = undefined;
+  } else if (color && color !== player.protectedColor) {
+    player.protectedColor = color;
+    log(state, player, `moved their shield to ${colorTag(color)}`);
+  }
   state.pendingAction = null;
   return finalizeTurn(state, visitorId);
 }
@@ -976,6 +990,15 @@ export function putToSleep(state: GameState, actorId: string, targetPlayerId: st
   target.isSleeping = true;
   addEvent(state, "💤", target.animal.name, target.animal.colorClass, "fell asleep. A bot is playing for them");
   return ok;
+}
+
+/** A player who lost connection and didn't come back in time is handed to the bot. */
+export function sleepForDisconnect(state: GameState, visitorId: string): boolean {
+  const player = getPlayer(state, visitorId);
+  if (state.status !== "playing" || !player || player.isSleeping || player.isConnected) return false;
+  player.isSleeping = true;
+  addEvent(state, "📡", player.animal.name, player.animal.colorClass, "lost connection. A bot is playing for them until they're back");
+  return true;
 }
 
 export function wakeUp(state: GameState, visitorId: string): Result {
@@ -1112,8 +1135,9 @@ export function botStep(state: GameState): boolean {
       case "protego_response":
         return declineProtego(state, id).success;
       case "harry_protect": {
+        // A sleeping player keeps their shield where it is; a practice bot guards its best colour
         const owned = PROPERTY_COLORS.filter(c => getPropertiesOfColor(bot, c).length > 0);
-        return harryProtectColor(state, id, owned.length ? bestColorFor(bot, owned) : undefined).success;
+        return harryProtectColor(state, id, bot.isBot && owned.length ? bestColorFor(bot, owned) : undefined).success;
       }
       case "cedric_draw_choice":
         return cedricChooseSource(state, id, "deck").success;
