@@ -37,16 +37,16 @@ export default function Room({ roomCode }: { roomCode: string }) {
 
   useEffect(() => {
     if (check === "open") rememberRoom(roomCode);
-    if (check === "gone") forgetRoom(roomCode);
-  }, [check, roomCode]);
+    if (check === "gone" || socket.roomClosed) forgetRoom(roomCode);
+  }, [check, roomCode, socket.roomClosed]);
 
-  if (check === "gone") {
+  if (check === "gone" || socket.roomClosed) {
     return (
       <div className="hp">
         <div className="hp-page" style={{ alignItems: "center" }}>
           <div className="hp-lob" style={{ maxWidth: 380, justifyItems: "center", textAlign: "center" }} data-testid="room-gone">
             <Crest />
-            <p style={{ margin: 0 }}>Room <b style={{ letterSpacing: ".1em" }}>{roomCode}</b> has closed or never existed.</p>
+            <p style={{ margin: 0 }}>Room <b style={{ letterSpacing: ".1em" }}>{roomCode}</b> has closed. Finished and idle games are cleared away after a while.</p>
             <button className="hp-btn gold big" onClick={() => navigate("/")} data-testid="button-home">Back to the start</button>
           </div>
         </div>

@@ -4,6 +4,8 @@ import type { WSMessage } from "@shared/schema";
 // Secret token that identifies this browser to the server, so a dropped
 // connection rejoins the same seat. Kept in localStorage across reloads.
 const TOKEN_KEY = "hp-player-token";
+// Matches ROOM_CLOSED_CODE in worker/gameRoom.ts
+const ROOM_CLOSED_CODE = 4000;
 let fallbackToken: string | null = null;
 
 function getPlayerToken(): string {
@@ -34,6 +36,7 @@ export function useGameSocket(roomCode: string | null) {
   const [myVisitorId, setMyVisitorId] = useState<string | null>(null);
   const [myAnimal, setMyAnimal] = useState<any>(null);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [roomClosed, setRoomClosed] = useState(false);
   const reconnectTimer = useRef<number | null>(null);
 
   const connect = useCallback(() => {
@@ -80,8 +83,13 @@ export function useGameSocket(roomCode: string | null) {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       setConnected(false);
+      // The server cleared the room away (finished or idle for a long time)
+      if (event.code === ROOM_CLOSED_CODE) {
+        setRoomClosed(true);
+        return;
+      }
       // Auto-reconnect after 2 seconds
       reconnectTimer.current = window.setTimeout(() => {
         connect();
@@ -126,6 +134,7 @@ export function useGameSocket(roomCode: string | null) {
     myVisitorId,
     myAnimal,
     lastError,
+    roomClosed,
     send,
   };
 }

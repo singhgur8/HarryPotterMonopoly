@@ -148,6 +148,7 @@ export function GameTable() {
   };
   const setRail = (open: boolean) => { setRailOpen(open); saveRail(open); };
 
+  const watchers = s.spectators?.length ?? 0;
   const t = Math.max(0, s.turnTimer);
   const timer = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
 
@@ -159,7 +160,14 @@ export function GameTable() {
         <span className="hp-muted" style={{ fontSize: 13 }}>Room <b style={{ letterSpacing: ".1em" }}>{s.roomCode}</b></span>
         {!connected && <span className="hp-chip late">Reconnecting…</span>}
         <span style={{ flex: 1 }} />
-        {me && <span className="hp-muted hp-desk-only" style={{ fontSize: 13 }}>You are {me.animal.emoji} {me.animal.name}</span>}
+        {me
+          ? <span className="hp-muted hp-desk-only" style={{ fontSize: 13 }}>You are {me.animal.emoji} {me.animal.name}</span>
+          : <span className="hp-chip solid" data-testid="chip-spectating">👀 Watching</span>}
+        {watchers > (me ? 0 : 1) && (
+          <span className="hp-muted" style={{ fontSize: 13 }} title={(s.spectators || []).map(a => `${a.emoji} ${a.name}`).join(", ")}>
+            👀 {watchers} watching
+          </span>
+        )}
         <button className="hp-btn ghost" style={{ padding: "2px 10px" }} onClick={toggleMute} aria-pressed={muted} aria-label={muted ? "Turn sounds on" : "Mute sounds"} title={muted ? "Sounds off" : "Sounds on"}>
           {muted ? "🔇" : "🔊"}
         </button>
@@ -177,6 +185,13 @@ export function GameTable() {
             <MyArea flipId={flipId} onFlip={id => { setSel(null); setFlipId(id); }} onPaySilencio={() => setSilencioOpen(true)} pay={pay} />
           </div>
           <HandDock sel={sel} setSel={setSel} flipId={flipId} setFlip={setFlipId} discard={{ active: discardActive, picked, toggle: togglePick }} />
+          {!me && (
+            <div className="hp-hand">
+              <span className="hp-muted" style={{ padding: "12px 0" }}>
+                You're watching this game. Everyone's hand stays hidden; you'll see each card as it's played.
+              </span>
+            </div>
+          )}
         </div>
 
         {railOpen ? (
