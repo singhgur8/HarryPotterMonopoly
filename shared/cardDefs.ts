@@ -2,46 +2,46 @@ import type { CardDef, PropertyColor } from "./schema";
 
 // ========== MONEY CARDS (20) ==========
 const moneyCards: CardDef[] = [
-  // 6x 1G
+  // 6x 1M
   ...Array.from({ length: 6 }, (_, i) => ({
     id: `money_1g_${i + 1}`,
     type: "money" as const,
-    name: "1 Galleon",
+    name: "1M",
     value: 1,
   })),
-  // 5x 2G
+  // 5x 2M
   ...Array.from({ length: 5 }, (_, i) => ({
     id: `money_2g_${i + 1}`,
     type: "money" as const,
-    name: "2 Galleons",
+    name: "2M",
     value: 2,
   })),
-  // 3x 3G
+  // 3x 3M
   ...Array.from({ length: 3 }, (_, i) => ({
     id: `money_3g_${i + 1}`,
     type: "money" as const,
-    name: "3 Galleons",
+    name: "3M",
     value: 3,
   })),
-  // 3x 4G
+  // 3x 4M
   ...Array.from({ length: 3 }, (_, i) => ({
     id: `money_4g_${i + 1}`,
     type: "money" as const,
-    name: "4 Galleons",
+    name: "4M",
     value: 4,
   })),
-  // 2x 5G
+  // 2x 5M
   ...Array.from({ length: 2 }, (_, i) => ({
     id: `money_5g_${i + 1}`,
     type: "money" as const,
-    name: "5 Galleons",
+    name: "5M",
     value: 5,
   })),
-  // 1x 10G
+  // 1x 10M
   {
     id: "money_10g_1",
     type: "money" as const,
-    name: "10 Galleons",
+    name: "10M",
     value: 10,
   },
 ];
@@ -49,191 +49,188 @@ const moneyCards: CardDef[] = [
 // ========== PROPERTY CARDS (28) ==========
 const propertyCards: CardDef[] = [
   // Brown (2)
-  { id: "prop_brown_1", type: "property", name: "The Cupboard Under the Stairs", shortName: "Cupboard", value: 1, color: "brown" },
-  { id: "prop_brown_2", type: "property", name: "4 Privet Drive", shortName: "Privet Drive", value: 1, color: "brown" },
+  { id: "prop_brown_1", type: "property", name: "Mediterranean Avenue", shortName: "Med. Ave", value: 1, color: "brown" },
+  { id: "prop_brown_2", type: "property", name: "Baltic Avenue", shortName: "Baltic", value: 1, color: "brown" },
   // Light Blue (3)
-  { id: "prop_lightblue_1", type: "property", name: "Ollivanders", value: 1, color: "light_blue" },
-  { id: "prop_lightblue_2", type: "property", name: "Flourish & Blotts", shortName: "Flourish", value: 1, color: "light_blue" },
-  { id: "prop_lightblue_3", type: "property", name: "Weasleys' Wizard Wheezes", shortName: "Wheezes", value: 1, color: "light_blue" },
+  { id: "prop_lightblue_1", type: "property", name: "Oriental Avenue", shortName: "Oriental", value: 1, color: "light_blue" },
+  { id: "prop_lightblue_2", type: "property", name: "Vermont Avenue", shortName: "Vermont", value: 1, color: "light_blue" },
+  { id: "prop_lightblue_3", type: "property", name: "Connecticut Avenue", shortName: "Connecticut", value: 1, color: "light_blue" },
   // Pink (3)
-  { id: "prop_pink_1", type: "property", name: "The Three Broomsticks", shortName: "Broomsticks", value: 2, color: "pink" },
-  { id: "prop_pink_2", type: "property", name: "Honeydukes", value: 2, color: "pink" },
-  { id: "prop_pink_3", type: "property", name: "Zonko's Joke Shop", shortName: "Zonko's", value: 2, color: "pink" },
+  { id: "prop_pink_1", type: "property", name: "St. Charles Place", shortName: "St. Charles", value: 2, color: "pink" },
+  { id: "prop_pink_2", type: "property", name: "States Avenue", shortName: "States", value: 2, color: "pink" },
+  { id: "prop_pink_3", type: "property", name: "Virginia Avenue", shortName: "Virginia", value: 2, color: "pink" },
   // Orange (3)
-  { id: "prop_orange_1", type: "property", name: "Ministry Atrium", shortName: "Atrium", value: 2, color: "orange" },
-  { id: "prop_orange_2", type: "property", name: "Department of Mysteries", shortName: "Mysteries", value: 2, color: "orange" },
-  { id: "prop_orange_3", type: "property", name: "Wizengamot Courtroom", shortName: "Wizengamot", value: 2, color: "orange" },
+  { id: "prop_orange_1", type: "property", name: "St. James Place", shortName: "St. James", value: 2, color: "orange" },
+  { id: "prop_orange_2", type: "property", name: "Tennessee Avenue", shortName: "Tennessee", value: 2, color: "orange" },
+  { id: "prop_orange_3", type: "property", name: "New York Avenue", shortName: "New York", value: 2, color: "orange" },
   // Red (3)
-  { id: "prop_red_1", type: "property", name: "Hagrid's Hut", shortName: "Hagrid's", value: 3, color: "red" },
-  { id: "prop_red_2", type: "property", name: "Forbidden Forest", shortName: "Forest", value: 3, color: "red" },
-  { id: "prop_red_3", type: "property", name: "Whomping Willow", shortName: "Willow", value: 3, color: "red" },
+  { id: "prop_red_1", type: "property", name: "Kentucky Avenue", shortName: "Kentucky", value: 3, color: "red" },
+  { id: "prop_red_2", type: "property", name: "Indiana Avenue", shortName: "Indiana", value: 3, color: "red" },
+  { id: "prop_red_3", type: "property", name: "Illinois Avenue", shortName: "Illinois", value: 3, color: "red" },
   // Yellow (3)
-  { id: "prop_yellow_1", type: "property", name: "Quidditch Pitch", shortName: "Pitch", value: 3, color: "yellow" },
-  { id: "prop_yellow_2", type: "property", name: "Owlery", value: 3, color: "yellow" },
-  { id: "prop_yellow_3", type: "property", name: "Prefects' Bathroom", shortName: "Bathroom", value: 3, color: "yellow" },
+  { id: "prop_yellow_1", type: "property", name: "Atlantic Avenue", shortName: "Atlantic", value: 3, color: "yellow" },
+  { id: "prop_yellow_2", type: "property", name: "Ventnor Avenue", shortName: "Ventnor", value: 3, color: "yellow" },
+  { id: "prop_yellow_3", type: "property", name: "Marvin Gardens", shortName: "Marvin", value: 3, color: "yellow" },
   // Green (3)
-  { id: "prop_green_1", type: "property", name: "Great Hall", value: 4, color: "green" },
-  { id: "prop_green_2", type: "property", name: "Library", value: 4, color: "green" },
-  { id: "prop_green_3", type: "property", name: "Astronomy Tower", shortName: "Astronomy", value: 4, color: "green" },
+  { id: "prop_green_1", type: "property", name: "Pacific Avenue", shortName: "Pacific", value: 4, color: "green" },
+  { id: "prop_green_2", type: "property", name: "North Carolina Avenue", shortName: "N. Carolina", value: 4, color: "green" },
+  { id: "prop_green_3", type: "property", name: "Pennsylvania Avenue", shortName: "Pennsylvania", value: 4, color: "green" },
   // Dark Blue (2)
-  { id: "prop_darkblue_1", type: "property", name: "Hogwarts Castle", shortName: "Hogwarts", value: 4, color: "dark_blue" },
-  { id: "prop_darkblue_2", type: "property", name: "Gringotts Bank", shortName: "Gringotts", value: 4, color: "dark_blue" },
-  // Transport (4)
-  { id: "prop_transport_1", type: "property", name: "Hogwarts Express", shortName: "Express", value: 2, color: "transport" },
-  { id: "prop_transport_2", type: "property", name: "Knight Bus", value: 2, color: "transport" },
-  { id: "prop_transport_3", type: "property", name: "Floo Network", value: 2, color: "transport" },
-  { id: "prop_transport_4", type: "property", name: "Portkey", value: 2, color: "transport" },
+  { id: "prop_darkblue_1", type: "property", name: "Park Place", value: 4, color: "dark_blue" },
+  { id: "prop_darkblue_2", type: "property", name: "Boardwalk", value: 4, color: "dark_blue" },
+  // Railroad (4)
+  { id: "prop_transport_1", type: "property", name: "Reading Railroad", shortName: "Reading", value: 2, color: "transport" },
+  { id: "prop_transport_2", type: "property", name: "Pennsylvania Railroad", shortName: "Penn. RR", value: 2, color: "transport" },
+  { id: "prop_transport_3", type: "property", name: "B. & O. Railroad", shortName: "B. & O.", value: 2, color: "transport" },
+  { id: "prop_transport_4", type: "property", name: "Short Line", value: 2, color: "transport" },
   // Utility (2)
-  { id: "prop_utility_1", type: "property", name: "Daily Prophet", shortName: "Prophet", value: 2, color: "utility" },
-  { id: "prop_utility_2", type: "property", name: "The Quibbler", shortName: "Quibbler", value: 2, color: "utility" },
+  { id: "prop_utility_1", type: "property", name: "Electric Company", shortName: "Electric Co.", value: 2, color: "utility" },
+  { id: "prop_utility_2", type: "property", name: "Water Works", value: 2, color: "utility" },
 ];
 
 // ========== WILD CARDS (11) ==========
 const wildCards: CardDef[] = [
-  // 2x Rainbow Wild (Polyjuice Potion)
-  { id: "wild_rainbow_1", type: "wild", name: "Polyjuice Potion", shortName: "Polyjuice", text: "Counts as any colour. You can move it between sets at any time.", value: 0, wildColors: "rainbow" },
-  { id: "wild_rainbow_2", type: "wild", name: "Polyjuice Potion", shortName: "Polyjuice", text: "Counts as any colour. You can move it between sets at any time.", value: 0, wildColors: "rainbow" },
+  // 2x any-colour Property Wild Card
+  { id: "wild_rainbow_1", type: "wild", name: "Property Wild Card", shortName: "Any colour", text: "Counts as any colour. You can move it between sets at any time.", value: 0, wildColors: "rainbow" },
+  { id: "wild_rainbow_2", type: "wild", name: "Property Wild Card", shortName: "Any colour", text: "Counts as any colour. You can move it between sets at any time.", value: 0, wildColors: "rainbow" },
   // Light Blue / Brown
-  { id: "wild_lb_brown_1", type: "wild", name: "Light Blue / Brown Wild", value: 1, wildColors: ["light_blue", "brown"] },
-  // Light Blue / Transport
-  { id: "wild_lb_trans_1", type: "wild", name: "Light Blue / Transport Wild", value: 4, wildColors: ["light_blue", "transport"] },
+  { id: "wild_lb_brown_1", type: "wild", name: "Property Wild Card (Light Blue / Brown)", value: 1, wildColors: ["light_blue", "brown"] },
+  // Light Blue / Railroad
+  { id: "wild_lb_trans_1", type: "wild", name: "Property Wild Card (Light Blue / Railroad)", value: 4, wildColors: ["light_blue", "transport"] },
   // 2x Pink / Orange
-  { id: "wild_pink_orange_1", type: "wild", name: "Pink / Orange Wild", value: 2, wildColors: ["pink", "orange"] },
-  { id: "wild_pink_orange_2", type: "wild", name: "Pink / Orange Wild", value: 2, wildColors: ["pink", "orange"] },
+  { id: "wild_pink_orange_1", type: "wild", name: "Property Wild Card (Pink / Orange)", value: 2, wildColors: ["pink", "orange"] },
+  { id: "wild_pink_orange_2", type: "wild", name: "Property Wild Card (Pink / Orange)", value: 2, wildColors: ["pink", "orange"] },
   // 2x Red / Yellow
-  { id: "wild_red_yellow_1", type: "wild", name: "Red / Yellow Wild", value: 3, wildColors: ["red", "yellow"] },
-  { id: "wild_red_yellow_2", type: "wild", name: "Red / Yellow Wild", value: 3, wildColors: ["red", "yellow"] },
+  { id: "wild_red_yellow_1", type: "wild", name: "Property Wild Card (Red / Yellow)", value: 3, wildColors: ["red", "yellow"] },
+  { id: "wild_red_yellow_2", type: "wild", name: "Property Wild Card (Red / Yellow)", value: 3, wildColors: ["red", "yellow"] },
   // Dark Blue / Green
-  { id: "wild_db_green_1", type: "wild", name: "Dark Blue / Green Wild", value: 4, wildColors: ["dark_blue", "green"] },
-  // Green / Transport
-  { id: "wild_green_trans_1", type: "wild", name: "Green / Transport Wild", value: 4, wildColors: ["green", "transport"] },
-  // Transport / Utility
-  { id: "wild_trans_util_1", type: "wild", name: "Transport / Utility Wild", value: 2, wildColors: ["transport", "utility"] },
+  { id: "wild_db_green_1", type: "wild", name: "Property Wild Card (Dark Blue / Green)", value: 4, wildColors: ["dark_blue", "green"] },
+  // Green / Railroad
+  { id: "wild_green_trans_1", type: "wild", name: "Property Wild Card (Green / Railroad)", value: 4, wildColors: ["green", "transport"] },
+  // Railroad / Utility
+  { id: "wild_trans_util_1", type: "wild", name: "Property Wild Card (Railroad / Utility)", value: 2, wildColors: ["transport", "utility"] },
 ];
 
 // ========== RENT CARDS (13) ==========
 const rentCards: CardDef[] = [
   // 2x Brown / Light Blue Rent
-  { id: "rent_brown_lb_1", type: "rent", name: "Brown / Light Blue Rent", value: 1, rentColors: ["brown", "light_blue"] },
-  { id: "rent_brown_lb_2", type: "rent", name: "Brown / Light Blue Rent", value: 1, rentColors: ["brown", "light_blue"] },
+  { id: "rent_brown_lb_1", type: "rent", name: "Rent (Brown / Light Blue)", value: 1, rentColors: ["brown", "light_blue"] },
+  { id: "rent_brown_lb_2", type: "rent", name: "Rent (Brown / Light Blue)", value: 1, rentColors: ["brown", "light_blue"] },
   // 2x Pink / Orange Rent
-  { id: "rent_pink_orange_1", type: "rent", name: "Pink / Orange Rent", value: 1, rentColors: ["pink", "orange"] },
-  { id: "rent_pink_orange_2", type: "rent", name: "Pink / Orange Rent", value: 1, rentColors: ["pink", "orange"] },
+  { id: "rent_pink_orange_1", type: "rent", name: "Rent (Pink / Orange)", value: 1, rentColors: ["pink", "orange"] },
+  { id: "rent_pink_orange_2", type: "rent", name: "Rent (Pink / Orange)", value: 1, rentColors: ["pink", "orange"] },
   // 2x Red / Yellow Rent
-  { id: "rent_red_yellow_1", type: "rent", name: "Red / Yellow Rent", value: 1, rentColors: ["red", "yellow"] },
-  { id: "rent_red_yellow_2", type: "rent", name: "Red / Yellow Rent", value: 1, rentColors: ["red", "yellow"] },
+  { id: "rent_red_yellow_1", type: "rent", name: "Rent (Red / Yellow)", value: 1, rentColors: ["red", "yellow"] },
+  { id: "rent_red_yellow_2", type: "rent", name: "Rent (Red / Yellow)", value: 1, rentColors: ["red", "yellow"] },
   // 2x Green / Dark Blue Rent
-  { id: "rent_green_db_1", type: "rent", name: "Green / Dark Blue Rent", value: 1, rentColors: ["green", "dark_blue"] },
-  { id: "rent_green_db_2", type: "rent", name: "Green / Dark Blue Rent", value: 1, rentColors: ["green", "dark_blue"] },
-  // 2x Transport / Utility Rent
-  { id: "rent_trans_util_1", type: "rent", name: "Transport / Utility Rent", value: 1, rentColors: ["transport", "utility"] },
-  { id: "rent_trans_util_2", type: "rent", name: "Transport / Utility Rent", value: 1, rentColors: ["transport", "utility"] },
-  // 3x Rainbow Rent
-  { id: "rent_rainbow_1", type: "rent", name: "Rainbow Rent", value: 3, rentColors: "rainbow" },
-  { id: "rent_rainbow_2", type: "rent", name: "Rainbow Rent", value: 3, rentColors: "rainbow" },
-  { id: "rent_rainbow_3", type: "rent", name: "Rainbow Rent", value: 3, rentColors: "rainbow" },
+  { id: "rent_green_db_1", type: "rent", name: "Rent (Green / Dark Blue)", value: 1, rentColors: ["green", "dark_blue"] },
+  { id: "rent_green_db_2", type: "rent", name: "Rent (Green / Dark Blue)", value: 1, rentColors: ["green", "dark_blue"] },
+  // 2x Railroad / Utility Rent
+  { id: "rent_trans_util_1", type: "rent", name: "Rent (Railroad / Utility)", value: 1, rentColors: ["transport", "utility"] },
+  { id: "rent_trans_util_2", type: "rent", name: "Rent (Railroad / Utility)", value: 1, rentColors: ["transport", "utility"] },
+  // 3x Wild Rent
+  { id: "rent_rainbow_1", type: "rent", name: "Wild Rent", value: 3, rentColors: "rainbow" },
+  { id: "rent_rainbow_2", type: "rent", name: "Wild Rent", value: 3, rentColors: "rainbow" },
+  { id: "rent_rainbow_3", type: "rent", name: "Wild Rent", value: 3, rentColors: "rainbow" },
 ];
 
 // ========== ACTION CARDS (34) ==========
 const actionCards: CardDef[] = [
-  // 10x Felix Felicis (Pass Go)
+  // 10x Pass Go
   ...Array.from({ length: 10 }, (_, i) => ({
     id: `action_felix_${i + 1}`,
     type: "action" as const,
-    name: "Felix Felicis",
+    name: "Pass Go",
     value: 1,
     actionType: "felix_felicis" as const,
     text: "Draw 2 extra cards.",
     target: "self" as const,
-    shortName: "Felix",
-  })),
-  // 3x Accio (Sly Deal)
+      })),
+  // 3x Sly Deal
   ...Array.from({ length: 3 }, (_, i) => ({
     id: `action_accio_${i + 1}`,
     type: "action" as const,
-    name: "Accio",
+    name: "Sly Deal",
     value: 3,
     actionType: "accio" as const,
     text: "Take one property from another player. Not from a complete set.",
     target: "one" as const,
   })),
-  // 3x Confundus Charm (Force Deal)
+  // 3x Forced Deal
   ...Array.from({ length: 3 }, (_, i) => ({
     id: `action_confundus_${i + 1}`,
     type: "action" as const,
-    name: "Confundus Charm",
+    name: "Forced Deal",
     value: 3,
     actionType: "confundus_charm" as const,
     text: "Swap one of your properties for one of another player's. Not from complete sets.",
     target: "one" as const,
-    shortName: "Confundus",
   })),
-  // 2x Expelliarmus (Deal Breaker)
+  // 2x Deal Breaker
   ...Array.from({ length: 2 }, (_, i) => ({
     id: `action_expelliarmus_${i + 1}`,
     type: "action" as const,
-    name: "Expelliarmus",
+    name: "Deal Breaker",
     value: 5,
     actionType: "expelliarmus" as const,
     text: "Take a complete set from another player.",
     target: "one" as const,
   })),
-  // 3x Protego (Just Say No)
+  // 3x Just Say No
   ...Array.from({ length: 3 }, (_, i) => ({
     id: `action_protego_${i + 1}`,
     type: "action" as const,
-    name: "Protego",
+    name: "Just Say No",
     value: 4,
     actionType: "protego" as const,
     text: "Cancel an action played against you.",
     target: "reaction" as const,
   })),
-  // 3x Gringotts Goblin (Debt Collector)
+  // 3x Debt Collector
   ...Array.from({ length: 3 }, (_, i) => ({
     id: `action_goblin_${i + 1}`,
     type: "action" as const,
-    name: "Gringotts Goblin",
+    name: "Debt Collector",
     value: 3,
     actionType: "gringotts_goblin" as const,
-    text: "One player of your choice pays you 5G.",
+    text: "One player of your choice pays you 5M.",
     target: "one" as const,
-    shortName: "Goblin",
   })),
-  // 3x Yule Ball (It's My Birthday)
+  // 3x It's My Birthday
   ...Array.from({ length: 3 }, (_, i) => ({
     id: `action_yule_${i + 1}`,
     type: "action" as const,
-    name: "Yule Ball",
+    name: "It's My Birthday",
     value: 2,
     actionType: "yule_ball" as const,
-    text: "Every other player pays you 2G.",
+    text: "Every other player pays you 2M.",
     target: "all" as const,
   })),
-  // 3x Reducto
+  // 3x Demolish (was Reducto)
   ...Array.from({ length: 3 }, (_, i) => ({
     id: `action_reducto_${i + 1}`,
     type: "action" as const,
-    name: "Reducto",
+    name: "Demolish",
     value: 4,
     actionType: "reducto" as const,
     text: "Destroy one card from another player's properties or bank. Not from a complete set.",
     target: "one" as const,
   })),
-  // 2x Silencio
+  // 2x Power Outage (was Silencio)
   ...Array.from({ length: 2 }, (_, i) => ({
     id: `action_silencio_${i + 1}`,
     type: "action" as const,
-    name: "Silencio",
+    name: "Power Outage",
     value: 5,
     actionType: "silencio" as const,
-    text: "Switch off a player's role power until they pay 10G.",
+    text: "Switch off a player's role power until they pay 10M.",
     target: "one" as const,
   })),
-  // 2x Time-Turner
+  // 2x Rewind (was Time-Turner)
   ...Array.from({ length: 2 }, (_, i) => ({
     id: `action_time_turner_${i + 1}`,
     type: "action" as const,
-    name: "Time-Turner",
+    name: "Rewind",
     value: 2,
     actionType: "time_turner" as const,
     text: "Take any card from the discard pile and play it now.",
@@ -269,8 +266,8 @@ const roleCards: CardDef[] = [
     value: 0,
     roleType: "draco",
     shortName: "Draco",
-    text: "Accio, Confundus and Reducto can target complete sets.",
-    rolePower: "Can target properties in complete sets with Accio, Confundus, and Reducto.",
+    text: "Sly Deal, Forced Deal and Demolish can target complete sets.",
+    rolePower: "Can target properties in complete sets with Sly Deal, Forced Deal and Demolish.",
   },
   {
     id: "role_cedric",

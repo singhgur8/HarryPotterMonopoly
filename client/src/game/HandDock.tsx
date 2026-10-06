@@ -23,11 +23,11 @@ function CardMoves({ defId, done }: { defId: string; done: () => void }) {
   if (!me || !def) return null;
   const play = (targetColor?: PropertyColor) => { send("play_card", { cardDefId: defId, targetColor }); done(); };
   const bank = () => { send("bank_card", { cardDefId: defId }); done(); };
-  const bankBtn = def.value > 0 && <button className="hp-btn ghost" onClick={bank}>Bank for {def.value}G</button>;
+  const bankBtn = def.value > 0 && <button className="hp-btn ghost" onClick={bank}>Bank for {def.value}M</button>;
 
   switch (def.type) {
     case "money":
-      return <><strong>{def.name}</strong><button className="hp-btn gold" onClick={() => play()}>Bank {def.value}G</button></>;
+      return <><strong>{def.name}</strong><button className="hp-btn gold" onClick={() => play()}>Bank {def.value}M</button></>;
     case "property":
       return (
         <>
@@ -61,7 +61,7 @@ function CardMoves({ defId, done }: { defId: string; done: () => void }) {
             const r = rentFor(me, c);
             return (
               <button key={c} className={`hp-btn opt ${r ? "gold" : "ghost"}`} disabled={!r} onClick={() => play(c)}>
-                {label(c)} {r}G<small>{countOf(me, c) ? `${countOf(me, c)} card${countOf(me, c) > 1 ? "s" : ""}` : "no cards yet"}</small>
+                {label(c)} {r}M<small>{countOf(me, c) ? `${countOf(me, c)} card${countOf(me, c) > 1 ? "s" : ""}` : "no cards yet"}</small>
               </button>
             );
           })}
@@ -71,7 +71,7 @@ function CardMoves({ defId, done }: { defId: string; done: () => void }) {
     }
     case "action":
       if (def.actionType === "protego") {
-        return <><strong>Protego</strong><span>Keep it in your hand to block an attack, or</span>{bankBtn}</>;
+        return <><strong>Just Say No</strong><span>Keep it in your hand to block an attack, or</span>{bankBtn}</>;
       }
       return (
         <>
@@ -129,11 +129,11 @@ export function HandDock({ sel, setSel, flipId, setFlip, discard }: {
   if (flipId) ctx = <FlipMoves defId={flipId} done={() => setFlip(null)} />;
   else if (discard.active) ctx = <span>Pick {s.pendingAction?.data?.mustDiscard} card(s) to discard, then confirm above.</span>;
   else if (sel && canPlay && (!free || free === sel)) ctx = <CardMoves defId={sel} done={() => setSel(null)} />;
-  else if (free && isMyTurn) ctx = <span><strong>{nameOf(free)}</strong> came back with the Time-Turner. Play it now, for free.</span>;
+  else if (free && isMyTurn) ctx = <span><strong>{nameOf(free)}</strong> came back with Rewind. Play it now, for free.</span>;
   else if (canPlay) ctx = <span>Pick a card to play or bank it. The gold coin is what it's worth.{handFull ? " You'll need to discard down to 7 at the end of your turn." : ""}</span>;
   else if (isMyTurn && !s.drawnThisTurn && !s.pendingAction) ctx = <span>Draw your cards to start your turn.</span>;
   else if (isMyTurn && s.actionsUsed >= s.maxActions && !s.pendingAction) ctx = <span>No actions left. End your turn when you're ready. You can still move wilds.</span>;
-  else ctx = <span>You can move your wilds while you wait. Protego is played from the panel above when someone targets you.</span>;
+  else ctx = <span>You can move your wilds while you wait. Just Say No is played from the panel above when someone targets you.</span>;
 
   return (
     <div className="hp-hand">
@@ -148,7 +148,7 @@ export function HandDock({ sel, setSel, flipId, setFlip, discard }: {
               className={`hp-cardpick ${free === c.defId ? "hp-free" : ""}`}
               aria-pressed={picked}
               aria-disabled={locked}
-              aria-label={`${nameOf(c.defId)}, worth ${valueOf(c)}G`}
+              aria-label={`${nameOf(c.defId)}, worth ${valueOf(c)}M`}
               onClick={() => {
                 if (discard.active) return discard.toggle(c.defId);
                 setFlip(null);

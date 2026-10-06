@@ -23,9 +23,9 @@ function SetLines({ p }: { p: PlayerState }) {
             <span className="hp-tiles">
               {cards.map(c => {
                 const other = otherColor(c);
-                const title = other === "rainbow" ? "Polyjuice, any colour" : other ? `${label(color)} / ${label(other)} wild` : label(color);
+                const title = other === "rainbow" ? "Any-colour wild" : other ? `${label(color)} / ${label(other)} wild` : label(color);
                 return (
-                  <i key={c.defId} className="hp-tile" style={{ background: tileFill(c, color) }} title={`${title}, worth ${valueOf(c)}G`}>
+                  <i key={c.defId} className="hp-tile" style={{ background: tileFill(c, color) }} title={`${title}, worth ${valueOf(c)}M`}>
                     <b>{valueOf(c)}</b>
                   </i>
                 );
@@ -54,8 +54,8 @@ export function OpponentSeat({ p, onOpen }: { p: PlayerState; onOpen: () => void
       <div className="hp-opp-top">
         <span className="hp-ava">{p.animal.emoji}</span>
         <span className="nm">{p.animal.name}</span>
-        {p.role && <span className={`hp-role ${p.isSilenced ? "off" : ""}`} title={p.isSilenced ? "Silenced" : undefined}>{roleName(p.role).split(" ")[0]}</span>}
-        {p.isSilenced && <span className="hp-chip late">Silenced</span>}
+        {p.role && <span className={`hp-role ${p.isSilenced ? "off" : ""}`} title={p.isSilenced ? "Power off" : undefined}>{roleName(p.role).split(" ")[0]}</span>}
+        {p.isSilenced && <span className="hp-chip late">Power off</span>}
         {turn && <span className="hp-chip solid">Turn</span>}
         {waited && <span className="hp-chip gold">Deciding</span>}
         {late && <span className="hp-chip late">Out of time</span>}
@@ -65,9 +65,9 @@ export function OpponentSeat({ p, onOpen }: { p: PlayerState; onOpen: () => void
       </div>
       <SetLines p={p} />
       <div className="hp-opp-bank">
-        <span>Bank <b>{sumValue(p.bank)}G</b></span>
+        <span>Bank <b>{sumValue(p.bank)}M</b></span>
         <span className="hp-coins">{coins.map(c => <span key={c.defId} className="hp-cn">{valueOf(c)}</span>)}</span>
-        <span className="worth">Sets {completeSets(p)}/3 · Property {sumValue(p.properties)}G</span>
+        <span className="worth">Sets {completeSets(p)}/3 · Property {sumValue(p.properties)}M</span>
       </div>
     </button>
   );
@@ -97,11 +97,11 @@ export function Opponents() {
                 {groupSets(shown.properties).map(({ color, cards }) => (
                   <div key={color} style={{ display: "grid", gap: 6 }}>
                     <div className="hp-label">{label(color)} · {cards.length}/{SET_SIZES[color]}</div>
-                    <div className="cards">{cards.map(c => <GameCard key={c.defId} defId={c.defId} size="md" label={`${nameOf(c.defId)}, worth ${valueOf(c)}G`} />)}</div>
+                    <div className="cards">{cards.map(c => <GameCard key={c.defId} defId={c.defId} size="md" label={`${nameOf(c.defId)}, worth ${valueOf(c)}M`} />)}</div>
                   </div>
                 ))}
                 <div style={{ display: "grid", gap: 6 }}>
-                  <div className="hp-label">Bank · {sumValue(shown.bank)}G</div>
+                  <div className="hp-label">Bank · {sumValue(shown.bank)}M</div>
                   <div className="cards">
                     {shown.bank.length ? shown.bank.map(c => <GameCard key={c.defId} defId={c.defId} size="sm" />) : <span className="hp-muted">Empty</span>}
                   </div>

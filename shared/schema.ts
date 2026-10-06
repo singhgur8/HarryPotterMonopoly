@@ -25,7 +25,7 @@ export const SET_STYLE: Record<PropertyColor, { label: string; fill: string; on:
   yellow:     { label: "Yellow",     fill: "#fef200", on: "#2d2a06", tint: "#fffbcc", ink: "#8a8000" },
   green:      { label: "Green",      fill: "#1fb25a", on: "#ffffff", tint: "#d6f1e1", ink: "#13803f" },
   dark_blue:  { label: "Dark Blue",  fill: "#0072bb", on: "#ffffff", tint: "#d4e7f5", ink: "#00578f" },
-  transport:  { label: "Transport",  fill: "#231f20", on: "#ffffff", tint: "#e2e1e1", ink: "#231f20" },
+  transport:  { label: "Railroad",   fill: "#231f20", on: "#ffffff", tint: "#e2e1e1", ink: "#231f20" },
   utility:    { label: "Utility",    fill: "#c5e3a8", on: "#1d3310", tint: "#eef7e5", ink: "#4f7d2c" },
 };
 
@@ -143,7 +143,7 @@ export type PendingActionType =
   | "choose_steal_set"   // Expelliarmus: attacker picks set to steal
   | "choose_reducto"     // Reducto: attacker picks card to discard
   | "choose_silencio"    // Silencio: attacker picks player to silence
-  | "choose_goblin"      // Gringotts Goblin: attacker picks who owes 5G
+  | "choose_goblin"      // Gringotts Goblin: attacker picks who owes 5M
   | "protego_response"   // Player can respond with Protego
   | "harry_protect"      // Harry chooses color to protect at end of turn
   | "cedric_draw_choice" // Cedric chooses deck or discard

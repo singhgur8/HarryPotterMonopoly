@@ -17,7 +17,7 @@ const fail = (error: string): Result => ({ success: false, error });
 const PAYMENT_TYPES = ["pay_rent", "pay_debt", "pay_birthday"];
 const COLOR_LABEL: Record<PropertyColor, string> = {
   brown: "Brown", light_blue: "Light Blue", pink: "Pink", orange: "Orange", red: "Red",
-  yellow: "Yellow", green: "Green", dark_blue: "Dark Blue", transport: "Transport", utility: "Utility",
+  yellow: "Yellow", green: "Green", dark_blue: "Dark Blue", transport: "Railroad", utility: "Utility",
 };
 
 // ========== HELPERS ==========
@@ -258,7 +258,7 @@ export function cedricChooseSource(state: GameState, visitorId: string, source: 
 function freePlayGuard(state: GameState, cardDefId: string): Result {
   if (state.freePlayCardId && state.freePlayCardId !== cardDefId) {
     const name = CARD_DEF_MAP[state.freePlayCardId]?.name ?? "the card";
-    return fail(`Play ${name} from the Time-Turner first`);
+    return fail(`Play ${name} from Rewind first`);
   }
   return ok;
 }
@@ -324,7 +324,7 @@ function playWildCard(state: GameState, player: PlayerState, cardDefId: string, 
   const def = CARD_DEF_MAP[cardDefId];
   let color: PropertyColor | undefined;
   if (def.wildColors === "rainbow") {
-    if (!targetColor || !PROPERTY_COLORS.includes(targetColor)) return fail("Choose a colour for Polyjuice Potion");
+    if (!targetColor || !PROPERTY_COLORS.includes(targetColor)) return fail("Choose a colour for the wild card");
     color = targetColor;
   } else if (Array.isArray(def.wildColors)) {
     color = targetColor && def.wildColors.includes(targetColor) ? targetColor : def.wildColors[0];
@@ -358,7 +358,7 @@ function playRentCard(state: GameState, player: PlayerState, cardDefId: string, 
   removeCard(player.hand, cardDefId);
   state.discardPile.push({ defId: cardDefId });
   state.actionsUsed++;
-  log(state, player, `charged everyone ${rentAmount}G ${colorTag(rentColor)} rent`, def.id);
+  log(state, player, `charged everyone ${rentAmount}M ${colorTag(rentColor)} rent`, def.id);
 
   // Every other player pays, one at a time
   const targets = state.players.filter(p => p.visitorId !== player.visitorId).map(p => p.visitorId);
@@ -424,7 +424,7 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
         const card = drawFromPile(state);
         if (card) { player.hand.push(card); drawn++; }
       }
-      log(state, player, `drank Felix Felicis and drew ${drawn} extra cards`, def.id);
+      log(state, player, `played Pass Go and drew ${drawn} extra cards`, def.id);
       return ok;
     }
 
@@ -432,38 +432,38 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
       if (!others.some(o => o.properties.some(c => canTakeProperty(player, o, c.defId).success))) {
         return fail("No one has a property you can take");
       }
-      return choose("choose_steal", "cast Accio and is choosing a property to take");
+      return choose("choose_steal", "played Sly Deal and is choosing a property to take");
 
     case "confundus_charm":
       if (player.properties.length === 0) return fail("You need a property of your own to swap");
       if (!others.some(o => o.properties.some(c => canTakeProperty(player, o, c.defId).success))) {
         return fail("No one has a property you can swap for");
       }
-      return choose("choose_swap", "cast Confundus Charm and is choosing properties to swap");
+      return choose("choose_swap", "played Forced Deal and is choosing properties to swap");
 
     case "expelliarmus":
       if (!others.some(o => PROPERTY_COLORS.some(c => isSetComplete(o, c) && shieldOf(o) !== c))) {
         return fail("No one has a complete set you can take");
       }
-      return choose("choose_steal_set", "cast Expelliarmus and is choosing a set to take");
+      return choose("choose_steal_set", "played Deal Breaker and is choosing a set to take");
 
     case "gringotts_goblin":
-      if (others.length === 0) return fail("No one to send the Goblin to");
-      return choose("choose_goblin", "sent a Gringotts Goblin and is choosing who owes 5G");
+      if (others.length === 0) return fail("No one to collect from");
+      return choose("choose_goblin", "played Debt Collector and is choosing who owes 5M");
 
     case "reducto":
       if (!others.some(o => o.bank.length > 0 || o.properties.some(c => canTakeProperty(player, o, c.defId).success))) {
         return fail("No one has a card you can destroy");
       }
-      return choose("choose_reducto", "cast Reducto and is choosing what to destroy");
+      return choose("choose_reducto", "played Demolish and is choosing what to destroy");
 
     case "silencio":
-      if (!others.some(o => !o.isSilenced)) return fail("Everyone is already silenced");
-      return choose("choose_silencio", "cast Silencio and is choosing who to silence");
+      if (!others.some(o => !o.isSilenced)) return fail("Everyone's power is already off");
+      return choose("choose_silencio", "played Power Outage and is choosing whose power to cut");
 
     case "yule_ball": {
       discardIt();
-      log(state, player, "threw a Yule Ball. Everyone pays 2G", def.id);
+      log(state, player, "played It's My Birthday. Everyone pays 2M", def.id);
       startPayments(state, "pay_birthday", player.visitorId, others.map(o => o.visitorId), 2, cardDefId);
       return ok;
     }
@@ -471,7 +471,7 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
     case "time_turner": {
       const choices = state.discardPile.filter(c => CARD_DEF_MAP[c.defId]?.actionType !== "time_turner");
       if (choices.length === 0) return fail("There's nothing in the discard pile to take");
-      return choose("time_turner_play", "turned the Time-Turner and is choosing a card from the discard pile");
+      return choose("time_turner_play", "played Rewind and is choosing a card from the discard pile");
     }
 
     case "protego":
@@ -479,7 +479,7 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
       removeCard(player.hand, cardDefId);
       player.bank.push({ defId: cardDefId });
       state.actionsUsed++;
-      log(state, player, `banked Protego (${def.value}G)`, def.id);
+      log(state, player, `banked Just Say No (${def.value}M)`, def.id);
       return ok;
 
     default:
@@ -505,7 +505,7 @@ export function bankCard(state: GameState, visitorId: string, cardDefId: string)
   return withFreePlay(state, cardDefId, () => {
     player.bank.push(removeCard(player.hand, cardDefId)!);
     state.actionsUsed++;
-    log(state, player, `banked ${def.name} (${def.value}G)`, def.id);
+    log(state, player, `banked ${def.name} (${def.value}M)`, def.id);
     return ok;
   });
 }
@@ -514,7 +514,7 @@ export function endTurn(state: GameState, visitorId: string): Result {
   const check = canAct(state, visitorId);
   if (!check.success) return check;
   if (!state.drawnThisTurn) return fail("Draw your cards first");
-  if (state.freePlayCardId) return fail("Play the card you took with the Time-Turner first");
+  if (state.freePlayCardId) return fail("Play the card you took with Rewind first");
 
   const player = getPlayer(state, visitorId)!;
   if (roleActive(player, "harry")) {
@@ -609,7 +609,7 @@ export function payWithCards(state: GameState, visitorId: string, cardDefIds: st
     const required = payableCards(player);
     const missing = required.filter(c => !ids.includes(c.defId));
     if (missing.length > 0) {
-      return fail(`You owe ${amount}G. Pick at least ${amount}G, or everything you have if you can't cover it`);
+      return fail(`You owe ${amount}M. Pick at least ${amount}M, or everything you have if you can't cover it`);
     }
   }
 
@@ -619,7 +619,7 @@ export function payWithCards(state: GameState, visitorId: string, cardDefIds: st
   }
 
   if (chosen.length === 0) log(state, player, `had nothing to pay ${source.animal.name} with`);
-  else log(state, player, `paid ${source.animal.name} ${paid}G`);
+  else log(state, player, `paid ${source.animal.name} ${paid}M`);
   pending.data = pending.data ?? { remainingTargets: [], results: [] };
   pending.data.results = [...(pending.data.results ?? []), { playerId: visitorId, outcome: chosen.length ? "paid" : "nothing", amount: paid }];
 
@@ -663,15 +663,15 @@ export function playProtego(state: GameState, visitorId: string): Result {
     original = pending;
     blocks = 0;
   } else {
-    return fail("Protego can't block this");
+    return fail("Just Say No can't block this");
   }
 
   const player = getPlayer(state, visitorId)!;
   const idx = player.hand.findIndex(c => CARD_DEF_MAP[c.defId]?.actionType === "protego");
-  if (idx === -1) return fail("You don't have a Protego");
+  if (idx === -1) return fail("You don't have a Just Say No");
   state.discardPile.push(player.hand.splice(idx, 1)[0]);
   blocks++;
-  log(state, player, blocks % 2 === 1 ? "cast Protego to block it" : "cast Protego back to push it through", "action_protego_1");
+  log(state, player, blocks % 2 === 1 ? "said Just Say No to block it" : "said Just Say No back to push it through", "action_protego_1");
 
   // The other side may answer with their own Protego
   const nextResponder = blocks % 2 === 1 ? original.sourcePlayerId : original.targetPlayerId;
@@ -703,7 +703,7 @@ function resolveProtego(state: GameState, original: PendingAction, blocks: numbe
     return;
   }
   const target = getPlayer(state, original.targetPlayerId);
-  addEvent(state, "🛡️", "Protego", "#888", `${target?.animal.name ?? "The target"} is protected. The action is cancelled`);
+  addEvent(state, "🛡️", "Just Say No", "#888", `${target?.animal.name ?? "The target"} is protected. The action is cancelled`);
   if (PAYMENT_TYPES.includes(original.type)) {
     original.data.results = [...(original.data.results ?? []), { playerId: original.targetPlayerId, outcome: "blocked", amount: 0 }];
     nextPayer(state, original);
@@ -729,33 +729,33 @@ function executeAction(state: GameState, action: PendingAction) {
   switch (action.type) {
     case "choose_steal": {
       const check = canTakeProperty(attacker, target, d.targetCardDefId);
-      if (!check.success) { log(state, attacker, `'s Accio fizzled: ${check.error}`); return; }
+      if (!check.success) { log(state, attacker, `'s Sly Deal fizzled: ${check.error}`); return; }
       const card = removeCard(target.properties, d.targetCardDefId)!;
       attacker.properties.push(card);
-      log(state, attacker, `used Accio to take ${cardTag(card)} from ${target.animal.name}`, card.defId);
+      log(state, attacker, `used Sly Deal to take ${cardTag(card)} from ${target.animal.name}`, card.defId);
       checkWinCondition(state, attacker.visitorId);
       return;
     }
     case "choose_swap": {
       const check = canTakeProperty(attacker, target, d.targetCardDefId);
       const ours = attacker.properties.find(c => c.defId === d.ownCardDefId);
-      if (!check.success || !ours) { log(state, attacker, "'s Confundus Charm fizzled"); return; }
+      if (!check.success || !ours) { log(state, attacker, "'s Forced Deal fizzled"); return; }
       const theirs = removeCard(target.properties, d.targetCardDefId)!;
       removeCard(attacker.properties, d.ownCardDefId);
       attacker.properties.push(theirs);
       target.properties.push(ours);
-      log(state, attacker, `used Confundus to swap their ${cardTag(ours)} for ${target.animal.name}'s ${cardTag(theirs)}`);
+      log(state, attacker, `used Forced Deal to swap their ${cardTag(ours)} for ${target.animal.name}'s ${cardTag(theirs)}`);
       checkWinCondition(state, attacker.visitorId);
       if (state.status === "playing") checkWinCondition(state, target.visitorId);
       return;
     }
     case "choose_steal_set": {
       const color = d.color as PropertyColor;
-      if (!isSetComplete(target, color) || shieldOf(target) === color) { log(state, attacker, "'s Expelliarmus fizzled"); return; }
+      if (!isSetComplete(target, color) || shieldOf(target) === color) { log(state, attacker, "'s Deal Breaker fizzled"); return; }
       const stolen = target.properties.filter(c => getEffectiveColor(c) === color);
       target.properties = target.properties.filter(c => getEffectiveColor(c) !== color);
       attacker.properties.push(...stolen);
-      log(state, attacker, `used Expelliarmus to take ${target.animal.name}'s ${colorTag(color)} set`);
+      log(state, attacker, `used Deal Breaker to take ${target.animal.name}'s ${colorTag(color)} set`);
       checkWinCondition(state, attacker.visitorId);
       return;
     }
@@ -763,19 +763,19 @@ function executeAction(state: GameState, action: PendingAction) {
       const id = d.targetCardDefId as string;
       let card: GameCard | undefined;
       if (target.properties.some(c => c.defId === id)) {
-        if (!canTakeProperty(attacker, target, id).success) { log(state, attacker, "'s Reducto fizzled"); return; }
+        if (!canTakeProperty(attacker, target, id).success) { log(state, attacker, "'s Demolish fizzled"); return; }
         card = removeCard(target.properties, id);
       } else {
         card = removeCard(target.bank, id);
       }
-      if (!card) { log(state, attacker, "'s Reducto fizzled"); return; }
+      if (!card) { log(state, attacker, "'s Demolish fizzled"); return; }
       state.discardPile.push({ defId: card.defId });
-      log(state, attacker, `used Reducto to destroy ${target.animal.name}'s ${cardTag(card)}`, card.defId);
+      log(state, attacker, `used Demolish to destroy ${target.animal.name}'s ${cardTag(card)}`, card.defId);
       return;
     }
     case "choose_silencio": {
       target.isSilenced = true;
-      log(state, attacker, `silenced ${target.animal.name}. Their role power is off until they pay 10G`);
+      log(state, attacker, `cut ${target.animal.name}'s power. Their role power is off until they pay 10M`);
       // Silencing the current player mid-turn would only happen through odd timing, but keep actions consistent
       if (isCurrentTurn(state, target.visitorId)) state.maxActions = maxActionsFor(target);
       return;
@@ -815,7 +815,7 @@ export function chooseTarget(state: GameState, visitorId: string, targetPlayerId
       if (!targetCardDefId) return fail("Choose a property to take");
       const check = canTakeProperty(attacker, target, targetCardDefId);
       if (!check.success) return check;
-      log(state, attacker, `aims Accio at ${target.animal.name}'s ${ownedTag(target, targetCardDefId)}`);
+      log(state, attacker, `aims Sly Deal at ${target.animal.name}'s ${ownedTag(target, targetCardDefId)}`);
       offerProtego(state, action("choose_steal", { targetCardDefId }));
       return ok;
     }
@@ -824,7 +824,7 @@ export function chooseTarget(state: GameState, visitorId: string, targetPlayerId
       if (!attacker.properties.some(c => c.defId === ownCardDefId)) return fail("That isn't your property");
       const check = canTakeProperty(attacker, target, targetCardDefId);
       if (!check.success) return check;
-      log(state, attacker, `aims Confundus at ${target.animal.name}'s ${ownedTag(target, targetCardDefId)}`);
+      log(state, attacker, `aims Forced Deal at ${target.animal.name}'s ${ownedTag(target, targetCardDefId)}`);
       offerProtego(state, action("choose_swap", { targetCardDefId, ownCardDefId }));
       return ok;
     }
@@ -832,7 +832,7 @@ export function chooseTarget(state: GameState, visitorId: string, targetPlayerId
       const color = targetCardDefId as PropertyColor; // the colour is sent in this field
       if (!PROPERTY_COLORS.includes(color) || !isSetComplete(target, color)) return fail("That's not a complete set");
       if (shieldOf(target) === color) return fail("That colour is shielded by Harry's charm");
-      log(state, attacker, `aims Expelliarmus at ${target.animal.name}'s ${colorTag(color)} set`);
+      log(state, attacker, `aims Deal Breaker at ${target.animal.name}'s ${colorTag(color)} set`);
       offerProtego(state, action("choose_steal_set", { color }));
       return ok;
     }
@@ -844,18 +844,18 @@ export function chooseTarget(state: GameState, visitorId: string, targetPlayerId
       } else if (!target.bank.some(c => c.defId === targetCardDefId)) {
         return fail("That card isn't there");
       }
-      log(state, attacker, `aims Reducto at ${target.animal.name}'s ${ownedTag(target, targetCardDefId)}`);
+      log(state, attacker, `aims Demolish at ${target.animal.name}'s ${ownedTag(target, targetCardDefId)}`);
       offerProtego(state, action("choose_reducto", { targetCardDefId }));
       return ok;
     }
     case "choose_silencio": {
-      if (target.isSilenced) return fail("They're already silenced");
-      log(state, attacker, `aims Silencio at ${target.animal.name}`);
+      if (target.isSilenced) return fail("Their power is already off");
+      log(state, attacker, `aims Power Outage at ${target.animal.name}`);
       offerProtego(state, action("choose_silencio", {}));
       return ok;
     }
     case "choose_goblin": {
-      log(state, attacker, `sent the Gringotts Goblin to ${target.animal.name}, who owes 5G`);
+      log(state, attacker, `played Debt Collector on ${target.animal.name}, who owes 5M`);
       startPayments(state, "pay_debt", visitorId, [targetPlayerId], 5, pending.cardDefId!);
       return ok;
     }
@@ -881,7 +881,7 @@ export function harryProtectColor(state: GameState, visitorId: string, color?: P
 
 export function timeTurnerChoose(state: GameState, visitorId: string, cardDefId: string): Result {
   const pending = state.pendingAction;
-  if (!pending || pending.type !== "time_turner_play" || pending.sourcePlayerId !== visitorId) return fail("No Time-Turner to use");
+  if (!pending || pending.type !== "time_turner_play" || pending.sourcePlayerId !== visitorId) return fail("No Rewind to use");
   const def = CARD_DEF_MAP[cardDefId];
   if (!def || def.actionType === "time_turner") return fail("Choose a different card");
   const idx = state.discardPile.findIndex(c => c.defId === cardDefId);
@@ -891,13 +891,13 @@ export function timeTurnerChoose(state: GameState, visitorId: string, cardDefId:
   player.hand.push(state.discardPile.splice(idx, 1)[0]);
   state.freePlayCardId = cardDefId;
   state.pendingAction = null;
-  log(state, player, `took ${def.name} back with the Time-Turner and plays it next`, def.id);
+  log(state, player, `took ${def.name} back with Rewind and plays it next`, def.id);
   return ok;
 }
 
 export function paySilencio(state: GameState, visitorId: string, cardDefIds: string[]): Result {
   const player = getPlayer(state, visitorId);
-  if (!player || !player.isSilenced) return fail("You're not silenced");
+  if (!player || !player.isSilenced) return fail("Your power isn't off");
   const ids = Array.from(new Set(cardDefIds || []));
   const chosen: GameCard[] = [];
   for (const id of ids) {
@@ -906,7 +906,7 @@ export function paySilencio(state: GameState, visitorId: string, cardDefIds: str
     chosen.push(card);
   }
   const total = totalValue(chosen);
-  if (total < 10) return fail(`Pick at least 10G to lift Silencio (you picked ${total}G)`);
+  if (total < 10) return fail(`Pick at least 10M to end the Power Outage (you picked ${total}M)`);
 
   for (const card of chosen) {
     if (!removeCard(player.bank, card.defId)) removeCard(player.properties, card.defId);
@@ -914,7 +914,7 @@ export function paySilencio(state: GameState, visitorId: string, cardDefIds: str
   }
   player.isSilenced = false;
   if (isCurrentTurn(state, visitorId)) state.maxActions = maxActionsFor(player);
-  log(state, player, `paid ${total}G to lift Silencio. Their role power is back`);
+  log(state, player, `paid ${total}M to end the Power Outage. Their role power is back`);
   return ok;
 }
 

@@ -35,7 +35,7 @@ function Art({ svg, ground = false }: { svg?: string; ground?: boolean }) {
 
 function Coin({ value }: { value: number }) {
   if (value <= 0) return null;
-  return <div className="coin">{value}<small>G</small></div>;
+  return <div className="coin">{value}<small>M</small></div>;
 }
 
 function Band({ kicker, name, short, className = "", style }: { kicker: string; name: string; short?: string; className?: string; style?: CSSProperties }) {
@@ -55,7 +55,7 @@ const setVars = (c: PropertyColor) => ({
   "--glyph": SET_STYLE[c].ink,
 }) as CSSProperties;
 
-const rentLine = (c: PropertyColor) => `${RENT_TABLE[c].join(" · ")}G`;
+const rentLine = (c: PropertyColor) => `${RENT_TABLE[c].join(" · ")}M`;
 const firstWord = (c: PropertyColor) => SET_STYLE[c].label.split(" ")[0];
 
 function Pips({ count }: { count: number }) {
@@ -77,7 +77,7 @@ function PropertyFace({ def }: { def: CardDef }) {
           {rent.map((r, i) => (
             <li key={i} className={i === rent.length - 1 ? "full" : ""}>
               <span className="dots">{Array.from({ length: size }, (_, j) => <i key={j} className={j <= i ? "on" : ""} />)}</span>
-              <span>{r}G</span>
+              <span>{r}M</span>
             </li>
           ))}
         </ul>
@@ -166,7 +166,7 @@ function MoneyFace({ def }: { def: CardDef }) {
       <div className="art">
         <div>
           <div className="num">{def.value}</div>
-          <div className="unit">{def.value === 1 ? "Galleon" : "Galleons"}</div>
+          <div className="unit">Million</div>
         </div>
       </div>
       <footer className="foot"><span className="ftxt">Money</span></footer>
