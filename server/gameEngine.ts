@@ -4,11 +4,21 @@
  */
 import { v4 as uuidv4 } from "uuid";
 import type {
-  GameState, PlayerState, GameCard, PendingAction,
-  PropertyColor, RoleType, EventLogEntry, AnimalProfile,
+  GameState, PlayerState, GameCard, PendingAction, PaymentResult,
+  PropertyColor, RoleType, AnimalProfile,
 } from "../shared/schema";
-import { SET_SIZES, RENT_TABLE, ANIMALS } from "../shared/schema";
-import { ALL_CARD_DEFS, CARD_DEF_MAP, getPlayDeckCardIds, getEffectiveColor, countCompleteSets } from "../shared/cardDefs";
+import { SET_SIZES, RENT_TABLE, PROPERTY_COLORS } from "../shared/schema";
+import { CARD_DEF_MAP, getPlayDeckCardIds, getEffectiveColor, countCompleteSets } from "../shared/cardDefs";
+
+type Result = { success: boolean; error?: string };
+const ok: Result = { success: true };
+const fail = (error: string): Result => ({ success: false, error });
+
+const PAYMENT_TYPES = ["pay_rent", "pay_debt", "pay_birthday"];
+const COLOR_LABEL: Record<PropertyColor, string> = {
+  brown: "Brown", light_blue: "Light Blue", pink: "Pink", orange: "Orange", red: "Red",
+  yellow: "Yellow", green: "Green", dark_blue: "Dark Blue", transport: "Transport", utility: "Utility",
+};
 
 // ========== HELPERS ==========
 
@@ -37,6 +47,10 @@ function addEvent(state: GameState, playerEmoji: string, playerName: string, pla
   }
 }
 
+function log(state: GameState, player: PlayerState, message: string, cardDefId?: string) {
+  addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass, message, cardDefId);
+}
+
 function getPlayer(state: GameState, visitorId: string): PlayerState | undefined {
   return state.players.find(p => p.visitorId === visitorId);
 }
@@ -46,55 +60,56 @@ function getCurrentPlayer(state: GameState): PlayerState | undefined {
 }
 
 function isCurrentTurn(state: GameState, visitorId: string): boolean {
-  const current = getCurrentPlayer(state);
-  return current?.visitorId === visitorId;
+  return getCurrentPlayer(state)?.visitorId === visitorId;
 }
 
-// Get all properties of a specific color for a player
+// A role power only works while the player isn't silenced
+export function roleActive(player: PlayerState | undefined, role: RoleType): boolean {
+  return !!player && player.role === role && !player.isSilenced;
+}
+
+// Harry's shielded colour, only while his power is switched on
+export function shieldOf(player: PlayerState): PropertyColor | undefined {
+  return roleActive(player, "harry") ? player.protectedColor : undefined;
+}
+
+function maxActionsFor(player: PlayerState): number {
+  return roleActive(player, "hermione") ? 4 : 3;
+}
+
 function getPropertiesOfColor(player: PlayerState, color: PropertyColor): GameCard[] {
   return player.properties.filter(card => getEffectiveColor(card) === color);
 }
 
-// Check if a color set is complete for a player
 function isSetComplete(player: PlayerState, color: PropertyColor): boolean {
-  const count = getPropertiesOfColor(player, color).length;
-  return count >= SET_SIZES[color];
+  return getPropertiesOfColor(player, color).length >= SET_SIZES[color];
 }
 
-// Calculate rent for a given color based on how many properties the player has
-function calculateRent(player: PlayerState, color: PropertyColor): number {
+export function calculateRent(player: PlayerState, color: PropertyColor): number {
   const count = getPropertiesOfColor(player, color).length;
   const table = RENT_TABLE[color];
   if (count === 0) return 0;
   return table[Math.min(count, table.length) - 1];
 }
 
-// Calculate total value of cards (for payment purposes)
 function cardValue(card: GameCard): number {
-  const def = CARD_DEF_MAP[card.defId];
-  return def?.value ?? 0;
+  return CARD_DEF_MAP[card.defId]?.value ?? 0;
 }
 
 function totalValue(cards: GameCard[]): number {
   return cards.reduce((sum, c) => sum + cardValue(c), 0);
 }
 
-// Check if a player has a Protego in hand
-function hasProtego(player: PlayerState): boolean {
-  return player.hand.some(c => {
-    const def = CARD_DEF_MAP[c.defId];
-    return def?.actionType === "protego";
-  });
+function hasProtego(player: PlayerState | undefined): boolean {
+  return !!player && player.hand.some(c => CARD_DEF_MAP[c.defId]?.actionType === "protego");
 }
 
-// Remove a card from an array by defId (first match)
 function removeCard(arr: GameCard[], defId: string): GameCard | undefined {
   const idx = arr.findIndex(c => c.defId === defId);
   if (idx === -1) return undefined;
   return arr.splice(idx, 1)[0];
 }
 
-// Draw from pile, reshuffling discard if needed
 function drawFromPile(state: GameState): GameCard | null {
   if (state.drawPile.length === 0) {
     if (state.discardPile.length === 0) return null;
@@ -105,6 +120,13 @@ function drawFromPile(state: GameState): GameCard | null {
   return state.drawPile.pop() ?? null;
 }
 
+// Cards a player must use when they owe money. Harry's shielded colour is
+// excluded: he may pay with it, but can't be forced to.
+function payableCards(player: PlayerState): GameCard[] {
+  const shield = shieldOf(player);
+  return [...player.bank, ...player.properties.filter(c => !shield || getEffectiveColor(c) !== shield)];
+}
+
 // ========== CREATE GAME ==========
 
 export function createInitialGameState(
@@ -112,15 +134,9 @@ export function createInitialGameState(
   players: { visitorId: string; seatIndex: number; animal: AnimalProfile }[],
   gameSpeed: number,
 ): GameState {
-  // Build the play deck (no role cards)
-  const deckIds = getPlayDeckCardIds();
-  const shuffled = shuffle(deckIds);
-  const drawPile: GameCard[] = shuffled.map(id => ({ defId: id }));
-
-  // Assign random roles
+  const drawPile: GameCard[] = shuffle(getPlayDeckCardIds()).map(id => ({ defId: id }));
   const roleTypes: RoleType[] = shuffle(["harry", "hermione", "draco", "cedric", "luna"] as RoleType[]);
 
-  // Create player states
   const playerStates: PlayerState[] = players.map((p, i) => ({
     visitorId: p.visitorId,
     seatIndex: p.seatIndex,
@@ -154,9 +170,9 @@ export function createInitialGameState(
     chatMessages: [],
     winnerId: null,
     roleCards: roleTypes,
+    freePlayCardId: null,
   };
 
-  // Deal 5 cards to each player
   for (const player of state.players) {
     for (let i = 0; i < 5; i++) {
       const card = drawFromPile(state);
@@ -164,420 +180,342 @@ export function createInitialGameState(
     }
   }
 
-  // Set max actions for Hermione
-  const current = getCurrentPlayer(state);
-  if (current) {
-    state.maxActions = (current.role === "hermione" && !current.isSilenced) ? 4 : 3;
-  }
-
+  state.maxActions = maxActionsFor(getCurrentPlayer(state)!);
   addEvent(state, "⚡", "System", "#FFD700", "The game begins! Wands at the ready...");
-
   return state;
+}
+
+// ========== WHO THE GAME IS WAITING ON ==========
+
+/** The player whose input the game needs next. */
+export function getWaitingOn(state: GameState): string | null {
+  if (state.status !== "playing") return null;
+  const p = state.pendingAction;
+  if (!p) return getCurrentPlayer(state)?.visitorId ?? null;
+  if (p.type.startsWith("choose_") || p.type === "time_turner_play") return p.sourcePlayerId;
+  return p.targetPlayerId;
 }
 
 // ========== TURN MANAGEMENT ==========
 
-export function drawCards(state: GameState, visitorId: string): { success: boolean; error?: string } {
-  if (!isCurrentTurn(state, visitorId)) return { success: false, error: "Not your turn" };
-  if (state.drawnThisTurn) return { success: false, error: "Already drew cards this turn" };
-  if (state.pendingAction) return { success: false, error: "Must resolve pending action first" };
+function canAct(state: GameState, visitorId: string): Result {
+  if (state.status !== "playing") return fail("The game is over");
+  if (!isCurrentTurn(state, visitorId)) return fail("Not your turn");
+  if (state.pendingAction) return fail("Waiting on another action to finish");
+  return ok;
+}
+
+export function drawCards(state: GameState, visitorId: string): Result {
+  const check = canAct(state, visitorId);
+  if (!check.success) return check;
+  if (state.drawnThisTurn) return fail("Already drew cards this turn");
 
   const player = getPlayer(state, visitorId)!;
-  const drawCount = (player.role === "luna" && !player.isSilenced) ? 3 : 2;
-
-  // Cedric's choice is handled separately via cedric_choose_source
-  // Default draw from deck
-  const drawn: GameCard[] = [];
+  // Empty hand at the start of a turn: draw 5 instead
+  const drawCount = player.hand.length === 0 ? 5 : roleActive(player, "luna") ? 3 : 2;
+  let drawn = 0;
   for (let i = 0; i < drawCount; i++) {
     const card = drawFromPile(state);
-    if (card) {
-      drawn.push(card);
-      player.hand.push(card);
-    }
+    if (card) { player.hand.push(card); drawn++; }
   }
-
   state.drawnThisTurn = true;
-  addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-    `drew ${drawn.length} cards`);
-
-  return { success: true };
+  log(state, player, `drew ${drawn} cards`);
+  return ok;
 }
 
-// Cedric draws from discard pile instead
-export function cedricDrawFromDiscard(state: GameState, visitorId: string): { success: boolean; error?: string } {
-  const player = getPlayer(state, visitorId);
-  if (!player || player.role !== "cedric" || player.isSilenced) {
-    return { success: false, error: "Only Cedric can draw from discard" };
+export function cedricChooseSource(state: GameState, visitorId: string, source: "deck" | "discard"): Result {
+  const pending = state.pendingAction;
+  if (!pending || pending.type !== "cedric_draw_choice" || pending.targetPlayerId !== visitorId) {
+    return fail("Nothing to choose right now");
   }
-  if (!isCurrentTurn(state, visitorId)) return { success: false, error: "Not your turn" };
-  if (state.actionsUsed > 0) return { success: false, error: "Already drew cards this turn" };
+  const player = getPlayer(state, visitorId)!;
+  state.pendingAction = null;
 
-  // Take top 2 from discard
-  const drawn: GameCard[] = [];
-  for (let i = 0; i < 2; i++) {
-    if (state.discardPile.length > 0) {
-      const card = state.discardPile.pop()!;
-      drawn.push(card);
-      player.hand.push(card);
+  if (source === "discard" && roleActive(player, "cedric") && state.discardPile.length > 0) {
+    let drawn = 0;
+    for (let i = 0; i < 2 && state.discardPile.length > 0; i++) {
+      player.hand.push(state.discardPile.pop()!);
+      drawn++;
     }
+    state.drawnThisTurn = true;
+    log(state, player, `used Cedric's power to take ${drawn} from the discard pile`);
+    return ok;
   }
-
-  if (drawn.length === 0) {
-    return { success: false, error: "Discard pile is empty" };
-  }
-
-  addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-    `used Cedric's power to draw ${drawn.length} from the discard pile`);
-
-  return { success: true };
+  return drawCards(state, visitorId);
 }
 
-export function playCard(state: GameState, visitorId: string, cardDefId: string, asProperty?: boolean, targetColor?: PropertyColor): { success: boolean; error?: string; needsTarget?: boolean; pendingAction?: PendingAction } {
-  if (!isCurrentTurn(state, visitorId)) return { success: false, error: "Not your turn" };
-  if (!state.drawnThisTurn) return { success: false, error: "Must draw cards first" };
-  if (state.pendingAction) return { success: false, error: "Must resolve pending action first" };
-  if (state.actionsUsed >= state.maxActions) return { success: false, error: "No actions remaining this turn" };
+// Time-Turner: the retrieved card is played for free, and must be played next
+function freePlayGuard(state: GameState, cardDefId: string): Result {
+  if (state.freePlayCardId && state.freePlayCardId !== cardDefId) {
+    const name = CARD_DEF_MAP[state.freePlayCardId]?.name ?? "the card";
+    return fail(`Play ${name} from the Time-Turner first`);
+  }
+  return ok;
+}
+
+function withFreePlay(state: GameState, cardDefId: string, run: () => Result): Result {
+  const free = state.freePlayCardId === cardDefId;
+  const before = state.actionsUsed;
+  const result = run();
+  if (free && result.success) {
+    state.actionsUsed = before;
+    state.freePlayCardId = null;
+  }
+  return result;
+}
+
+export function playCard(state: GameState, visitorId: string, cardDefId: string, _asProperty?: boolean, targetColor?: PropertyColor): Result {
+  const check = canAct(state, visitorId);
+  if (!check.success) return check;
+  if (!state.drawnThisTurn) return fail("Draw your cards first");
+  const guard = freePlayGuard(state, cardDefId);
+  if (!guard.success) return guard;
+  const free = state.freePlayCardId === cardDefId;
+  if (!free && state.actionsUsed >= state.maxActions) return fail("No actions left this turn");
 
   const player = getPlayer(state, visitorId)!;
-  const cardInHand = player.hand.find(c => c.defId === cardDefId);
-  if (!cardInHand) return { success: false, error: "Card not in hand" };
-
+  if (!player.hand.some(c => c.defId === cardDefId)) return fail("Card not in hand");
   const def = CARD_DEF_MAP[cardDefId];
-  if (!def) return { success: false, error: "Unknown card" };
+  if (!def) return fail("Unknown card");
 
-  // Handle different card types
-  switch (def.type) {
-    case "money":
-      // Money always goes to bank
-      removeCard(player.hand, cardDefId);
-      player.bank.push({ defId: cardDefId });
-      state.actionsUsed++;
-      addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        `banked ${def.name}`, def.id);
-      return { success: true };
+  return withFreePlay(state, cardDefId, () => {
+    switch (def.type) {
+      case "money":
+        removeCard(player.hand, cardDefId);
+        player.bank.push({ defId: cardDefId });
+        state.actionsUsed++;
+        log(state, player, `banked ${def.name}`, def.id);
+        return ok;
 
-    case "property":
-      removeCard(player.hand, cardDefId);
-      player.properties.push({ defId: cardDefId, assignedColor: def.color });
-      state.actionsUsed++;
-      addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        `played ${def.name}`, def.id);
-      checkWinCondition(state, visitorId);
-      return { success: true };
+      case "property":
+        removeCard(player.hand, cardDefId);
+        player.properties.push({ defId: cardDefId, assignedColor: def.color });
+        state.actionsUsed++;
+        log(state, player, `played ${def.name}`, def.id);
+        checkWinCondition(state, visitorId);
+        return ok;
 
-    case "wild":
-      return playWildCard(state, player, cardDefId, def, targetColor);
+      case "wild":
+        return playWildCard(state, player, cardDefId, targetColor);
 
-    case "rent":
-      return playRentCard(state, player, cardDefId, def, targetColor);
+      case "rent":
+        return playRentCard(state, player, cardDefId, targetColor);
 
-    case "action":
-      return playActionCard(state, player, cardDefId, def);
+      case "action":
+        return playActionCard(state, player, cardDefId);
 
-    default:
-      return { success: false, error: "Cannot play this card type" };
-  }
+      default:
+        return fail("Cannot play this card type");
+    }
+  });
 }
 
-function playWildCard(state: GameState, player: PlayerState, cardDefId: string, def: typeof CARD_DEF_MAP[string], targetColor?: PropertyColor): { success: boolean; error?: string } {
+function playWildCard(state: GameState, player: PlayerState, cardDefId: string, targetColor?: PropertyColor): Result {
+  const def = CARD_DEF_MAP[cardDefId];
+  let color: PropertyColor | undefined;
   if (def.wildColors === "rainbow") {
-    if (!targetColor) return { success: false, error: "Must choose a color for rainbow wild" };
-    removeCard(player.hand, cardDefId);
-    player.properties.push({ defId: cardDefId, assignedColor: targetColor });
-    state.actionsUsed++;
-    addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-      `played Polyjuice Potion as ${targetColor}`, def.id);
+    if (!targetColor || !PROPERTY_COLORS.includes(targetColor)) return fail("Choose a colour for Polyjuice Potion");
+    color = targetColor;
   } else if (Array.isArray(def.wildColors)) {
-    // Two-color wild: if targetColor specified, use it; otherwise default to first color
-    const color = targetColor && def.wildColors.includes(targetColor) ? targetColor : def.wildColors[0];
-    removeCard(player.hand, cardDefId);
-    player.properties.push({ defId: cardDefId, assignedColor: color });
-    state.actionsUsed++;
-    addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-      `played ${def.name} as ${color}`, def.id);
+    color = targetColor && def.wildColors.includes(targetColor) ? targetColor : def.wildColors[0];
   }
+  if (!color) return fail("Invalid colour");
+  removeCard(player.hand, cardDefId);
+  player.properties.push({ defId: cardDefId, assignedColor: color });
+  state.actionsUsed++;
+  log(state, player, `played ${def.name} as ${COLOR_LABEL[color]}`, def.id);
   checkWinCondition(state, player.visitorId);
-  return { success: true };
+  return ok;
 }
 
-function playRentCard(state: GameState, player: PlayerState, cardDefId: string, def: typeof CARD_DEF_MAP[string], targetColor?: PropertyColor): { success: boolean; error?: string } {
-  // Determine which color to charge rent for
+function playRentCard(state: GameState, player: PlayerState, cardDefId: string, targetColor?: PropertyColor): Result {
+  const def = CARD_DEF_MAP[cardDefId];
   let rentColor: PropertyColor | undefined;
 
   if (def.rentColors === "rainbow") {
-    // Rainbow rent: player chooses any color they own property of
-    if (!targetColor) return { success: false, error: "Must choose a color for rainbow rent" };
+    if (!targetColor) return fail("Choose a colour to charge rent for");
     rentColor = targetColor;
   } else if (Array.isArray(def.rentColors)) {
-    // Two-color rent: must choose one of the pair
-    if (targetColor && (def.rentColors as PropertyColor[]).includes(targetColor)) {
-      rentColor = targetColor;
-    } else {
-      // Default to whichever color the player has more properties of
-      const [c1, c2] = def.rentColors;
-      const count1 = getPropertiesOfColor(player, c1).length;
-      const count2 = getPropertiesOfColor(player, c2).length;
-      rentColor = count1 >= count2 ? c1 : c2;
-    }
+    const [c1, c2] = def.rentColors;
+    if (targetColor && (def.rentColors as PropertyColor[]).includes(targetColor)) rentColor = targetColor;
+    else rentColor = calculateRent(player, c1) >= calculateRent(player, c2) ? c1 : c2;
   }
-
-  if (!rentColor) return { success: false, error: "Invalid rent color" };
+  if (!rentColor) return fail("Invalid rent colour");
 
   const rentAmount = calculateRent(player, rentColor);
-  if (rentAmount === 0) return { success: false, error: "No properties of that color — rent is 0" };
+  if (rentAmount === 0) return fail(`You have no ${COLOR_LABEL[rentColor]} properties, so the rent would be 0`);
 
-  // Remove from hand, discard
   removeCard(player.hand, cardDefId);
   state.discardPile.push({ defId: cardDefId });
   state.actionsUsed++;
+  log(state, player, `charged everyone ${rentAmount}G ${COLOR_LABEL[rentColor]} rent`, def.id);
 
-  // Charge all other players
-  const targets = state.players.filter(p => p.visitorId !== player.visitorId);
-  
-  for (const target of targets) {
-    // Check Harry's protection
-    if (target.protectedColor === rentColor) {
-      addEvent(state, target.animal.emoji, target.animal.name, target.animal.colorClass,
-        `is protected from ${rentColor} rent by Harry's shield`);
-      continue;
-    }
-
-    // Set pending action for each target (process one at a time)
-    if (!state.pendingAction) {
-      state.pendingAction = {
-        type: "pay_rent",
-        sourcePlayerId: player.visitorId,
-        targetPlayerId: target.visitorId,
-        amount: rentAmount,
-        cardDefId,
-        data: { rentColor, remainingTargets: targets.filter(t => t.visitorId !== target.visitorId).map(t => t.visitorId) },
-      };
-    }
-  }
-
-  addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-    `charged ${rentAmount}G ${rentColor} rent`, def.id);
-
-  return { success: true };
+  // Every other player pays, one at a time
+  const targets = state.players.filter(p => p.visitorId !== player.visitorId).map(p => p.visitorId);
+  startPayments(state, "pay_rent", player.visitorId, targets, rentAmount, cardDefId, rentColor);
+  return ok;
 }
 
-function playActionCard(state: GameState, player: PlayerState, cardDefId: string, def: typeof CARD_DEF_MAP[string]): { success: boolean; error?: string; needsTarget?: boolean } {
+// Set up a queue of payers. Skips anyone Harry's shield protects from this rent.
+function startPayments(state: GameState, type: "pay_rent" | "pay_debt" | "pay_birthday", sourceId: string, targets: string[], amount: number, cardDefId: string, rentColor?: PropertyColor) {
+  const payment: PendingAction = {
+    type,
+    sourcePlayerId: sourceId,
+    targetPlayerId: "",
+    amount,
+    cardDefId,
+    data: { rentColor, remainingTargets: [...targets], allTargets: [...targets], results: [] as PaymentResult[] },
+  };
+  nextPayer(state, payment);
+}
+
+function nextPayer(state: GameState, payment: PendingAction) {
+  const data = payment.data;
+  while (data.remainingTargets.length > 0) {
+    const nextId: string = data.remainingTargets.shift();
+    const next = getPlayer(state, nextId);
+    if (!next) continue;
+    if (payment.type === "pay_rent" && data.rentColor && shieldOf(next) === data.rentColor) {
+      log(state, next, `is shielded from ${COLOR_LABEL[data.rentColor as PropertyColor]} rent by Harry's charm`);
+      data.results.push({ playerId: nextId, outcome: "shielded", amount: 0 });
+      continue;
+    }
+    state.pendingAction = { ...payment, targetPlayerId: nextId, data: { ...data } };
+    return;
+  }
+  state.pendingAction = null;
+}
+
+function playActionCard(state: GameState, player: PlayerState, cardDefId: string): Result {
+  const def = CARD_DEF_MAP[cardDefId];
+  const others = state.players.filter(p => p.visitorId !== player.visitorId);
+
+  // Actions that need a target can't be played if nobody has a valid target
+  const discardIt = () => {
+    removeCard(player.hand, cardDefId);
+    state.discardPile.push({ defId: cardDefId });
+    state.actionsUsed++;
+  };
+  const choose = (type: PendingAction["type"], message: string) => {
+    discardIt();
+    state.pendingAction = {
+      type, sourcePlayerId: player.visitorId, targetPlayerId: player.visitorId, cardDefId,
+      data: { free: state.freePlayCardId === cardDefId },
+    };
+    log(state, player, message, def.id);
+    return ok;
+  };
+
   switch (def.actionType) {
     case "felix_felicis": {
-      removeCard(player.hand, cardDefId);
-      state.discardPile.push({ defId: cardDefId });
-      state.actionsUsed++;
-      // Draw 2 more cards
+      discardIt();
+      let drawn = 0;
       for (let i = 0; i < 2; i++) {
         const card = drawFromPile(state);
-        if (card) player.hand.push(card);
+        if (card) { player.hand.push(card); drawn++; }
       }
-      addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        "used Felix Felicis — drew 2 extra cards", def.id);
-      return { success: true };
+      log(state, player, `drank Felix Felicis and drew ${drawn} extra cards`, def.id);
+      return ok;
     }
 
-    case "accio": {
-      // Needs target selection — return that info
-      removeCard(player.hand, cardDefId);
-      state.discardPile.push({ defId: cardDefId });
-      state.actionsUsed++;
-      state.pendingAction = {
-        type: "choose_steal",
-        sourcePlayerId: player.visitorId,
-        targetPlayerId: player.visitorId, // Attacker picks
-        cardDefId,
-      };
-      addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        "cast Accio — choose a property to steal", def.id);
-      return { success: true, needsTarget: true };
-    }
+    case "accio":
+      if (!others.some(o => o.properties.some(c => canTakeProperty(player, o, c.defId).success))) {
+        return fail("No one has a property you can take");
+      }
+      return choose("choose_steal", "cast Accio and is choosing a property to take");
 
-    case "confundus_charm": {
-      removeCard(player.hand, cardDefId);
-      state.discardPile.push({ defId: cardDefId });
-      state.actionsUsed++;
-      state.pendingAction = {
-        type: "choose_swap",
-        sourcePlayerId: player.visitorId,
-        targetPlayerId: player.visitorId, // Attacker picks
-        cardDefId,
-      };
-      addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        "cast Confundus Charm — choose properties to swap", def.id);
-      return { success: true, needsTarget: true };
-    }
+    case "confundus_charm":
+      if (player.properties.length === 0) return fail("You need a property of your own to swap");
+      if (!others.some(o => o.properties.some(c => canTakeProperty(player, o, c.defId).success))) {
+        return fail("No one has a property you can swap for");
+      }
+      return choose("choose_swap", "cast Confundus Charm and is choosing properties to swap");
 
-    case "expelliarmus": {
-      removeCard(player.hand, cardDefId);
-      state.discardPile.push({ defId: cardDefId });
-      state.actionsUsed++;
-      state.pendingAction = {
-        type: "choose_steal_set",
-        sourcePlayerId: player.visitorId,
-        targetPlayerId: player.visitorId,
-        cardDefId,
-      };
-      addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        "cast Expelliarmus — choose a complete set to steal", def.id);
-      return { success: true, needsTarget: true };
-    }
+    case "expelliarmus":
+      if (!others.some(o => PROPERTY_COLORS.some(c => isSetComplete(o, c) && shieldOf(o) !== c))) {
+        return fail("No one has a complete set you can take");
+      }
+      return choose("choose_steal_set", "cast Expelliarmus and is choosing a set to take");
 
-    case "gringotts_goblin": {
-      removeCard(player.hand, cardDefId);
-      state.discardPile.push({ defId: cardDefId });
-      state.actionsUsed++;
-      // Needs target player
-      state.pendingAction = {
-        type: "pay_debt",
-        sourcePlayerId: player.visitorId,
-        targetPlayerId: player.visitorId, // Will be set when target chosen
-        amount: 5,
-        cardDefId,
-      };
-      addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        "sent a Gringotts Goblin — choose who owes 5G", def.id);
-      return { success: true, needsTarget: true };
-    }
+    case "gringotts_goblin":
+      if (others.length === 0) return fail("No one to send the Goblin to");
+      return choose("choose_goblin", "sent a Gringotts Goblin and is choosing who owes 5G");
+
+    case "reducto":
+      if (!others.some(o => o.bank.length > 0 || o.properties.some(c => canTakeProperty(player, o, c.defId).success))) {
+        return fail("No one has a card you can destroy");
+      }
+      return choose("choose_reducto", "cast Reducto and is choosing what to destroy");
+
+    case "silencio":
+      if (!others.some(o => !o.isSilenced)) return fail("Everyone is already silenced");
+      return choose("choose_silencio", "cast Silencio and is choosing who to silence");
 
     case "yule_ball": {
-      removeCard(player.hand, cardDefId);
-      state.discardPile.push({ defId: cardDefId });
-      state.actionsUsed++;
-      // All other players owe 2G
-      const targets = state.players.filter(p => p.visitorId !== player.visitorId);
-      if (targets.length > 0) {
-        state.pendingAction = {
-          type: "pay_birthday",
-          sourcePlayerId: player.visitorId,
-          targetPlayerId: targets[0].visitorId,
-          amount: 2,
-          cardDefId,
-          data: { remainingTargets: targets.slice(1).map(t => t.visitorId) },
-        };
-      }
-      addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        "threw a Yule Ball — everyone pays 2G", def.id);
-      return { success: true };
-    }
-
-    case "reducto": {
-      removeCard(player.hand, cardDefId);
-      state.discardPile.push({ defId: cardDefId });
-      state.actionsUsed++;
-      state.pendingAction = {
-        type: "choose_reducto",
-        sourcePlayerId: player.visitorId,
-        targetPlayerId: player.visitorId, // Attacker picks
-        cardDefId,
-      };
-      addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        "cast Reducto — choose what to destroy", def.id);
-      return { success: true, needsTarget: true };
-    }
-
-    case "silencio": {
-      // Silencio is paid during attacker's own turn (costs the action)
-      removeCard(player.hand, cardDefId);
-      state.discardPile.push({ defId: cardDefId });
-      state.actionsUsed++;
-      state.pendingAction = {
-        type: "choose_silencio",
-        sourcePlayerId: player.visitorId,
-        targetPlayerId: player.visitorId, // Attacker picks target
-        cardDefId,
-      };
-      addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        "cast Silencio — choose who to silence", def.id);
-      return { success: true, needsTarget: true };
+      discardIt();
+      log(state, player, "threw a Yule Ball. Everyone pays 2G", def.id);
+      startPayments(state, "pay_birthday", player.visitorId, others.map(o => o.visitorId), 2, cardDefId);
+      return ok;
     }
 
     case "time_turner": {
-      // Draw ANY card from discard pile, must play it immediately
-      removeCard(player.hand, cardDefId);
-      state.discardPile.push({ defId: cardDefId });
-      state.actionsUsed++;
-      
-      if (state.discardPile.length <= 1) { // Only the Time-Turner itself
-        addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-          "used Time-Turner but the discard pile is empty", def.id);
-        return { success: true };
-      }
-      
-      // Player chooses card from discard pile (excluding the Time-Turner just discarded)
-      state.pendingAction = {
-        type: "time_turner_play",
-        sourcePlayerId: player.visitorId,
-        targetPlayerId: player.visitorId,
-        cardDefId,
-      };
-      addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        "activated the Time-Turner — choose a card from the discard pile", def.id);
-      return { success: true, needsTarget: true };
+      const choices = state.discardPile.filter(c => CARD_DEF_MAP[c.defId]?.actionType !== "time_turner");
+      if (choices.length === 0) return fail("There's nothing in the discard pile to take");
+      return choose("time_turner_play", "turned the Time-Turner and is choosing a card from the discard pile");
     }
 
-    case "protego": {
-      // Protego is typically played reactively, but can be banked
-      // If played as an action on your turn, it goes to bank
+    case "protego":
+      // Protego is played in response to an attack; on your own turn it can only be banked
       removeCard(player.hand, cardDefId);
       player.bank.push({ defId: cardDefId });
       state.actionsUsed++;
-      addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        "banked Protego for later use", def.id);
-      return { success: true };
-    }
+      log(state, player, `banked Protego (${def.value}G)`, def.id);
+      return ok;
 
     default:
-      return { success: false, error: "Unknown action type" };
+      return fail("Unknown action type");
   }
 }
 
-export function bankCard(state: GameState, visitorId: string, cardDefId: string): { success: boolean; error?: string } {
-  if (!isCurrentTurn(state, visitorId)) return { success: false, error: "Not your turn" };
-  if (!state.drawnThisTurn) return { success: false, error: "Must draw cards first" };
-  if (state.pendingAction) return { success: false, error: "Must resolve pending action first" };
-  if (state.actionsUsed >= state.maxActions) return { success: false, error: "No actions remaining" };
+export function bankCard(state: GameState, visitorId: string, cardDefId: string): Result {
+  const check = canAct(state, visitorId);
+  if (!check.success) return check;
+  if (!state.drawnThisTurn) return fail("Draw your cards first");
+  const guard = freePlayGuard(state, cardDefId);
+  if (!guard.success) return guard;
+  const free = state.freePlayCardId === cardDefId;
+  if (!free && state.actionsUsed >= state.maxActions) return fail("No actions left this turn");
 
   const player = getPlayer(state, visitorId)!;
-  const card = removeCard(player.hand, cardDefId);
-  if (!card) return { success: false, error: "Card not in hand" };
-
   const def = CARD_DEF_MAP[cardDefId];
-  if (!def || def.value === 0) return { success: false, error: "This card has no bank value" };
+  if (!def || !player.hand.some(c => c.defId === cardDefId)) return fail("Card not in hand");
+  if (def.type === "property" || def.type === "wild") return fail("Properties can't go in the bank");
+  if (def.value === 0) return fail("This card has no bank value");
 
-  player.bank.push(card);
-  state.actionsUsed++;
-
-  addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-    `banked ${def.name} (${def.value}G)`, def.id);
-
-  return { success: true };
+  return withFreePlay(state, cardDefId, () => {
+    player.bank.push(removeCard(player.hand, cardDefId)!);
+    state.actionsUsed++;
+    log(state, player, `banked ${def.name} (${def.value}G)`, def.id);
+    return ok;
+  });
 }
 
-export function endTurn(state: GameState, visitorId: string): { success: boolean; error?: string } {
-  if (!isCurrentTurn(state, visitorId)) return { success: false, error: "Not your turn" };
-  if (state.pendingAction) return { success: false, error: "Must resolve pending action first" };
+export function endTurn(state: GameState, visitorId: string): Result {
+  const check = canAct(state, visitorId);
+  if (!check.success) return check;
+  if (!state.drawnThisTurn) return fail("Draw your cards first");
+  if (state.freePlayCardId) return fail("Play the card you took with the Time-Turner first");
 
   const player = getPlayer(state, visitorId)!;
-
-  // Check if player has Harry role and needs to protect a color
-  if (player.role === "harry" && !player.isSilenced && !player.protectedColor) {
-    // Harry can choose to protect or skip
-    state.pendingAction = {
-      type: "harry_protect",
-      sourcePlayerId: visitorId,
-      targetPlayerId: visitorId,
-    };
-    return { success: true };
+  if (roleActive(player, "harry")) {
+    state.pendingAction = { type: "harry_protect", sourcePlayerId: visitorId, targetPlayerId: visitorId };
+    return ok;
   }
-
   return finalizeTurn(state, visitorId);
 }
 
-function finalizeTurn(state: GameState, visitorId: string): { success: boolean; error?: string } {
+function finalizeTurn(state: GameState, visitorId: string): Result {
   const player = getPlayer(state, visitorId)!;
-
-  // Discard down to 7 cards
   if (player.hand.length > 7) {
     state.pendingAction = {
       type: "discard_excess",
@@ -585,592 +523,570 @@ function finalizeTurn(state: GameState, visitorId: string): { success: boolean; 
       targetPlayerId: visitorId,
       data: { mustDiscard: player.hand.length - 7 },
     };
-    return { success: true };
+    return ok;
   }
-
-  // Advance turn
   advanceTurn(state);
-  return { success: true };
+  return ok;
 }
 
 function advanceTurn(state: GameState) {
-  // Clear protected color from previous Harry turn (protection lasts until their next turn)
   const currentPlayer = getCurrentPlayer(state);
-  if (currentPlayer) {
-    addEvent(state, currentPlayer.animal.emoji, currentPlayer.animal.name, currentPlayer.animal.colorClass,
-      "ended their turn");
-  }
+  if (currentPlayer) log(state, currentPlayer, "ended their turn");
 
-  // Move to next player
   state.currentTurnIndex = (state.currentTurnIndex + 1) % state.players.length;
   state.actionsUsed = 0;
   state.drawnThisTurn = false;
   state.pendingAction = null;
+  state.freePlayCardId = null;
 
   const next = getCurrentPlayer(state)!;
-  
-  // Reset Harry's protection at start of their new turn
-  if (next.role === "harry") {
-    next.protectedColor = undefined;
-  }
-
-  // Set max actions
-  state.maxActions = (next.role === "hermione" && !next.isSilenced) ? 4 : 3;
-
-  // Reset turn timer
+  // Harry's shield lasts until the start of his next turn
+  if (next.role === "harry") next.protectedColor = undefined;
+  state.maxActions = maxActionsFor(next);
   state.turnTimer = state.gameSpeed;
+  log(state, next, "starts their turn");
 
-  addEvent(state, next.animal.emoji, next.animal.name, next.animal.colorClass,
-    "starts their turn");
-
-  // Cedric choice at start of turn
-  if (next.role === "cedric" && !next.isSilenced && state.discardPile.length >= 2) {
-    state.pendingAction = {
-      type: "cedric_draw_choice",
-      sourcePlayerId: next.visitorId,
-      targetPlayerId: next.visitorId,
-    };
+  if (roleActive(next, "cedric") && state.discardPile.length > 0 && next.hand.length > 0) {
+    state.pendingAction = { type: "cedric_draw_choice", sourcePlayerId: next.visitorId, targetPlayerId: next.visitorId };
   }
 }
 
 // ========== FLIP WILD ==========
 
-export function flipWild(state: GameState, visitorId: string, cardDefId: string, newColor: PropertyColor): { success: boolean; error?: string } {
-  // Flipping a wild does NOT cost a turn
+export function flipWild(state: GameState, visitorId: string, cardDefId: string, newColor: PropertyColor): Result {
+  // Flipping a wild is free and can be done at any time
+  if (state.status !== "playing") return fail("The game is over");
   const player = getPlayer(state, visitorId);
-  if (!player) return { success: false, error: "Player not found" };
-
-  const cardIdx = player.properties.findIndex(c => c.defId === cardDefId);
-  if (cardIdx === -1) return { success: false, error: "Card not in properties" };
-
+  if (!player) return fail("Player not found");
+  const card = player.properties.find(c => c.defId === cardDefId);
+  if (!card) return fail("Card not in your properties");
   const def = CARD_DEF_MAP[cardDefId];
-  if (!def || def.type !== "wild") return { success: false, error: "Not a wild card" };
-
-  // Validate color
-  if (def.wildColors === "rainbow") {
-    // Rainbow can be any color
-    player.properties[cardIdx].assignedColor = newColor;
-  } else if (Array.isArray(def.wildColors)) {
-    if (!def.wildColors.includes(newColor)) {
-      return { success: false, error: `Invalid color for this wild card. Choose ${def.wildColors.join(" or ")}` };
-    }
-    player.properties[cardIdx].assignedColor = newColor;
+  if (!def || def.type !== "wild") return fail("Not a wild card");
+  if (!PROPERTY_COLORS.includes(newColor)) return fail("Invalid colour");
+  if (Array.isArray(def.wildColors) && !def.wildColors.includes(newColor)) {
+    return fail(`This wild can only be ${def.wildColors.map(c => COLOR_LABEL[c]).join(" or ")}`);
   }
-
-  addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-    `flipped ${def.name} to ${newColor}`, def.id);
-
+  if (card.assignedColor === newColor) return ok;
+  card.assignedColor = newColor;
+  log(state, player, `moved ${def.name} to ${COLOR_LABEL[newColor]}`, def.id);
   checkWinCondition(state, visitorId);
-  return { success: true };
+  return ok;
 }
 
 // ========== PAYMENT SYSTEM ==========
 
-export function payWithCards(state: GameState, visitorId: string, cardDefIds: string[]): { success: boolean; error?: string } {
+export function payWithCards(state: GameState, visitorId: string, cardDefIds: string[]): Result {
   const pending = state.pendingAction;
-  if (!pending) return { success: false, error: "No pending payment" };
-  if (pending.targetPlayerId !== visitorId) return { success: false, error: "Not your payment to make" };
+  if (!pending || !PAYMENT_TYPES.includes(pending.type)) return fail("Nothing to pay right now");
+  if (pending.targetPlayerId !== visitorId) return fail("Not your payment to make");
 
   const player = getPlayer(state, visitorId)!;
   const source = getPlayer(state, pending.sourcePlayerId)!;
   const amount = pending.amount ?? 0;
+  const ids = Array.from(new Set(cardDefIds || []));
 
-  // Collect payment cards from bank and properties
-  const paymentCards: GameCard[] = [];
-  let paymentValue = 0;
-
-  for (const defId of cardDefIds) {
-    // Try bank first, then properties
-    let card = removeCard(player.bank, defId);
-    if (!card) {
-      card = removeCard(player.properties, defId);
-    }
-    if (!card) return { success: false, error: `Card ${defId} not found in bank or properties` };
-    
-    paymentCards.push(card);
-    paymentValue += cardValue(card);
+  const chosen: GameCard[] = [];
+  for (const id of ids) {
+    const card = player.bank.find(c => c.defId === id) ?? player.properties.find(c => c.defId === id);
+    if (!card) return fail("One of those cards isn't in your bank or properties");
+    chosen.push(card);
   }
+  const paid = totalValue(chosen);
 
-  // "Pay what you can" rule — if player has no cards, they owe nothing
-  const totalAvailable = totalValue([...player.bank, ...player.properties]);
-  if (totalAvailable === 0 && paymentCards.length === 0) {
-    // Player has nothing — debt forgiven
-    addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-      "has nothing to pay with — debt forgiven");
-    resolvePayment(state);
-    return { success: true };
-  }
-
-  // Transfer payment cards to source player's bank
-  for (const card of paymentCards) {
-    source.bank.push(card);
-  }
-
-  addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-    `paid ${paymentValue}G`);
-
-  resolvePayment(state);
-  return { success: true };
-}
-
-function resolvePayment(state: GameState) {
-  const pending = state.pendingAction;
-  if (!pending) return;
-
-  // Check if there are remaining targets (for rent/yule ball)
-  if (pending.data?.remainingTargets?.length > 0) {
-    const nextTarget = pending.data.remainingTargets.shift();
-    const nextPlayer = getPlayer(state, nextTarget);
-    
-    if (nextPlayer) {
-      // Check Harry protection
-      if (pending.type === "pay_rent" && nextPlayer.protectedColor === pending.data?.rentColor) {
-        addEvent(state, nextPlayer.animal.emoji, nextPlayer.animal.name, nextPlayer.animal.colorClass,
-          "is protected by Harry's shield");
-        resolvePayment(state);
-        return;
-      }
-
-      state.pendingAction = {
-        ...pending,
-        targetPlayerId: nextTarget,
-        data: { ...pending.data },
-      };
-      return;
+  // You pay the full amount if you can. If you can't, you hand over everything
+  // you're required to pay with. No change is given.
+  if (paid < amount) {
+    const required = payableCards(player);
+    const missing = required.filter(c => !ids.includes(c.defId));
+    if (missing.length > 0) {
+      return fail(`You owe ${amount}G. Pick at least ${amount}G, or everything you have if you can't cover it`);
     }
   }
 
-  state.pendingAction = null;
+  for (const card of chosen) {
+    if (removeCard(player.bank, card.defId)) source.bank.push(card);
+    else if (removeCard(player.properties, card.defId)) source.properties.push(card);
+  }
+
+  if (chosen.length === 0) log(state, player, `had nothing to pay ${source.animal.name} with`);
+  else log(state, player, `paid ${source.animal.name} ${paid}G`);
+  pending.data = pending.data ?? { remainingTargets: [], results: [] };
+  pending.data.results = [...(pending.data.results ?? []), { playerId: visitorId, outcome: chosen.length ? "paid" : "nothing", amount: paid }];
+
+  checkWinCondition(state, source.visitorId);
+  if (state.status !== "playing") { state.pendingAction = null; return ok; }
+  nextPayer(state, pending);
+  return ok;
 }
 
 // ========== PROTEGO (Just Say No) ==========
+// An attack waits in a "protego_response" while the defender (and then the
+// attacker, and so on) may cancel it. An even number of Protegos means the
+// original action happens; an odd number cancels it.
 
-export function playProtego(state: GameState, visitorId: string): { success: boolean; error?: string } {
-  const pending = state.pendingAction;
-  if (!pending) return { success: false, error: "No pending action to counter" };
-  if (pending.targetPlayerId !== visitorId) return { success: false, error: "Not targeted at you" };
-
-  const player = getPlayer(state, visitorId)!;
-  
-  // Find protego in hand
-  const protegoIdx = player.hand.findIndex(c => {
-    const def = CARD_DEF_MAP[c.defId];
-    return def?.actionType === "protego";
-  });
-  if (protegoIdx === -1) return { success: false, error: "No Protego in hand" };
-
-  // Remove Protego and discard it
-  const protego = player.hand.splice(protegoIdx, 1)[0];
-  state.discardPile.push(protego);
-
-  addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-    "cast Protego — action blocked!", "action_protego.webp");
-
-  // The original attacker can counter with their own Protego (unlimited chain)
-  const attacker = getPlayer(state, pending.sourcePlayerId);
-  if (attacker && hasProtego(attacker)) {
-    // Swap: now the attacker is being asked if they want to counter
+function offerProtego(state: GameState, original: PendingAction) {
+  const defender = getPlayer(state, original.targetPlayerId);
+  if (hasProtego(defender)) {
     state.pendingAction = {
       type: "protego_response",
-      sourcePlayerId: visitorId, // The one who just cast Protego
-      targetPlayerId: pending.sourcePlayerId, // Original attacker can counter
-      cardDefId: pending.cardDefId,
-      data: { originalAction: pending },
+      sourcePlayerId: original.sourcePlayerId,
+      targetPlayerId: original.targetPlayerId,
+      cardDefId: original.cardDefId,
+      data: { originalAction: original, blocks: 0 },
     };
   } else {
-    // Action fully blocked
-    state.pendingAction = null;
+    executeAction(state, original);
   }
-
-  return { success: true };
 }
 
-export function declineProtego(state: GameState, visitorId: string): { success: boolean; error?: string } {
+export function playProtego(state: GameState, visitorId: string): Result {
   const pending = state.pendingAction;
-  if (!pending) return { success: false, error: "No pending action" };
-  if (pending.targetPlayerId !== visitorId) return { success: false, error: "Not your decision" };
+  if (!pending) return fail("Nothing to block right now");
+  if (pending.targetPlayerId !== visitorId) return fail("That action isn't aimed at you");
 
+  let original: PendingAction;
+  let blocks: number;
   if (pending.type === "protego_response") {
-    // Attacker declines to counter — original action is blocked
-    state.pendingAction = null;
-    addEvent(state, "🛡️", "System", "#888", "Protego stands — action cancelled");
+    original = pending.data.originalAction;
+    blocks = pending.data.blocks ?? 0;
+  } else if (PAYMENT_TYPES.includes(pending.type)) {
+    original = pending;
+    blocks = 0;
+  } else {
+    return fail("Protego can't block this");
   }
 
-  return { success: true };
+  const player = getPlayer(state, visitorId)!;
+  const idx = player.hand.findIndex(c => CARD_DEF_MAP[c.defId]?.actionType === "protego");
+  if (idx === -1) return fail("You don't have a Protego");
+  state.discardPile.push(player.hand.splice(idx, 1)[0]);
+  blocks++;
+  log(state, player, blocks % 2 === 1 ? "cast Protego to block it" : "cast Protego back to push it through", "action_protego_1");
+
+  // The other side may answer with their own Protego
+  const nextResponder = blocks % 2 === 1 ? original.sourcePlayerId : original.targetPlayerId;
+  if (hasProtego(getPlayer(state, nextResponder))) {
+    state.pendingAction = {
+      type: "protego_response",
+      sourcePlayerId: original.sourcePlayerId,
+      targetPlayerId: nextResponder,
+      cardDefId: original.cardDefId,
+      data: { originalAction: original, blocks },
+    };
+    return ok;
+  }
+  resolveProtego(state, original, blocks);
+  return ok;
+}
+
+export function declineProtego(state: GameState, visitorId: string): Result {
+  const pending = state.pendingAction;
+  if (!pending || pending.type !== "protego_response") return fail("Nothing to decide right now");
+  if (pending.targetPlayerId !== visitorId) return fail("Not your decision");
+  resolveProtego(state, pending.data.originalAction, pending.data.blocks ?? 0);
+  return ok;
+}
+
+function resolveProtego(state: GameState, original: PendingAction, blocks: number) {
+  if (blocks % 2 === 0) {
+    executeAction(state, original);
+    return;
+  }
+  const target = getPlayer(state, original.targetPlayerId);
+  addEvent(state, "🛡️", "Protego", "#888", `${target?.animal.name ?? "The target"} is protected. The action is cancelled`);
+  if (PAYMENT_TYPES.includes(original.type)) {
+    original.data.results = [...(original.data.results ?? []), { playerId: original.targetPlayerId, outcome: "blocked", amount: 0 }];
+    nextPayer(state, original);
+  } else {
+    state.pendingAction = null;
+  }
+}
+
+// Carry out an attack once it's no longer blocked
+function executeAction(state: GameState, action: PendingAction) {
+  const attacker = getPlayer(state, action.sourcePlayerId);
+  const target = getPlayer(state, action.targetPlayerId);
+  state.pendingAction = null;
+  if (!attacker || !target) return;
+  const d = action.data ?? {};
+
+  if (PAYMENT_TYPES.includes(action.type)) {
+    // Payment goes back to the payer to choose cards
+    state.pendingAction = action;
+    return;
+  }
+
+  switch (action.type) {
+    case "choose_steal": {
+      const check = canTakeProperty(attacker, target, d.targetCardDefId);
+      if (!check.success) { log(state, attacker, `'s Accio fizzled: ${check.error}`); return; }
+      const card = removeCard(target.properties, d.targetCardDefId)!;
+      attacker.properties.push(card);
+      log(state, attacker, `used Accio to take ${CARD_DEF_MAP[card.defId]?.name} from ${target.animal.name}`, card.defId);
+      checkWinCondition(state, attacker.visitorId);
+      return;
+    }
+    case "choose_swap": {
+      const check = canTakeProperty(attacker, target, d.targetCardDefId);
+      const ours = attacker.properties.find(c => c.defId === d.ownCardDefId);
+      if (!check.success || !ours) { log(state, attacker, "'s Confundus Charm fizzled"); return; }
+      const theirs = removeCard(target.properties, d.targetCardDefId)!;
+      removeCard(attacker.properties, d.ownCardDefId);
+      attacker.properties.push(theirs);
+      target.properties.push(ours);
+      log(state, attacker, `used Confundus to swap ${CARD_DEF_MAP[ours.defId]?.name} for ${target.animal.name}'s ${CARD_DEF_MAP[theirs.defId]?.name}`);
+      checkWinCondition(state, attacker.visitorId);
+      if (state.status === "playing") checkWinCondition(state, target.visitorId);
+      return;
+    }
+    case "choose_steal_set": {
+      const color = d.color as PropertyColor;
+      if (!isSetComplete(target, color) || shieldOf(target) === color) { log(state, attacker, "'s Expelliarmus fizzled"); return; }
+      const stolen = target.properties.filter(c => getEffectiveColor(c) === color);
+      target.properties = target.properties.filter(c => getEffectiveColor(c) !== color);
+      attacker.properties.push(...stolen);
+      log(state, attacker, `used Expelliarmus to take ${target.animal.name}'s ${COLOR_LABEL[color]} set`);
+      checkWinCondition(state, attacker.visitorId);
+      return;
+    }
+    case "choose_reducto": {
+      const id = d.targetCardDefId as string;
+      let card: GameCard | undefined;
+      if (target.properties.some(c => c.defId === id)) {
+        if (!canTakeProperty(attacker, target, id).success) { log(state, attacker, "'s Reducto fizzled"); return; }
+        card = removeCard(target.properties, id);
+      } else {
+        card = removeCard(target.bank, id);
+      }
+      if (!card) { log(state, attacker, "'s Reducto fizzled"); return; }
+      state.discardPile.push({ defId: card.defId });
+      log(state, attacker, `used Reducto to destroy ${target.animal.name}'s ${CARD_DEF_MAP[card.defId]?.name}`, card.defId);
+      return;
+    }
+    case "choose_silencio": {
+      target.isSilenced = true;
+      log(state, attacker, `silenced ${target.animal.name}. Their role power is off until they pay 10G`);
+      // Silencing the current player mid-turn would only happen through odd timing, but keep actions consistent
+      if (isCurrentTurn(state, target.visitorId)) state.maxActions = maxActionsFor(target);
+      return;
+    }
+  }
 }
 
 // ========== TARGET SELECTION ==========
 
-export function chooseTarget(state: GameState, visitorId: string, targetPlayerId: string, targetCardDefId?: string, ownCardDefId?: string): { success: boolean; error?: string } {
+function canTakeProperty(attacker: PlayerState, target: PlayerState, cardDefId: string): Result {
+  const card = target.properties.find(c => c.defId === cardDefId);
+  if (!card) return fail("That property isn't there any more");
+  const color = getEffectiveColor(card);
+  if (color && shieldOf(target) === color) return fail("That colour is shielded by Harry's charm");
+  if (color && isSetComplete(target, color) && !roleActive(attacker, "draco")) {
+    return fail("You can't take from a complete set");
+  }
+  return ok;
+}
+
+export function chooseTarget(state: GameState, visitorId: string, targetPlayerId: string, targetCardDefId?: string, ownCardDefId?: string): Result {
   const pending = state.pendingAction;
-  if (!pending) return { success: false, error: "No pending action" };
-  if (pending.sourcePlayerId !== visitorId) return { success: false, error: "Not your action" };
+  if (!pending) return fail("Nothing to choose right now");
+  if (pending.sourcePlayerId !== visitorId || pending.targetPlayerId !== visitorId) return fail("Not your action");
 
   const attacker = getPlayer(state, visitorId)!;
   const target = getPlayer(state, targetPlayerId);
-  if (!target) return { success: false, error: "Target player not found" };
+  if (!target) return fail("Choose another player");
+  if (target.visitorId === visitorId) return fail("Choose another player, not yourself");
+
+  const action = (type: PendingAction["type"], data: any): PendingAction => ({
+    type, sourcePlayerId: visitorId, targetPlayerId, cardDefId: pending.cardDefId, data,
+  });
 
   switch (pending.type) {
     case "choose_steal": {
-      // Accio: steal a single property
-      if (!targetCardDefId) return { success: false, error: "Must choose a property to steal" };
-      const def = CARD_DEF_MAP[targetCardDefId];
-      if (!def) return { success: false, error: "Invalid card" };
-      
-      const targetColor = getEffectiveColor(target.properties.find(c => c.defId === targetCardDefId)!);
-      
-      // Check if from complete set (only Draco can do this)
-      if (targetColor && isSetComplete(target, targetColor) && attacker.role !== "draco") {
-        return { success: false, error: "Cannot steal from a complete set (unless you're Draco)" };
-      }
-
-      // Check Harry protection
-      if (target.protectedColor && targetColor === target.protectedColor) {
-        return { success: false, error: "That color is protected by Harry's shield" };
-      }
-
-      // Set pending for target to potentially Protego
-      state.pendingAction = {
-        type: "protego_response",
-        sourcePlayerId: visitorId,
-        targetPlayerId: targetPlayerId,
-        cardDefId: pending.cardDefId,
-        data: {
-          originalAction: {
-            type: "choose_steal",
-            sourcePlayerId: visitorId,
-            targetPlayerId: targetPlayerId,
-            data: { targetCardDefId },
-          },
-        },
-      };
-
-      // If target has no Protego, execute immediately
-      if (!hasProtego(target)) {
-        const card = removeCard(target.properties, targetCardDefId);
-        if (card) {
-          attacker.properties.push(card);
-          addEvent(state, attacker.animal.emoji, attacker.animal.name, attacker.animal.colorClass,
-            `used Accio to steal ${def.name} from ${target.animal.name}`, def.id);
-        }
-        state.pendingAction = null;
-        checkWinCondition(state, visitorId);
-      }
-
-      return { success: true };
+      if (!targetCardDefId) return fail("Choose a property to take");
+      const check = canTakeProperty(attacker, target, targetCardDefId);
+      if (!check.success) return check;
+      log(state, attacker, `aims Accio at ${target.animal.name}'s ${CARD_DEF_MAP[targetCardDefId]?.name}`);
+      offerProtego(state, action("choose_steal", { targetCardDefId }));
+      return ok;
     }
-
     case "choose_swap": {
-      // Confundus: swap one of your properties with one of theirs
-      if (!targetCardDefId || !ownCardDefId) return { success: false, error: "Must choose both cards to swap" };
-
-      const theirColor = getEffectiveColor(target.properties.find(c => c.defId === targetCardDefId)!);
-      
-      if (theirColor && isSetComplete(target, theirColor) && attacker.role !== "draco") {
-        return { success: false, error: "Cannot swap from a complete set (unless Draco)" };
-      }
-
-      if (target.protectedColor && theirColor === target.protectedColor) {
-        return { success: false, error: "That color is protected" };
-      }
-
-      // If target has Protego, they can block
-      if (hasProtego(target)) {
-        state.pendingAction = {
-          type: "protego_response",
-          sourcePlayerId: visitorId,
-          targetPlayerId: targetPlayerId,
-          cardDefId: pending.cardDefId,
-          data: {
-            originalAction: {
-              type: "choose_swap",
-              sourcePlayerId: visitorId,
-              targetPlayerId: targetPlayerId,
-              data: { targetCardDefId, ownCardDefId },
-            },
-          },
-        };
-      } else {
-        // Execute swap
-        const theirCard = removeCard(target.properties, targetCardDefId);
-        const ourCard = removeCard(attacker.properties, ownCardDefId);
-        if (theirCard && ourCard) {
-          attacker.properties.push(theirCard);
-          target.properties.push(ourCard);
-          const theirDef = CARD_DEF_MAP[targetCardDefId];
-          const ourDef = CARD_DEF_MAP[ownCardDefId];
-          addEvent(state, attacker.animal.emoji, attacker.animal.name, attacker.animal.colorClass,
-            `used Confundus to swap ${ourDef?.name} for ${theirDef?.name} from ${target.animal.name}`);
-        }
-        state.pendingAction = null;
-        checkWinCondition(state, visitorId);
-      }
-
-      return { success: true };
+      if (!targetCardDefId || !ownCardDefId) return fail("Choose one of your properties and one of theirs");
+      if (!attacker.properties.some(c => c.defId === ownCardDefId)) return fail("That isn't your property");
+      const check = canTakeProperty(attacker, target, targetCardDefId);
+      if (!check.success) return check;
+      log(state, attacker, `aims Confundus at ${target.animal.name}'s ${CARD_DEF_MAP[targetCardDefId]?.name}`);
+      offerProtego(state, action("choose_swap", { targetCardDefId, ownCardDefId }));
+      return ok;
     }
-
     case "choose_steal_set": {
-      // Expelliarmus: steal a complete set
-      if (!targetCardDefId) return { success: false, error: "Must choose a color" };
-      const color = targetCardDefId as PropertyColor; // Reusing field for color
-      
-      if (!isSetComplete(target, color)) {
-        return { success: false, error: "That's not a complete set" };
-      }
-
-      if (target.protectedColor === color) {
-        return { success: false, error: "That color is protected" };
-      }
-
-      if (hasProtego(target)) {
-        state.pendingAction = {
-          type: "protego_response",
-          sourcePlayerId: visitorId,
-          targetPlayerId: targetPlayerId,
-          cardDefId: pending.cardDefId,
-          data: { originalAction: { type: "choose_steal_set", data: { color } } },
-        };
-      } else {
-        // Steal all cards of that color
-        const stolen = target.properties.filter(c => getEffectiveColor(c) === color);
-        target.properties = target.properties.filter(c => getEffectiveColor(c) !== color);
-        attacker.properties.push(...stolen);
-        addEvent(state, attacker.animal.emoji, attacker.animal.name, attacker.animal.colorClass,
-          `used Expelliarmus to steal the ${color} set from ${target.animal.name}`);
-        state.pendingAction = null;
-        checkWinCondition(state, visitorId);
-      }
-
-      return { success: true };
+      const color = targetCardDefId as PropertyColor; // the colour is sent in this field
+      if (!PROPERTY_COLORS.includes(color) || !isSetComplete(target, color)) return fail("That's not a complete set");
+      if (shieldOf(target) === color) return fail("That colour is shielded by Harry's charm");
+      log(state, attacker, `aims Expelliarmus at ${target.animal.name}'s ${COLOR_LABEL[color]} set`);
+      offerProtego(state, action("choose_steal_set", { color }));
+      return ok;
     }
-
-    case "pay_debt": {
-      // Gringotts Goblin: target chosen
-      state.pendingAction = {
-        type: "pay_debt",
-        sourcePlayerId: visitorId,
-        targetPlayerId: targetPlayerId,
-        amount: 5,
-        cardDefId: pending.cardDefId,
-      };
-
-      if (hasProtego(target)) {
-        state.pendingAction = {
-          type: "protego_response",
-          sourcePlayerId: visitorId,
-          targetPlayerId: targetPlayerId,
-          cardDefId: pending.cardDefId,
-          data: { originalAction: state.pendingAction },
-        };
-      }
-
-      addEvent(state, attacker.animal.emoji, attacker.animal.name, attacker.animal.colorClass,
-        `sent a Gringotts Goblin to ${target.animal.name} — owes 5G`);
-
-      return { success: true };
-    }
-
     case "choose_reducto": {
-      // Reducto: attacker picks a card from target to discard
-      if (!targetCardDefId) return { success: false, error: "Must choose a card to destroy" };
-
-      const theirColor = getEffectiveColor(target.properties.find(c => c.defId === targetCardDefId) || { defId: targetCardDefId });
-      
-      // Can target complete sets if attacker is Draco
-      if (theirColor && isSetComplete(target, theirColor) && attacker.role !== "draco") {
-        return { success: false, error: "Cannot target complete sets (unless Draco)" };
+      if (!targetCardDefId) return fail("Choose a card to destroy");
+      if (target.properties.some(c => c.defId === targetCardDefId)) {
+        const check = canTakeProperty(attacker, target, targetCardDefId);
+        if (!check.success) return check;
+      } else if (!target.bank.some(c => c.defId === targetCardDefId)) {
+        return fail("That card isn't there");
       }
-
-      if (target.protectedColor && theirColor === target.protectedColor) {
-        return { success: false, error: "That color is protected" };
-      }
-
-      if (hasProtego(target)) {
-        state.pendingAction = {
-          type: "protego_response",
-          sourcePlayerId: visitorId,
-          targetPlayerId: targetPlayerId,
-          cardDefId: pending.cardDefId,
-          data: { originalAction: { type: "choose_reducto", data: { targetCardDefId } } },
-        };
-      } else {
-        // Discard the targeted card
-        let card = removeCard(target.properties, targetCardDefId);
-        if (!card) card = removeCard(target.bank, targetCardDefId);
-        if (card) {
-          state.discardPile.push(card);
-          const def = CARD_DEF_MAP[targetCardDefId];
-          addEvent(state, attacker.animal.emoji, attacker.animal.name, attacker.animal.colorClass,
-            `used Reducto to destroy ${def?.name} from ${target.animal.name}`, def?.id);
-        }
-        state.pendingAction = null;
-      }
-
-      return { success: true };
+      log(state, attacker, `aims Reducto at ${target.animal.name}'s ${CARD_DEF_MAP[targetCardDefId]?.name}`);
+      offerProtego(state, action("choose_reducto", { targetCardDefId }));
+      return ok;
     }
-
     case "choose_silencio": {
-      // Silence a player's role
-      if (hasProtego(target)) {
-        state.pendingAction = {
-          type: "protego_response",
-          sourcePlayerId: visitorId,
-          targetPlayerId: targetPlayerId,
-          cardDefId: pending.cardDefId,
-          data: { originalAction: { type: "choose_silencio" } },
-        };
-      } else {
-        target.isSilenced = true;
-        addEvent(state, attacker.animal.emoji, attacker.animal.name, attacker.animal.colorClass,
-          `used Silencio on ${target.animal.name} — role power disabled`);
-        state.pendingAction = null;
-      }
-      return { success: true };
+      if (target.isSilenced) return fail("They're already silenced");
+      log(state, attacker, `aims Silencio at ${target.animal.name}`);
+      offerProtego(state, action("choose_silencio", {}));
+      return ok;
     }
-
+    case "choose_goblin": {
+      log(state, attacker, `sent the Gringotts Goblin to ${target.animal.name}, who owes 5G`);
+      startPayments(state, "pay_debt", visitorId, [targetPlayerId], 5, pending.cardDefId!);
+      return ok;
+    }
     default:
-      return { success: false, error: "Unknown pending action type" };
+      return fail("Nothing to choose right now");
   }
 }
 
 // ========== SPECIAL ACTIONS ==========
 
-export function harryProtectColor(state: GameState, visitorId: string, color?: PropertyColor): { success: boolean; error?: string } {
-  const player = getPlayer(state, visitorId);
-  if (!player || player.role !== "harry" || player.isSilenced) {
-    return { success: false, error: "Only Harry can protect a color" };
-  }
+export function harryProtectColor(state: GameState, visitorId: string, color?: PropertyColor): Result {
+  const pending = state.pendingAction;
+  if (!pending || pending.type !== "harry_protect" || pending.targetPlayerId !== visitorId) return fail("Nothing to shield right now");
+  const player = getPlayer(state, visitorId)!;
+  if (!roleActive(player, "harry")) return fail("Only Harry can shield a colour");
+  if (color && !PROPERTY_COLORS.includes(color)) return fail("Invalid colour");
 
-  player.protectedColor = color; // undefined means skip protection
-
-  if (color) {
-    addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-      `placed a protective charm on ${color} properties`);
-  }
-
+  player.protectedColor = color || undefined;
+  if (color) log(state, player, `shielded ${COLOR_LABEL[color]} until their next turn`);
   state.pendingAction = null;
   return finalizeTurn(state, visitorId);
 }
 
-export function cedricChooseSource(state: GameState, visitorId: string, source: "deck" | "discard"): { success: boolean; error?: string } {
-  const player = getPlayer(state, visitorId);
-  if (!player) return { success: false, error: "Player not found" };
-  
-  state.pendingAction = null;
-
-  if (source === "discard") {
-    return cedricDrawFromDiscard(state, visitorId);
-  }
-  // "deck" — normal draw happens via drawCards
-  return { success: true };
-}
-
-export function timeTurnerChoose(state: GameState, visitorId: string, cardDefId: string): { success: boolean; error?: string } {
+export function timeTurnerChoose(state: GameState, visitorId: string, cardDefId: string): Result {
   const pending = state.pendingAction;
-  if (!pending || pending.type !== "time_turner_play") return { success: false, error: "No Time-Turner action pending" };
+  if (!pending || pending.type !== "time_turner_play" || pending.sourcePlayerId !== visitorId) return fail("No Time-Turner to use");
+  const def = CARD_DEF_MAP[cardDefId];
+  if (!def || def.actionType === "time_turner") return fail("Choose a different card");
+  const idx = state.discardPile.findIndex(c => c.defId === cardDefId);
+  if (idx === -1) return fail("That card isn't in the discard pile");
 
   const player = getPlayer(state, visitorId)!;
-  
-  // Find the card in discard pile
-  const idx = state.discardPile.findIndex(c => c.defId === cardDefId);
-  if (idx === -1) return { success: false, error: "Card not in discard pile" };
-
-  // Remove from discard, add to hand
-  const card = state.discardPile.splice(idx, 1)[0];
-  player.hand.push(card);
-
-  const def = CARD_DEF_MAP[cardDefId];
-  addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-    `retrieved ${def?.name} from the discard pile with Time-Turner`, def?.id);
-
-  // Must play it immediately (it counts as the Time-Turner action already used)
-  // For now, clear pending - the card is in hand and player must play it
+  player.hand.push(state.discardPile.splice(idx, 1)[0]);
+  state.freePlayCardId = cardDefId;
   state.pendingAction = null;
-  
-  return { success: true };
+  log(state, player, `took ${def.name} back with the Time-Turner and plays it next`, def.id);
+  return ok;
 }
 
-export function paySilencio(state: GameState, visitorId: string, cardDefIds: string[]): { success: boolean; error?: string } {
+export function paySilencio(state: GameState, visitorId: string, cardDefIds: string[]): Result {
   const player = getPlayer(state, visitorId);
-  if (!player || !player.isSilenced) return { success: false, error: "Not silenced" };
-
-  // Must pay 10G from bank/properties
-  let totalPaid = 0;
-  const paidCards: GameCard[] = [];
-
-  for (const defId of cardDefIds) {
-    let card = removeCard(player.bank, defId);
-    if (!card) card = removeCard(player.properties, defId);
-    if (!card) return { success: false, error: `Card ${defId} not found` };
-    paidCards.push(card);
-    totalPaid += cardValue(card);
+  if (!player || !player.isSilenced) return fail("You're not silenced");
+  const ids = Array.from(new Set(cardDefIds || []));
+  const chosen: GameCard[] = [];
+  for (const id of ids) {
+    const card = player.bank.find(c => c.defId === id) ?? player.properties.find(c => c.defId === id);
+    if (!card) return fail("One of those cards isn't in your bank or properties");
+    chosen.push(card);
   }
+  const total = totalValue(chosen);
+  if (total < 10) return fail(`Pick at least 10G to lift Silencio (you picked ${total}G)`);
 
-  if (totalPaid < 10) {
-    // Return cards
-    for (const card of paidCards) player.bank.push(card);
-    return { success: false, error: "Must pay at least 10G to remove Silencio" };
+  for (const card of chosen) {
+    if (!removeCard(player.bank, card.defId)) removeCard(player.properties, card.defId);
+    state.discardPile.push({ defId: card.defId });
   }
-
-  // Discard payment
-  for (const card of paidCards) {
-    state.discardPile.push(card);
-  }
-
   player.isSilenced = false;
-
-  // Update max actions if it's their turn and they're Hermione
-  const current = getCurrentPlayer(state);
-  if (current?.visitorId === visitorId && player.role === "hermione") {
-    state.maxActions = 4;
-  }
-
-  addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-    `paid ${totalPaid}G to remove Silencio`);
-
-  return { success: true };
+  if (isCurrentTurn(state, visitorId)) state.maxActions = maxActionsFor(player);
+  log(state, player, `paid ${total}G to lift Silencio. Their role power is back`);
+  return ok;
 }
 
-export function discardCards(state: GameState, visitorId: string, cardDefIds: string[]): { success: boolean; error?: string } {
+const CANCELLABLE: PendingAction["type"][] = [
+  "choose_steal", "choose_swap", "choose_steal_set", "choose_reducto", "choose_silencio", "choose_goblin", "time_turner_play",
+];
+
+/** Take back an action card while still picking its target. The card and the action come back. */
+export function cancelChoice(state: GameState, visitorId: string): Result {
   const pending = state.pendingAction;
-  if (!pending || pending.type !== "discard_excess") return { success: false, error: "No discard required" };
-  if (pending.targetPlayerId !== visitorId) return { success: false, error: "Not your discard" };
+  if (!pending || !CANCELLABLE.includes(pending.type)) return fail("Nothing to take back");
+  if (pending.sourcePlayerId !== visitorId) return fail("Not your action");
+  const player = getPlayer(state, visitorId)!;
+  const cardDefId = pending.cardDefId!;
+  const idx = state.discardPile.map(c => c.defId).lastIndexOf(cardDefId);
+  if (idx < 0) return fail("Card not found");
+  state.discardPile.splice(idx, 1);
+  player.hand.push({ defId: cardDefId });
+  if (pending.data?.free) state.freePlayCardId = cardDefId;
+  else state.actionsUsed = Math.max(0, state.actionsUsed - 1);
+  state.pendingAction = null;
+  log(state, player, `took back ${CARD_DEF_MAP[cardDefId]?.name ?? "a card"}`, cardDefId);
+  return ok;
+}
+
+export function discardCards(state: GameState, visitorId: string, cardDefIds: string[]): Result {
+  const pending = state.pendingAction;
+  if (!pending || pending.type !== "discard_excess") return fail("No discard needed");
+  if (pending.targetPlayerId !== visitorId) return fail("Not your discard");
 
   const player = getPlayer(state, visitorId)!;
   const mustDiscard = pending.data?.mustDiscard ?? 0;
+  const ids = Array.from(new Set(cardDefIds || []));
+  if (ids.length !== mustDiscard) return fail(`Discard exactly ${mustDiscard} card${mustDiscard === 1 ? "" : "s"}`);
+  if (!ids.every(id => player.hand.some(c => c.defId === id))) return fail("One of those cards isn't in your hand");
 
-  if (cardDefIds.length !== mustDiscard) {
-    return { success: false, error: `Must discard exactly ${mustDiscard} cards` };
-  }
-
-  for (const defId of cardDefIds) {
-    const card = removeCard(player.hand, defId);
-    if (!card) return { success: false, error: `Card ${defId} not in hand` };
-    state.discardPile.push(card);
-  }
-
+  for (const id of ids) state.discardPile.push(removeCard(player.hand, id)!);
   state.pendingAction = null;
-
-  addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-    `discarded ${mustDiscard} cards`);
-
-  // Now advance turn
+  log(state, player, `discarded ${mustDiscard} card${mustDiscard === 1 ? "" : "s"}`);
   advanceTurn(state);
-  return { success: true };
+  return ok;
+}
+
+// ========== SLEEP MODE ==========
+
+/** Anyone can put the player the game is waiting on to sleep once the timer runs out. */
+export function putToSleep(state: GameState, actorId: string, targetPlayerId: string): Result {
+  if (state.status !== "playing") return fail("The game is over");
+  if (!getPlayer(state, actorId)) return fail("Only players can do that");
+  const target = getPlayer(state, targetPlayerId);
+  if (!target) return fail("Player not found");
+  if (target.visitorId === actorId) return fail("You can't put yourself to sleep");
+  if (state.turnTimer > 0) return fail("Their time isn't up yet");
+  if (getWaitingOn(state) !== targetPlayerId) return fail("The game isn't waiting on them");
+  target.isSleeping = true;
+  addEvent(state, "💤", target.animal.name, target.animal.colorClass, "fell asleep. A bot is playing for them");
+  return ok;
+}
+
+export function wakeUp(state: GameState, visitorId: string): Result {
+  const player = getPlayer(state, visitorId);
+  if (!player) return fail("Player not found");
+  if (!player.isSleeping) return ok;
+  player.isSleeping = false;
+  log(state, player, "is back");
+  return ok;
+}
+
+// The bot pays with the cheapest cards: bank first, then loose properties,
+// then complete sets. It never pays with Harry's shielded colour.
+function botPayment(state: GameState, player: PlayerState, amount: number): string[] {
+  const shield = shieldOf(player);
+  const bank = [...player.bank].sort((a, b) => cardValue(a) - cardValue(b));
+  const props = player.properties
+    .filter(c => !shield || getEffectiveColor(c) !== shield)
+    .sort((a, b) => {
+      const ca = getEffectiveColor(a), cb = getEffectiveColor(b);
+      const fa = ca && isSetComplete(player, ca) ? 1 : 0, fb = cb && isSetComplete(player, cb) ? 1 : 0;
+      return fa - fb || cardValue(a) - cardValue(b);
+    });
+  const picked: string[] = [];
+  let total = 0;
+  for (const card of [...bank, ...props]) {
+    if (total >= amount) break;
+    if (cardValue(card) === 0) continue;
+    picked.push(card.defId);
+    total += cardValue(card);
+  }
+  // If it still can't cover the debt it must hand over everything payable
+  if (total < amount) return payableCards(player).map(c => c.defId);
+  return picked;
+}
+
+function bestColorFor(player: PlayerState, colors: PropertyColor[]): PropertyColor {
+  return [...colors].sort((a, b) => getPropertiesOfColor(player, b).length - getPropertiesOfColor(player, a).length)[0];
+}
+
+/**
+ * Make one move for a sleeping player. Returns true if it did something.
+ * The bot keeps the game moving: it draws, plays properties, banks money,
+ * pays debts with its cheapest cards and ends its turn. It never attacks.
+ */
+export function botStep(state: GameState): boolean {
+  const waitingOn = getWaitingOn(state);
+  const bot = waitingOn ? getPlayer(state, waitingOn) : undefined;
+  if (!bot || !bot.isSleeping || state.status !== "playing") return false;
+  const id = bot.visitorId;
+  const pending = state.pendingAction;
+
+  if (pending) {
+    switch (pending.type) {
+      case "pay_rent": case "pay_debt": case "pay_birthday":
+        return payWithCards(state, id, botPayment(state, bot, pending.amount ?? 0)).success
+          || payWithCards(state, id, payableCards(bot).map(c => c.defId)).success;
+      case "protego_response":
+        return declineProtego(state, id).success;
+      case "harry_protect": {
+        const owned = PROPERTY_COLORS.filter(c => getPropertiesOfColor(bot, c).length > 0);
+        return harryProtectColor(state, id, owned.length ? bestColorFor(bot, owned) : undefined).success;
+      }
+      case "cedric_draw_choice":
+        return cedricChooseSource(state, id, "deck").success;
+      case "discard_excess": {
+        const n = pending.data?.mustDiscard ?? 0;
+        // Keep properties; throw away the lowest-value cards first
+        const order = [...bot.hand].sort((a, b) => {
+          const pa = CARD_DEF_MAP[a.defId]?.type === "property" ? 1 : 0, pb = CARD_DEF_MAP[b.defId]?.type === "property" ? 1 : 0;
+          return pa - pb || cardValue(a) - cardValue(b);
+        });
+        return discardCards(state, id, order.slice(0, n).map(c => c.defId)).success;
+      }
+      default:
+        // A sleeping attacker gives up the half-finished action
+        log(state, bot, "'s action was dropped while they were asleep");
+        state.pendingAction = null;
+        return true;
+    }
+  }
+
+  if (!isCurrentTurn(state, id)) return false;
+  if (!state.drawnThisTurn) return drawCards(state, id).success;
+
+  if (state.freePlayCardId) {
+    const def = CARD_DEF_MAP[state.freePlayCardId];
+    const card = state.freePlayCardId;
+    if (def?.type === "property") return playCard(state, id, card).success;
+    if (def?.type === "wild") {
+      const colors = def.wildColors === "rainbow" ? [...PROPERTY_COLORS] : def.wildColors as PropertyColor[];
+      return playCard(state, id, card, false, bestColorFor(bot, colors)).success;
+    }
+    if (bankCard(state, id, card).success) return true;
+    state.freePlayCardId = null;
+    return true;
+  }
+
+  if (state.actionsUsed < state.maxActions) {
+    const prop = bot.hand.find(c => CARD_DEF_MAP[c.defId]?.type === "property");
+    if (prop) return playCard(state, id, prop.defId).success;
+    const wild = bot.hand.find(c => CARD_DEF_MAP[c.defId]?.type === "wild");
+    if (wild) {
+      const def = CARD_DEF_MAP[wild.defId];
+      const colors = def.wildColors === "rainbow" ? [...PROPERTY_COLORS] : def.wildColors as PropertyColor[];
+      return playCard(state, id, wild.defId, false, bestColorFor(bot, colors)).success;
+    }
+    const money = bot.hand.find(c => CARD_DEF_MAP[c.defId]?.type === "money");
+    if (money) return playCard(state, id, money.defId).success;
+  }
+  return endTurn(state, id).success;
 }
 
 // ========== WIN CONDITION ==========
 
 function checkWinCondition(state: GameState, visitorId: string) {
+  if (state.status !== "playing") return;
   const player = getPlayer(state, visitorId);
   if (!player) return;
-
   const completeSets = countCompleteSets(player.properties, SET_SIZES);
   if (completeSets >= 3) {
     state.winnerId = visitorId;
     state.status = "finished";
-    addEvent(state, "🏆", player.animal.name, player.animal.colorClass,
-      `has won the game with ${completeSets} complete sets!`);
+    state.pendingAction = null;
+    addEvent(state, "🏆", player.animal.name, player.animal.colorClass, `won the game with ${completeSets} complete sets!`);
   }
 }
 
@@ -1183,7 +1099,9 @@ function checkWinCondition(state: GameState, visitorId: string) {
 export function sanitizeStateForPlayer(state: GameState, visitorId: string): GameState {
   return {
     ...state,
-    drawPile: [{ defId: "__hidden__" }], // Just send count indicator
+    drawPileCount: state.drawPile.length,
+    drawPile: [],
+    waitingOn: getWaitingOn(state),
     players: state.players.map(p => ({
       ...p,
       hand: p.visitorId === visitorId ? p.hand : p.hand.map(() => ({ defId: "__hidden__" })),
