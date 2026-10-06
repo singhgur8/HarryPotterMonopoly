@@ -236,6 +236,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
 {
   const s = setup();
   const [a, b] = s.players;
+  a.role = "luna"; // not Harry, whose end-of-turn shield would come first
   b.role = "cedric";
   give(s, b, "hand", "money_1g_1");
   s.discardPile.push(take(s, "prop_red_1"), take(s, "action_accio_1"), take(s, "money_5g_1"));
