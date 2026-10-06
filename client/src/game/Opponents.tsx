@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { GameCard } from "@/components/GameCard";
 import { useGame } from "./context";
 import {
-  groupSets, SET_SIZES, tileFill, valueOf, sumValue, label, fillOf, roleName, shieldOf, nameOf, otherColor, completeSets,
+  groupSets, SET_SIZES, tileFill, valueOf, sumValue, label, fillOf, roleName, roleInfo, shieldOf, nameOf, otherColor, completeSets,
 } from "./helpers";
 
 function SetLines({ p }: { p: PlayerState }) {
@@ -54,7 +54,7 @@ export function OpponentSeat({ p, onOpen }: { p: PlayerState; onOpen: () => void
       <div className="hp-opp-top">
         <span className="hp-ava">{p.animal.emoji}</span>
         <span className="nm">{p.animal.name}</span>
-        {p.role && <span className={`hp-role ${p.isSilenced ? "off" : ""}`} title={p.isSilenced ? "Power off" : undefined}>{roleName(p.role).split(" ")[0]}</span>}
+        {p.role && <span className={`hp-role ${p.isSilenced ? "off" : ""}`} title={`${roleInfo(p.role)?.power ?? ""}${p.isSilenced ? " (power off)" : ""}`}>{roleName(p.role).split(" ")[0]}</span>}
         {p.isSilenced && <span className="hp-chip late">Power off</span>}
         {turn && <span className="hp-chip solid">Turn</span>}
         {waited && <span className="hp-chip gold">Deciding</span>}
@@ -91,9 +91,15 @@ export function Opponents() {
                 <DialogTitle>{shown.animal.emoji} {shown.animal.name}'s table</DialogTitle>
               </DialogHeader>
               <div className="hp-inspect">
-                <div className="hp-muted" style={{ fontSize: 13 }}>
-                  {roleName(shown.role)}{shown.isSilenced ? " (silenced)" : ""} · {shown.hand.length} cards in hand
-                </div>
+                <div className="hp-muted" style={{ fontSize: 13 }}>{shown.hand.length} cards in hand</div>
+                {shown.role && (
+                  <div className="hp-rolec">
+                    <b style={shown.isSilenced ? { textDecoration: "line-through" } : undefined}>{roleName(shown.role)}</b>
+                    <span>{roleInfo(shown.role)?.power}</span>
+                    {shown.isSilenced && <span>Their power is switched off right now.</span>}
+                    {shieldOf(shown) && <span>Shield is on {label(shieldOf(shown)!)}.</span>}
+                  </div>
+                )}
                 {groupSets(shown.properties).map(({ color, cards }) => (
                   <div key={color} style={{ display: "grid", gap: 6 }}>
                     <div className="hp-label">{label(color)} · {cards.length}/{SET_SIZES[color]}</div>

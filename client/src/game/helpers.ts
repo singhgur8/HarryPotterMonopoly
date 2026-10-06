@@ -94,7 +94,7 @@ export function waitingText(s: GameState, meId: string): string {
     case "pay_birthday": return `Waiting on ${who} to pay 2M for It's My Birthday`;
     case "pay_debt": return `Waiting on ${who} to pay the Debt Collector 5M`;
     case "protego_response": return `Waiting on ${who} to decide on Just Say No`;
-    case "harry_protect": return `Waiting on ${who} to pick a colour to shield`;
+    case "harry_protect": return `Waiting on ${who} to keep or move their shield`;
     case "cedric_draw_choice": return `Waiting on ${who} to choose where to draw from`;
     case "discard_excess": return `Waiting on ${who} to discard down to 7`;
     case "time_turner_play": return `Waiting on ${who} to pick a card with Rewind`;

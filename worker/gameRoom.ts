@@ -374,7 +374,8 @@ function handleChooseTarget(room: Room, client: RoomClient, payload: any) {
 function handleHarryProtectColor(room: Room, client: RoomClient, payload: any) {
   if (!room.gameState) return;
   const { color } = payload || {};
-  const result = harryProtectColor(room.gameState, client.visitorId, color);
+  // No colour keeps the shield where it is; null drops it
+  const result = harryProtectColor(room.gameState, client.visitorId, color === null ? null : color || undefined);
   if (!result.success) return sendError(room, client, result.error!);
   room.gameState.turnTimer = room.gameState.gameSpeed;
   broadcastGameState(room);
