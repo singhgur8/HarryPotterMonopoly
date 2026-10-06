@@ -91,8 +91,8 @@ const propertyCards: CardDef[] = [
 // ========== WILD CARDS (11) ==========
 const wildCards: CardDef[] = [
   // 2x any-colour Property Wild Card
-  { id: "wild_rainbow_1", type: "wild", name: "Property Wild Card", shortName: "Any colour", text: "Counts as any colour. You can move it between sets at any time.", value: 0, wildColors: "rainbow" },
-  { id: "wild_rainbow_2", type: "wild", name: "Property Wild Card", shortName: "Any colour", text: "Counts as any colour. You can move it between sets at any time.", value: 0, wildColors: "rainbow" },
+  { id: "wild_rainbow_1", type: "wild", name: "Property Wild Card", shortName: "Any colour", text: "Counts as any colour. You can move it between sets on your turn.", value: 0, wildColors: "rainbow" },
+  { id: "wild_rainbow_2", type: "wild", name: "Property Wild Card", shortName: "Any colour", text: "Counts as any colour. You can move it between sets on your turn.", value: 0, wildColors: "rainbow" },
   // Light Blue / Brown
   { id: "wild_lb_brown_1", type: "wild", name: "Property Wild Card (Light Blue / Brown)", value: 1, wildColors: ["light_blue", "brown"] },
   // Light Blue / Railroad
@@ -213,7 +213,7 @@ const actionCards: CardDef[] = [
     name: "Demolish",
     value: 4,
     actionType: "reducto" as const,
-    text: "Destroy one card from another player's properties or bank. Not from a complete set.",
+    text: "Destroy one of another player's properties. Not from a complete set, and never bank cards.",
     target: "one" as const,
   })),
   // 2x Power Outage (was Silencio)

@@ -3,23 +3,38 @@ import { GameCard } from "@/components/GameCard";
 import { useGame } from "./context";
 import {
   groupSets, SET_SIZES, RENT_TABLE, label, fillOf, sumValue, valueOf, nameOf, otherColor, RAINBOW,
-  completeSets, ROLE_INFO, shieldOf,
+  completeSets, ROLE_INFO, shieldOf, type PaySelection,
 } from "./helpers";
 
 const STACK_STEP = 30;
 
-export function MyArea({ flipId, onFlip, onPaySilencio }: { flipId: string | null; onFlip: (defId: string | null) => void; onPaySilencio: () => void }) {
-  const { me, s } = useGame();
+/** Keyboard and pointer props for a card you can tap. */
+function tappable(pressed: boolean, label: string, onTap: () => void) {
+  return {
+    role: "button", tabIndex: 0, "aria-pressed": pressed, "aria-label": label, onClick: onTap,
+    onKeyDown: (e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onTap(); } },
+  } as const;
+}
+
+export function MyArea({ flipId, onFlip, onPaySilencio, pay }: {
+  flipId: string | null;
+  onFlip: (defId: string | null) => void;
+  onPaySilencio: () => void;
+  pay: PaySelection;
+}) {
+  const { me, s, isMyTurn } = useGame();
   if (!me) return null;
+  // Wilds only move on your own turn, and not while you're picking cards to pay
+  const canFlip = isMyTurn && s.status === "playing" && !pay.active && !me.isSleeping;
   const sets = groupSets(me.properties);
   const coins = [...me.bank].sort((a, b) => valueOf(b) - valueOf(a));
   const role = me.role ? ROLE_INFO[me.role] : undefined;
   const shield = shieldOf(me);
 
   return (
-    <div className="hp-mine">
+    <div className={`hp-mine ${pay.active ? "paying" : ""}`}>
       <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
-        <div className="hp-label">My sets · {completeSets(me)} of 3 complete</div>
+        <div className="hp-label">My sets · {completeSets(me)} of 3 complete{pay.active && <span className="hp-chip solid" style={{ marginLeft: 8 }}>Tap cards to pay with them</span>}</div>
         <div className="hp-sets">
           {sets.map(({ color, cards }) => {
             const n = cards.length;
@@ -38,20 +53,24 @@ export function MyArea({ flipId, onFlip, onPaySilencio }: { flipId: string | nul
                   {cards.map((c, i) => {
                     const other = otherColor(c);
                     const style: CSSProperties = { top: i * STACK_STEP, zIndex: i + 1 };
-                    const card = <GameCard defId={c.defId} size="md" label={`${nameOf(c.defId)}, worth ${valueOf(c)}M`} />;
-                    if (!other) return <div key={c.defId} style={style}>{card}</div>;
+                    const card = <GameCard defId={c.defId} size="md" color={color} label={`${nameOf(c.defId)}, worth ${valueOf(c)}M`} />;
+                    if (pay.active) {
+                      const on = pay.picked.includes(c.defId);
+                      return (
+                        <div key={c.defId} style={style} className={`tap ${on ? "picked" : ""}`} {...tappable(on, `Pay with ${nameOf(c.defId)}, ${valueOf(c)}M`, () => pay.toggle(c.defId))}>
+                          {card}
+                          {on && <span className="hp-paytag" aria-hidden="true">✓</span>}
+                        </div>
+                      );
+                    }
+                    if (!other || !canFlip) return <div key={c.defId} style={style}>{card}</div>;
                     const sel = flipId === c.defId;
                     return (
                       <div
                         key={c.defId}
                         style={style}
-                        className={`flip ${sel ? "sel" : ""}`}
-                        role="button"
-                        tabIndex={0}
-                        aria-pressed={sel}
-                        aria-label={`${nameOf(c.defId)}, now ${label(color)}. Flip it`}
-                        onClick={() => onFlip(sel ? null : c.defId)}
-                        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onFlip(sel ? null : c.defId); } }}
+                        className={`tap ${sel ? "sel" : ""}`}
+                        {...tappable(sel, `${nameOf(c.defId)}, now ${label(color)}. Flip it`, () => onFlip(sel ? null : c.defId))}
                       >
                         {card}
                         <span className="hp-fliptag" style={{ background: other === "rainbow" ? RAINBOW : fillOf(other) }}>
@@ -75,7 +94,10 @@ export function MyArea({ flipId, onFlip, onPaySilencio }: { flipId: string | nul
         <div className="hp-label">My bank</div>
         <div className="hp-bank-total">{sumValue(me.bank)}M</div>
         <div className="hp-coins">
-          {coins.length ? coins.map(c => <span key={c.defId} className="hp-cn" title={nameOf(c.defId)}>{valueOf(c)}</span>) : <span className="hp-muted" style={{ fontSize: 12.5 }}>Nothing banked yet</span>}
+          {coins.length ? coins.map(c => pay.active
+            ? <button key={c.defId} className="hp-cn" aria-pressed={pay.picked.includes(c.defId)} aria-label={`Pay with ${valueOf(c)}M from the bank`} onClick={() => pay.toggle(c.defId)}>{valueOf(c)}</button>
+            : <span key={c.defId} className="hp-cn" title={nameOf(c.defId)}>{valueOf(c)}</span>)
+            : <span className="hp-muted" style={{ fontSize: 12.5 }}>Nothing banked yet</span>}
         </div>
         {role && (
           <div className="hp-myrole">

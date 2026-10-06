@@ -104,6 +104,9 @@ export function waitingText(s: GameState, meId: string): string {
   }
 }
 
+/** Shared selection for paying: chips in the panel and cards on my table. */
+export type PaySelection = { active: boolean; picked: string[]; toggle: (id: string) => void; set: (ids: string[]) => void };
+
 export const isPayment = (p: PendingAction | null) => !!p && ["pay_rent", "pay_debt", "pay_birthday"].includes(p.type);
 
 export function hasProtego(p: PlayerState) {
@@ -116,3 +119,17 @@ export function drawCount(p: PlayerState) {
 }
 
 export { SET_SIZES, RENT_TABLE, CARD_DEF_MAP, getEffectiveColor };
+
+/** One line on what a card does, for cards seen outside your hand (discard pile, Cedric, Time-Turner). */
+export function cardBlurb(defId: string): string {
+  const def = CARD_DEF_MAP[defId];
+  if (!def) return "";
+  const both = (cs: PropertyColor[]) => cs.map(label).join(" or ");
+  switch (def.type) {
+    case "money": return `Money. Bank it for ${def.value}M.`;
+    case "property": return `${label(def.color!)} property. ${SET_SIZES[def.color!]} make a full set.`;
+    case "wild": return def.wildColors === "rainbow" ? "Wild property. Joins any colour." : `Wild property. Counts as ${both(def.wildColors as PropertyColor[])}.`;
+    case "rent": return def.rentColors === "rainbow" ? "Rent. Charge everyone for any one of your sets." : `Rent. Charge everyone for ${both(def.rentColors as PropertyColor[])}.`;
+    default: return def.text ?? "";
+  }
+}

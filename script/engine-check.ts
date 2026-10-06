@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import {
   createInitialGameState, botStep, payWithCards, playProtego, declineProtego,
   chooseTarget, playCard, drawCards, paySilencio, getWaitingOn, flipWild,
-  harryProtectColor, endTurn, timeTurnerChoose, bankCard, cancelChoice,
+  harryProtectColor, endTurn, timeTurnerChoose, bankCard, cancelChoice, cedricChooseSource,
 } from "../worker/gameEngine";
 import { ANIMALS, SET_SIZES } from "../shared/schema";
 import type { GameState, PlayerState } from "../shared/schema";
@@ -187,13 +187,15 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   console.log("time-turner: ok");
 }
 
-// ---------- 9. Wilds flip any time, even off-turn ----------
+// ---------- 9. Wilds flip only on your own turn ----------
 {
   const s = setup();
-  const [, b] = s.players;
-  give(s, b, "properties", "wild_pink_orange_1", "pink");
-  assert.ok(flipWild(s, "p1", "wild_pink_orange_1", "orange").success);
-  assert.equal(flipWild(s, "p1", "wild_pink_orange_1", "red").success, false);
+  const [a, b] = s.players;
+  give(s, a, "properties", "wild_pink_orange_1", "pink");
+  give(s, b, "properties", "wild_pink_orange_2", "pink");
+  assert.ok(flipWild(s, "p0", "wild_pink_orange_1", "orange").success);
+  assert.equal(flipWild(s, "p0", "wild_pink_orange_1", "red").success, false);
+  assert.equal(flipWild(s, "p1", "wild_pink_orange_2", "orange").success, false, "not p1's turn");
   console.log("wild flip: ok");
 }
 
@@ -227,6 +229,42 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.equal(s.actionsUsed, 1);
   assert.ok(a.hand.some(c => c.defId === "action_accio_1"));
   console.log("take back: ok");
+}
+
+// ---------- 12. Cedric takes the top 2 of the discard pile, and the log names them ----------
+{
+  const s = setup();
+  const [a, b] = s.players;
+  b.role = "cedric";
+  give(s, b, "hand", "money_1g_1");
+  s.discardPile.push(take(s, "prop_red_1"), take(s, "action_accio_1"), take(s, "money_5g_1"));
+  assert.ok(endTurn(s, "p0").success);
+  assert.equal(s.pendingAction?.type, "cedric_draw_choice");
+  assert.ok(cedricChooseSource(s, "p1", "discard").success);
+  assert.deepEqual(b.hand.map(c => c.defId), ["money_1g_1", "money_5g_1", "action_accio_1"]);
+  assert.deepEqual(s.discardPile.map(c => c.defId), ["prop_red_1"]);
+  const line = s.eventLog[s.eventLog.length - 1].message;
+  assert.ok(line.includes(CARD_DEF_MAP.money_5g_1.name) && line.includes(CARD_DEF_MAP.action_accio_1.name), line);
+  void a;
+  console.log("cedric discard draw: ok");
+}
+
+// ---------- 13. Reducto only destroys properties, never bank cards ----------
+{
+  const s = setup();
+  const [a, b] = s.players;
+  a.role = "luna"; b.role = "hermione";
+  give(s, a, "hand", "action_reducto_1");
+  give(s, b, "bank", "money_5g_1");
+  assert.equal(playCard(s, "p0", "action_reducto_1").success, false, "money alone isn't a Reducto target");
+  give(s, b, "properties", "prop_green_1");
+  assert.ok(playCard(s, "p0", "action_reducto_1").success);
+  assert.equal(chooseTarget(s, "p0", "p1", "money_5g_1").success, false, "bank cards are safe");
+  assert.ok(chooseTarget(s, "p0", "p1", "prop_green_1").success);
+  assert.ok(declineProtego(s, "p1").success || s.pendingAction === null);
+  assert.ok(!b.properties.some(c => c.defId === "prop_green_1"), "the property is destroyed");
+  assert.ok(b.bank.some(c => c.defId === "money_5g_1"), "the bank is untouched");
+  console.log("reducto: ok");
 }
 
 console.log("all engine checks passed");

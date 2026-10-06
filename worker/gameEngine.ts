@@ -242,13 +242,15 @@ export function cedricChooseSource(state: GameState, visitorId: string, source: 
   state.pendingAction = null;
 
   if (source === "discard" && roleActive(player, "cedric") && state.discardPile.length > 0) {
-    let drawn = 0;
+    // The discard pile is face up, so everyone sees what Cedric picked up
+    const taken: string[] = [];
     for (let i = 0; i < 2 && state.discardPile.length > 0; i++) {
-      player.hand.push(state.discardPile.pop()!);
-      drawn++;
+      const card = state.discardPile.pop()!;
+      player.hand.push(card);
+      taken.push(CARD_DEF_MAP[card.defId]?.name ?? "a card");
     }
     state.drawnThisTurn = true;
-    log(state, player, `used Cedric's power to take ${drawn} from the discard pile`);
+    log(state, player, `used Cedric's power to take ${taken.join(" and ")} from the discard pile`);
     return ok;
   }
   return drawCards(state, visitorId);
@@ -452,8 +454,8 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
       return choose("choose_goblin", "played Debt Collector and is choosing who owes 5M");
 
     case "reducto":
-      if (!others.some(o => o.bank.length > 0 || o.properties.some(c => canTakeProperty(player, o, c.defId).success))) {
-        return fail("No one has a card you can destroy");
+      if (!others.some(o => o.properties.some(c => canTakeProperty(player, o, c.defId).success))) {
+        return fail("No one has a property you can destroy");
       }
       return choose("choose_reducto", "played Demolish and is choosing what to destroy");
 
@@ -564,10 +566,11 @@ function advanceTurn(state: GameState) {
 // ========== FLIP WILD ==========
 
 export function flipWild(state: GameState, visitorId: string, cardDefId: string, newColor: PropertyColor): Result {
-  // Flipping a wild is free and can be done at any time
+  // Flipping a wild is free, but only on your own turn
   if (state.status !== "playing") return fail("The game is over");
   const player = getPlayer(state, visitorId);
   if (!player) return fail("Player not found");
+  if (!isCurrentTurn(state, visitorId)) return fail("You can only move wilds on your turn");
   const card = player.properties.find(c => c.defId === cardDefId);
   if (!card) return fail("Card not in your properties");
   const def = CARD_DEF_MAP[cardDefId];
@@ -761,14 +764,8 @@ function executeAction(state: GameState, action: PendingAction) {
     }
     case "choose_reducto": {
       const id = d.targetCardDefId as string;
-      let card: GameCard | undefined;
-      if (target.properties.some(c => c.defId === id)) {
-        if (!canTakeProperty(attacker, target, id).success) { log(state, attacker, "'s Demolish fizzled"); return; }
-        card = removeCard(target.properties, id);
-      } else {
-        card = removeCard(target.bank, id);
-      }
-      if (!card) { log(state, attacker, "'s Demolish fizzled"); return; }
+      if (!canTakeProperty(attacker, target, id).success) { log(state, attacker, "'s Demolish fizzled"); return; }
+      const card = removeCard(target.properties, id)!;
       state.discardPile.push({ defId: card.defId });
       log(state, attacker, `used Demolish to destroy ${target.animal.name}'s ${cardTag(card)}`, card.defId);
       return;
@@ -837,13 +834,10 @@ export function chooseTarget(state: GameState, visitorId: string, targetPlayerId
       return ok;
     }
     case "choose_reducto": {
-      if (!targetCardDefId) return fail("Choose a card to destroy");
-      if (target.properties.some(c => c.defId === targetCardDefId)) {
-        const check = canTakeProperty(attacker, target, targetCardDefId);
-        if (!check.success) return check;
-      } else if (!target.bank.some(c => c.defId === targetCardDefId)) {
-        return fail("That card isn't there");
-      }
+      if (!targetCardDefId) return fail("Choose a property to destroy");
+      // Demolish only hits properties; money in the bank is safe
+      const check = canTakeProperty(attacker, target, targetCardDefId);
+      if (!check.success) return check;
       log(state, attacker, `aims Demolish at ${target.animal.name}'s ${ownedTag(target, targetCardDefId)}`);
       offerProtego(state, action("choose_reducto", { targetCardDefId }));
       return ok;
