@@ -7,9 +7,9 @@ import assert from "node:assert/strict";
 import {
   createInitialGameState, botStep, payWithCards, playProtego, declineProtego,
   chooseTarget, playCard, drawCards, paySilencio, getWaitingOn, flipWild,
-  harryProtectColor, endTurn, timeTurnerChoose, bankCard, cancelChoice, cedricChooseSource, wakeUp, forfeit,
+  harryProtectColor, endTurn, timeTurnerChoose, bankCard, cancelChoice, cedricChooseSource, wakeUp, forfeit, autoDraw,
 } from "../worker/gameEngine";
-import { ANIMALS, SET_SIZES } from "../shared/schema";
+import { ANIMALS, SET_SIZES, DRAW_SECONDS, inDrawStep, freshTurnTimer } from "../shared/schema";
 import type { GameState, PlayerState } from "../shared/schema";
 import { CARD_DEF_MAP, countCompleteSets, roleDef } from "../shared/cardDefs";
 import { VARIATIONS } from "../shared/variations";
@@ -400,6 +400,25 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
     }
   }
   console.log("forfeit: ok");
+}
+
+// ---------- Draw timer: a turn starts with a short draw step, then the full turn length ----------
+{
+  const s = newGame(3);
+  assert.ok(inDrawStep(s));
+  assert.equal(s.turnTimer, DRAW_SECONDS);
+  const p0 = s.players[0];
+  const before = p0.hand.length;
+  assert.ok(autoDraw(s).success);
+  assert.equal(p0.hand.length, before + 2);
+  assert.ok(!inDrawStep(s));
+  assert.equal(freshTurnTimer(s), 60);
+  // The next turn starts on the draw timer again
+  while (p0.hand.length > 7) p0.hand.pop();
+  assert.ok(endTurn(s, p0.visitorId).success);
+  assert.ok(inDrawStep(s));
+  assert.equal(s.turnTimer, DRAW_SECONDS);
+  console.log("draw timer: ok");
 }
 
 console.log("all engine checks passed");

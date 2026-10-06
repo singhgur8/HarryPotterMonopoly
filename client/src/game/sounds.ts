@@ -57,10 +57,10 @@ export const SOUNDS = {
 };
 
 /** Marks the browser tab while the page is in the background, until it's looked at. */
-function flagTab() {
-  if (typeof document === "undefined" || !document.hidden || document.title.startsWith("Your turn")) return;
+function flagTab(text = "Your turn") {
+  if (typeof document === "undefined" || !document.hidden || /^Your (turn|move) · /.test(document.title)) return;
   const title = document.title;
-  document.title = `Your turn · ${title}`;
+  document.title = `${text} · ${title}`;
   const back = () => { if (!document.hidden) { document.title = title; document.removeEventListener("visibilitychange", back); } };
   document.addEventListener("visibilitychange", back);
 }
@@ -86,6 +86,7 @@ export function useGameSounds() {
     const was = prev.current;
     prev.current = { myTurn, needsMe, event: lastEvent?.id, timer: s.turnTimer };
     if (myTurn && !was.myTurn) flagTab();
+    else if (needsMe && !was.needsMe) flagTab("Your move");
     if (muted) return;
     if (myTurn && !was.myTurn) return SOUNDS.yourTurn();
     if (needsMe && !was.needsMe) return SOUNDS.needsYou();

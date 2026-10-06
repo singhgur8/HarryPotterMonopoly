@@ -140,6 +140,24 @@ export const GAME_SPEEDS = {
   relaxed: 90,
 } as const;
 
+// A turn starts with a short draw step; the turn length the host picked
+// only starts counting once the cards are drawn. When the draw timer runs
+// out the cards are drawn automatically.
+export const DRAW_SECONDS = 5;
+export const CEDRIC_CHOICE_SECONDS = 10; // Cedric picks deck or discard pile, so give him a moment to look
+
+/** True while the current player still has to draw (or, as Cedric, pick where to draw from). */
+export function inDrawStep(state: Pick<GameState, "status" | "drawnThisTurn" | "pendingAction">): boolean {
+  if (state.status !== "playing" || state.drawnThisTurn) return false;
+  return !state.pendingAction || state.pendingAction.type === "cedric_draw_choice";
+}
+
+/** Seconds on the clock when the game starts waiting on the next step. */
+export function freshTurnTimer(state: Pick<GameState, "status" | "drawnThisTurn" | "pendingAction" | "gameSpeed">): number {
+  if (!inDrawStep(state)) return state.gameSpeed;
+  return state.pendingAction ? CEDRIC_CHOICE_SECONDS : DRAW_SECONDS;
+}
+
 // Pending action types (things that require a response from another player)
 export type PendingActionType = 
   | "pay_rent"           // Player must pay rent

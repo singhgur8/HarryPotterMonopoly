@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage, EventLogEntry, PropertyColor } from "@shared/schema";
-import { SET_STYLE } from "@shared/schema";
+import { SET_STYLE, inDrawStep } from "@shared/schema";
 import { variationOf } from "@shared/variations";
 import { useGame } from "./context";
 import { Opponents } from "./Opponents";
@@ -184,6 +184,7 @@ export function GameTable() {
   const watchers = s.spectators?.length ?? 0;
   const t = Math.max(0, s.turnTimer);
   const timer = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+  const drawStep = inDrawStep(s);
 
   return (
     <div className="hp-game" data-testid="game-board">
@@ -205,7 +206,11 @@ export function GameTable() {
         <button className="hp-btn ghost" style={{ padding: "2px 10px" }} onClick={toggleMute} aria-pressed={muted} aria-label={muted ? "Turn sounds on" : "Mute sounds"} title={muted ? "Sounds off" : "Sounds on"}>
           {muted ? "🔇" : "🔊"}
         </button>
-        {s.status === "playing" && <span className={`hp-timer hp-mobile-only ${s.turnTimer <= 10 ? "low" : ""}`}>{timer}</span>}
+        {s.status === "playing" && (
+          <span className={`hp-timer hp-mobile-only ${s.turnTimer <= (drawStep ? 3 : 10) ? "low" : ""}`}>
+            {drawStep && <small className="hp-timer-label">Draw</small>}{timer}
+          </span>
+        )}
         <button className="hp-btn ghost hp-mobile-only" onClick={() => openLog()} aria-label="Open log and chat">
           💬{unread > 0 && <span className="hp-badge">{unread}</span>}
         </button>

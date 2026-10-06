@@ -7,7 +7,7 @@ import type {
   GameState, PlayerState, GameCard, PendingAction, PaymentResult,
   PropertyColor, RoleType, AnimalProfile, VariationId,
 } from "../shared/schema";
-import { SET_SIZES, RENT_TABLE, PROPERTY_COLORS } from "../shared/schema";
+import { SET_SIZES, RENT_TABLE, PROPERTY_COLORS, freshTurnTimer } from "../shared/schema";
 import { CARD_DEF_MAP, getEffectiveColor, countCompleteSets } from "../shared/cardDefs";
 import { variationOf } from "../shared/variations";
 
@@ -196,6 +196,7 @@ export function createInitialGameState(
   }
 
   state.maxActions = maxActionsFor(getCurrentPlayer(state)!);
+  state.turnTimer = freshTurnTimer(state);
   addEvent(state, "⚡", "System", "#FFD700", "The game begins! Wands at the ready...");
   return state;
 }
@@ -259,6 +260,14 @@ export function cedricChooseSource(state: GameState, visitorId: string, source: 
     return ok;
   }
   return drawCards(state, visitorId);
+}
+
+/** The draw timer ran out: draw for the current player (Cedric draws from the deck). */
+export function autoDraw(state: GameState): Result {
+  const player = getCurrentPlayer(state);
+  if (!player) return fail("No one to draw for");
+  if (state.pendingAction?.type === "cedric_draw_choice") return cedricChooseSource(state, player.visitorId, "deck");
+  return drawCards(state, player.visitorId);
 }
 
 // Time-Turner: the retrieved card is played for free, and must be played next
@@ -565,12 +574,12 @@ function beginTurn(state: GameState) {
   // Harry's shield lasts until the start of his next turn
   if (next.role === "harry") next.protectedColor = undefined;
   state.maxActions = maxActionsFor(next);
-  state.turnTimer = state.gameSpeed;
   log(state, next, "starts their turn");
 
   if (roleActive(next, "cedric") && state.discardPile.length > 0 && next.hand.length > 0) {
     state.pendingAction = { type: "cedric_draw_choice", sourcePlayerId: next.visitorId, targetPlayerId: next.visitorId };
   }
+  state.turnTimer = freshTurnTimer(state);
 }
 
 // ========== FLIP WILD ==========
