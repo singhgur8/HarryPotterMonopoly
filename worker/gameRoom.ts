@@ -23,8 +23,14 @@ export interface Env {
   ROOM_LIMITER?: RateLimit;
 }
 
-// Rooms nobody has connected to for this long are deleted.
+// Rooms with no moves, chat or new connections for this long are deleted,
+// and a finished game is cleared away sooner. Each room's own alarm does
+// this, so there's no sweep job to run or pay for.
 const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
+const FINISHED_TTL_MS = 60 * 60 * 1000;
+
+// Close code the client reads as "this room is gone, don't reconnect".
+export const ROOM_CLOSED_CODE = 4000;
 
 // ========== TYPES ==========
 
@@ -49,6 +55,7 @@ interface Room {
   lastWaitingOn: string | null; // whose move the game was last waiting on
   botDueAt: number | null; // when a sleeping player's next bot move is due
   moveBonuses: number; // extra-time bonuses given since the game last started waiting on someone new
+  finishedAt: number | null; // when the game ended
 }
 
 type StoredRoom = Omit<Room, "clients" | "sockets"> & { clients: RoomClient[] };
@@ -92,11 +99,21 @@ function sendError(room: Room, client: RoomClient, error: string) {
   sendToClient(room, client, { type: "error", payload: { error } });
 }
 
+/** People in the room who aren't playing: they watch, and never see anyone's hand. */
+function spectatorsOf(room: Room): AnimalProfile[] {
+  const players = new Set(room.gameState?.players.map(p => p.visitorId));
+  return [...room.clients.values()].filter(c => !players.has(c.visitorId)).map(c => c.animal);
+}
+
+function gameViewFor(room: Room, visitorId: string, spectators = spectatorsOf(room)): GameState {
+  return sanitizeStateForPlayer({ ...room.gameState!, spectators }, visitorId);
+}
+
 function broadcastGameState(room: Room) {
   if (!room.gameState) return;
+  const spectators = spectatorsOf(room);
   for (const { ws, visitorId } of room.sockets()) {
-    const sanitized = sanitizeStateForPlayer(room.gameState, visitorId);
-    send(ws, JSON.stringify({ type: "game_state", payload: sanitized }));
+    send(ws, JSON.stringify({ type: "game_state", payload: gameViewFor(room, visitorId, spectators) }));
   }
 }
 
@@ -164,18 +181,15 @@ const TIMED_MOVES = new Set([
 // ========== MESSAGE HANDLERS ==========
 
 function handleJoinRoom(room: Room, client: RoomClient, payload: any) {
-  // Client is already added — just send current state
-  if (room.gameState && room.gameState.status === "playing") {
-    // Reconnection during game
+  // Client is already added — tell everyone (players see who is watching)
+  if (room.gameState) {
     const existingPlayer = room.gameState.players.find(p => p.visitorId === client.visitorId);
     if (existingPlayer) {
+      // Reconnection during game
       existingPlayer.isConnected = true;
       client.seatIndex = existingPlayer.seatIndex;
-      broadcastGameState(room);
-    } else {
-      // New spectator during game
-      sendToClient(room, client, { type: "game_state", payload: sanitizeStateForPlayer(room.gameState, client.visitorId) });
     }
+    broadcastGameState(room);
   } else {
     broadcastLobbyState(room);
   }
@@ -434,6 +448,7 @@ function afterGameChange(room: Room) {
   const state = room.gameState;
   if (!state || state.status !== "playing") {
     room.botDueAt = null;
+    if (state?.status === "finished") room.finishedAt ??= Date.now();
     return;
   }
   const waitingOn = getWaitingOn(state);
@@ -530,6 +545,14 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
   }
 }
 
+// ========== CLEANUP ==========
+
+function expiresAt(room: Room): number {
+  const idle = room.lastActivity + ROOM_TTL_MS;
+  if (room.finishedAt === null) return idle;
+  return Math.min(idle, Math.max(room.lastActivity, room.finishedAt) + FINISHED_TTL_MS);
+}
+
 // ========== DURABLE OBJECT ==========
 
 export class GameRoom extends DurableObject<Env> {
@@ -551,6 +574,7 @@ export class GameRoom extends DurableObject<Env> {
       lastWaitingOn: stored.lastWaitingOn ?? null,
       botDueAt: stored.botDueAt ?? null,
       moveBonuses: stored.moveBonuses ?? 0,
+      finishedAt: stored.finishedAt ?? null,
       sockets: () => this.ctx.getWebSockets().map(ws => ({
         ws,
         visitorId: (ws.deserializeAttachment() as { visitorId: string }).visitorId,
@@ -569,6 +593,7 @@ export class GameRoom extends DurableObject<Env> {
       lastWaitingOn: null,
       botDueAt: null,
       moveBonuses: 0,
+      finishedAt: null,
       timerSetAt: Date.now(),
       lastActivity: Date.now(),
     });
@@ -581,7 +606,7 @@ export class GameRoom extends DurableObject<Env> {
     const stored: StoredRoom = { ...rest, clients: [...room.clients.values()] };
     await this.ctx.storage.put("room", stored);
 
-    const due = [turnDeadline(room), room.botDueAt, room.lastActivity + ROOM_TTL_MS];
+    const due = [turnDeadline(room), room.botDueAt, expiresAt(room)];
     await this.ctx.storage.setAlarm(Math.min(...due.filter((t): t is number => t !== null)));
   }
 
@@ -639,11 +664,8 @@ export class GameRoom extends DurableObject<Env> {
     }
 
     // Send initial state
-    if (room.gameState && room.gameState.status === "playing") {
-      sendToClient(room, client, {
-        type: "game_state",
-        payload: sanitizeStateForPlayer(room.gameState, visitorId),
-      });
+    if (room.gameState) {
+      sendToClient(room, client, { type: "game_state", payload: gameViewFor(room, visitorId) });
     } else {
       sendToClient(room, client, { type: "game_state", payload: getLobbyState(room) });
     }
@@ -701,16 +723,14 @@ export class GameRoom extends DurableObject<Env> {
     if (stillOpen) return;
 
     if (room.gameState) {
-      // Mid-game the seat is kept: they can rejoin, or be put to sleep and played by the bot
+      // Mid-game the seat is kept: they can rejoin, or be put to sleep and played by the bot.
+      // Someone who was only watching just leaves.
       const player = room.gameState.players.find(p => p.visitorId === visitorId);
-      if (player) {
-        player.isConnected = false;
-        tickTurnTimer(room);
-        broadcastGameState(room);
-      } else {
-        // A spectator leaving is forgotten, so drive-by visitors can't pile up in storage
-        room.clients.delete(visitorId);
-      }
+      if (player) player.isConnected = false;
+      // A spectator leaving is forgotten, so drive-by visitors can't pile up in storage
+      else room.clients.delete(visitorId);
+      tickTurnTimer(room);
+      broadcastGameState(room);
       await this.save(room);
       return;
     }
@@ -733,9 +753,17 @@ export class GameRoom extends DurableObject<Env> {
     const room = this.room;
     if (!room) return;
 
-    if (this.ctx.getWebSockets().length === 0 && Date.now() - room.lastActivity >= ROOM_TTL_MS) {
-      // Abandoned room — delete it
+    if (Date.now() >= expiresAt(room)) {
+      // Abandoned or long-finished room: send anyone still here home, then delete it
+      for (const ws of this.ctx.getWebSockets()) {
+        try {
+          ws.close(ROOM_CLOSED_CODE, "Room closed");
+        } catch {
+          // Already closed
+        }
+      }
       this.room = null;
+      await this.ctx.storage.deleteAlarm();
       await this.ctx.storage.deleteAll();
       return;
     }
