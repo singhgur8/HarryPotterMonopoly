@@ -97,8 +97,13 @@ export function Lobby() {
                   <b>{s.animal.name}{me ? " (you)" : ""}</b>
                   <span style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "center" }}>
                     {s.isHost && <span className="hp-chip gold">Host</span>}
-                    <span className={`hp-chip ${s.isReady ? "ok" : "wait"}`}>{s.isReady ? "Ready" : "Not ready"}</span>
+                    {s.isBot
+                      ? <span className="hp-chip zz">🤖 Bot</span>
+                      : <span className={`hp-chip ${s.isReady ? "ok" : "wait"}`}>{s.isReady ? "Ready" : "Not ready"}</span>}
                   </span>
+                  {s.isBot && isHost && (
+                    <button className="hp-linkbtn" style={{ fontSize: 12 }} onClick={() => send("remove_bot", { visitorId: s.visitorId })}>Remove</button>
+                  )}
                 </div>
               );
             })}
@@ -136,6 +141,9 @@ export function Lobby() {
                   {seats[mySeat]?.isReady ? "Not ready" : "I'm ready"}
                 </button>
               </>
+            )}
+            {isHost && seated.length < 5 && (
+              <button className="hp-btn ghost" onClick={() => send("add_bot")} data-testid="button-add-bot">🤖 Add a bot</button>
             )}
             {isHost && (
               <button className="hp-btn gold" disabled={!canStart} onClick={() => send("start_game")} data-testid="button-start-game">Start game</button>

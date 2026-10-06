@@ -59,7 +59,7 @@ export function OpponentSeat({ p, onOpen }: { p: PlayerState; onOpen: () => void
         {turn && <span className="hp-chip solid">Turn</span>}
         {waited && <span className="hp-chip gold">Deciding</span>}
         {late && <span className="hp-chip late">Out of time</span>}
-        {p.isSleeping && <span className="hp-chip zz">💤 Bot playing</span>}
+        {p.isBot ? <span className="hp-chip zz">🤖 Bot</span> : p.isSleeping && <span className="hp-chip zz">💤 Bot playing</span>}
         {!p.isConnected && !p.isSleeping && <span className="hp-chip wait">Offline</span>}
         <span className="hand">Hand <b>{p.hand.length}</b></span>
       </div>
