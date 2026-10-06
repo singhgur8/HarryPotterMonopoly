@@ -29,6 +29,9 @@ function buildWsUrl(roomCode: string): string {
   return `${proto}//${location.host}/ws?${params}`;
 }
 
+const HEARTBEAT_MS = 10_000;
+const HEARTBEAT_TIMEOUT_MS = 30_000;
+
 export function useGameSocket(roomCode: string | null) {
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
@@ -38,6 +41,7 @@ export function useGameSocket(roomCode: string | null) {
   const [lastError, setLastError] = useState<string | null>(null);
   const [roomClosed, setRoomClosed] = useState(false);
   const reconnectTimer = useRef<number | null>(null);
+  const lastHeard = useRef(Date.now());
 
   const connect = useCallback(() => {
     if (!roomCode) return;
@@ -48,11 +52,14 @@ export function useGameSocket(roomCode: string | null) {
     wsRef.current = ws;
 
     ws.onopen = () => {
+      lastHeard.current = Date.now();
       setConnected(true);
       setLastError(null);
     };
 
     ws.onmessage = (event) => {
+      lastHeard.current = Date.now();
+      if (event.data === "pong") return;
       try {
         const msg: WSMessage = JSON.parse(event.data);
         switch (msg.type) {
@@ -100,6 +107,44 @@ export function useGameSocket(roomCode: string | null) {
       ws.close();
     };
   }, [roomCode]);
+
+  // Heartbeat: the server answers "ping" with "pong", so it can tell a dropped player
+  // from a quiet one. If we hear nothing back, the connection is dead even though the
+  // browser hasn't noticed; drop it and reconnect.
+  useEffect(() => {
+    const reconnectNow = () => {
+      const ws = wsRef.current;
+      if (!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) return;
+      ws.onclose = null;
+      ws.close();
+      setConnected(false);
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      connect();
+    };
+    const id = window.setInterval(() => {
+      const ws = wsRef.current;
+      if (ws?.readyState === WebSocket.OPEN) {
+        if (Date.now() - lastHeard.current > HEARTBEAT_TIMEOUT_MS) reconnectNow();
+        else ws.send("ping");
+      }
+    }, HEARTBEAT_MS);
+    // Coming back to the tab (or unlocking the phone): check the line straight away
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      const ws = wsRef.current;
+      if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+        if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+        connect();
+      } else if (Date.now() - lastHeard.current > HEARTBEAT_MS * 2) {
+        reconnectNow();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [connect]);
 
   // The server only sends the turn timer with state updates; count down locally in between.
   useEffect(() => {

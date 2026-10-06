@@ -983,6 +983,15 @@ export function putToSleep(state: GameState, actorId: string, targetPlayerId: st
   return ok;
 }
 
+/** A player who lost connection and didn't come back in time is handed to the bot. */
+export function sleepForDisconnect(state: GameState, visitorId: string): boolean {
+  const player = getPlayer(state, visitorId);
+  if (state.status !== "playing" || !player || player.isSleeping || player.isConnected) return false;
+  player.isSleeping = true;
+  addEvent(state, "📡", player.animal.name, player.animal.colorClass, "lost connection. A bot is playing for them until they're back");
+  return true;
+}
+
 export function wakeUp(state: GameState, visitorId: string): Result {
   const player = getPlayer(state, visitorId);
   if (!player) return fail("Player not found");
