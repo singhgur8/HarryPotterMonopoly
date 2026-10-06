@@ -554,10 +554,11 @@ function advanceTurn(state: GameState) {
 // ========== FLIP WILD ==========
 
 export function flipWild(state: GameState, visitorId: string, cardDefId: string, newColor: PropertyColor): Result {
-  // Flipping a wild is free and can be done at any time
+  // Flipping a wild is free, but only on your own turn
   if (state.status !== "playing") return fail("The game is over");
   const player = getPlayer(state, visitorId);
   if (!player) return fail("Player not found");
+  if (!isCurrentTurn(state, visitorId)) return fail("You can only move wilds on your turn");
   const card = player.properties.find(c => c.defId === cardDefId);
   if (!card) return fail("Card not in your properties");
   const def = CARD_DEF_MAP[cardDefId];

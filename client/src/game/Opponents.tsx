@@ -97,7 +97,7 @@ export function Opponents() {
                 {groupSets(shown.properties).map(({ color, cards }) => (
                   <div key={color} style={{ display: "grid", gap: 6 }}>
                     <div className="hp-label">{label(color)} · {cards.length}/{SET_SIZES[color]}</div>
-                    <div className="cards">{cards.map(c => <GameCard key={c.defId} defId={c.defId} size="md" label={`${nameOf(c.defId)}, worth ${valueOf(c)}G`} />)}</div>
+                    <div className="cards">{cards.map(c => <GameCard key={c.defId} defId={c.defId} size="md" color={color} label={`${nameOf(c.defId)}, worth ${valueOf(c)}G`} />)}</div>
                   </div>
                 ))}
                 <div style={{ display: "grid", gap: 6 }}>

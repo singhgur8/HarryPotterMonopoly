@@ -5,6 +5,7 @@ import { useGame } from "./context";
 import {
   CARD_DEF_MAP, COLORS, label, fillOf, valueOf, sumValue, nameOf, groupSets, canTake, isComplete, shieldOf,
   payableCards, playerName, waitingText, isPayment, hasProtego, drawCount, tileFill, getEffectiveColor,
+  type PaySelection,
 } from "./helpers";
 
 // ---------- paying with cards ----------
@@ -26,7 +27,8 @@ function cheapestPick(p: PlayerState, amount: number): string[] {
   return total >= amount ? out : payableCards(p).map(c => c.defId);
 }
 
-function PaymentPicker({ amount, title, payLabel, onPay, onProtego, onCancel, mustCover }: {
+function PaymentPicker({ pay, amount, title, payLabel, onPay, onProtego, onCancel, mustCover }: {
+  pay: PaySelection;
   amount: number;
   title: React.ReactNode;
   payLabel: (n: number) => string;
@@ -36,14 +38,13 @@ function PaymentPicker({ amount, title, payLabel, onPay, onProtego, onCancel, mu
   mustCover?: boolean; // Silencio needs the full 10G, debts accept "everything you have"
 }) {
   const { me } = useGame();
-  const [picked, setPicked] = useState<string[]>([]);
+  const { picked, toggle, set: setPicked } = pay;
   if (!me) return null;
   const shield = shieldOf(me);
   const required = payableCards(me);
   const total = picked.reduce((n, id) => n + valueOf(id), 0);
   const coversAll = required.every(c => picked.includes(c.defId));
   const ok = total >= amount || (!mustCover && coversAll);
-  const toggle = (id: string) => setPicked(p => (p.includes(id) ? p.filter(x => x !== id) : [...p, id]));
 
   const chip = (c: Card, color?: PropertyColor) => {
     const optional = !!color && shield === color;
@@ -67,7 +68,7 @@ function PaymentPicker({ amount, title, payLabel, onPay, onProtego, onCancel, mu
       <div className="hp-row">
         <b style={{ fontVariantNumeric: "tabular-nums" }}>Selected {total}G of {amount}G</b>
         <span className="hp-muted" style={{ fontSize: 12.5 }}>
-          {nothing ? "You have nothing to pay with." : total > amount ? "Overpaying. No change is given." : !mustCover && total < amount ? "If you can't cover it, pick everything you have." : ""}
+          {nothing ? "You have nothing to pay with." : total === 0 ? "Tap the chips or your cards below." : total > amount ? "Overpaying. No change is given." : !mustCover && total < amount ? "If you can't cover it, pick everything you have." : ""}
         </span>
         <span style={{ flex: 1 }} />
         {!nothing && <button className="hp-btn ghost" onClick={() => setPicked(cheapestPick(me, amount))}>Pick cheapest for me</button>}
@@ -127,7 +128,7 @@ function TargetPicker() {
 
   const cardButton = (o: PlayerState, c: Card, enabled: boolean, onClick: () => void) => (
     <button key={c.defId} className="hp-cardpick" aria-disabled={!enabled} disabled={!enabled} onClick={onClick} title={`${nameOf(c.defId)}, worth ${valueOf(c)}G`}>
-      <GameCard defId={c.defId} size="sm" />
+      <GameCard defId={c.defId} size="sm" color={getEffectiveColor(c)} />
     </button>
   );
 
@@ -189,8 +190,9 @@ function TargetPicker() {
 
 // ---------- the panel ----------
 
-export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen }: {
+export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay }: {
   discardPicked: string[];
+  pay: PaySelection;
   silencioOpen: boolean;
   setSilencioOpen: (v: boolean) => void;
 }) {
@@ -252,6 +254,7 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen }: {
   } else if (silencioOpen && me?.isSilenced) {
     prompt = (
       <PaymentPicker
+        pay={pay}
         amount={10}
         mustCover
         title={<><b>Lift Silencio.</b> Pay 10G from your bank or properties. The cards are discarded and your role power comes back.</>}
@@ -269,7 +272,7 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen }: {
         prompt = (
           <>
             <PaymentPicker
-              key={`${p.type}-${p.sourcePlayerId}-${p.cardDefId}`}
+              pay={pay}
               amount={p.amount ?? 0}
               title={<><b>{source} {why}.</b> You owe {p.amount}G. Pick what to pay with{hasProtego(me) ? ", or block it with Protego" : ""}. Cards you give go to {source}.</>}
               payLabel={n => `Pay ${n}G`}

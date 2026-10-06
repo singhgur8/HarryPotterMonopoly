@@ -187,13 +187,15 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   console.log("time-turner: ok");
 }
 
-// ---------- 9. Wilds flip any time, even off-turn ----------
+// ---------- 9. Wilds flip only on your own turn ----------
 {
   const s = setup();
-  const [, b] = s.players;
-  give(s, b, "properties", "wild_pink_orange_1", "pink");
-  assert.ok(flipWild(s, "p1", "wild_pink_orange_1", "orange").success);
-  assert.equal(flipWild(s, "p1", "wild_pink_orange_1", "red").success, false);
+  const [a, b] = s.players;
+  give(s, a, "properties", "wild_pink_orange_1", "pink");
+  give(s, b, "properties", "wild_pink_orange_2", "pink");
+  assert.ok(flipWild(s, "p0", "wild_pink_orange_1", "orange").success);
+  assert.equal(flipWild(s, "p0", "wild_pink_orange_1", "red").success, false);
+  assert.equal(flipWild(s, "p1", "wild_pink_orange_2", "orange").success, false, "not p1's turn");
   console.log("wild flip: ok");
 }
 
