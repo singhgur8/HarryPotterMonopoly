@@ -255,6 +255,7 @@ export type WSMessageType =
   | "wake_up"
   | "send_chat"
   | "time_turner_choose"
+  | "cancel_action"
   // Server -> Client
   | "game_state"
   | "error"

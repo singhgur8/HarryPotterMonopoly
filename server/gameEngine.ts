@@ -398,7 +398,10 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
   };
   const choose = (type: PendingAction["type"], message: string) => {
     discardIt();
-    state.pendingAction = { type, sourcePlayerId: player.visitorId, targetPlayerId: player.visitorId, cardDefId };
+    state.pendingAction = {
+      type, sourcePlayerId: player.visitorId, targetPlayerId: player.visitorId, cardDefId,
+      data: { free: state.freePlayCardId === cardDefId },
+    };
     log(state, player, message, def.id);
     return ok;
   };
@@ -902,6 +905,28 @@ export function paySilencio(state: GameState, visitorId: string, cardDefIds: str
   player.isSilenced = false;
   if (isCurrentTurn(state, visitorId)) state.maxActions = maxActionsFor(player);
   log(state, player, `paid ${total}G to lift Silencio. Their role power is back`);
+  return ok;
+}
+
+const CANCELLABLE: PendingAction["type"][] = [
+  "choose_steal", "choose_swap", "choose_steal_set", "choose_reducto", "choose_silencio", "choose_goblin", "time_turner_play",
+];
+
+/** Take back an action card while still picking its target. The card and the action come back. */
+export function cancelChoice(state: GameState, visitorId: string): Result {
+  const pending = state.pendingAction;
+  if (!pending || !CANCELLABLE.includes(pending.type)) return fail("Nothing to take back");
+  if (pending.sourcePlayerId !== visitorId) return fail("Not your action");
+  const player = getPlayer(state, visitorId)!;
+  const cardDefId = pending.cardDefId!;
+  const idx = state.discardPile.map(c => c.defId).lastIndexOf(cardDefId);
+  if (idx < 0) return fail("Card not found");
+  state.discardPile.splice(idx, 1);
+  player.hand.push({ defId: cardDefId });
+  if (pending.data?.free) state.freePlayCardId = cardDefId;
+  else state.actionsUsed = Math.max(0, state.actionsUsed - 1);
+  state.pendingAction = null;
+  log(state, player, `took back ${CARD_DEF_MAP[cardDefId]?.name ?? "a card"}`, cardDefId);
   return ok;
 }
 

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import {
   createInitialGameState, botStep, payWithCards, playProtego, declineProtego,
   chooseTarget, playCard, drawCards, paySilencio, getWaitingOn, flipWild,
-  harryProtectColor, endTurn, timeTurnerChoose, bankCard,
+  harryProtectColor, endTurn, timeTurnerChoose, bankCard, cancelChoice,
 } from "../server/gameEngine";
 import { ANIMALS, SET_SIZES } from "../shared/schema";
 import type { GameState, PlayerState } from "../shared/schema";
@@ -210,6 +210,23 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.equal(s.currentTurnIndex, 1);
   void drawCards;
   console.log("harry shield: ok");
+}
+
+// ---------- 11. Taking back an action while picking its target ----------
+{
+  const s = setup();
+  const [a, b] = s.players;
+  give(s, a, "hand", "action_accio_1");
+  give(s, b, "properties", "prop_red_1");
+  s.actionsUsed = 1;
+  assert.ok(playCard(s, "p0", "action_accio_1").success);
+  assert.equal(s.pendingAction?.type, "choose_steal");
+  assert.equal(cancelChoice(s, "p1").success, false, "only the caster can take it back");
+  assert.ok(cancelChoice(s, "p0").success);
+  assert.equal(s.pendingAction, null);
+  assert.equal(s.actionsUsed, 1);
+  assert.ok(a.hand.some(c => c.defId === "action_accio_1"));
+  console.log("take back: ok");
 }
 
 console.log("all engine checks passed");

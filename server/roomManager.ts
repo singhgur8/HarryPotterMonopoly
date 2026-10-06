@@ -14,6 +14,7 @@ import {
   flipWild, payWithCards, playProtego, declineProtego, chooseTarget,
   harryProtectColor, cedricChooseSource, timeTurnerChoose, paySilencio,
   discardCards, sanitizeStateForPlayer, putToSleep, wakeUp, botStep, getWaitingOn,
+  cancelChoice,
 } from "./gameEngine";
 
 // ========== TYPES ==========
@@ -421,7 +422,7 @@ function afterGameChange(room: Room) {
 const GAME_ACTIONS = new Set([
   "draw_cards", "play_card", "bank_card", "end_turn", "flip_wild", "pay_with_cards",
   "play_protego", "decline_protego", "choose_target", "harry_protect_color",
-  "cedric_choose_source", "time_turner_choose", "pay_silencio", "discard_cards",
+  "cedric_choose_source", "time_turner_choose", "pay_silencio", "discard_cards", "cancel_action",
 ]);
 
 // ========== MAIN ROUTER ==========
@@ -463,6 +464,12 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
     case "wake_up": return handleWakeUp(room, client);
     case "pay_silencio": return handlePaySilencio(room, client, payload);
     case "discard_cards": return handleDiscardCards(room, client, payload);
+    case "cancel_action": {
+      if (!room.gameState) return;
+      const result = cancelChoice(room.gameState, client.visitorId);
+      if (!result.success) return sendError(client, result.error!);
+      return broadcastGameState(room);
+    }
     default:
       sendError(client, `Unknown message type: ${type}`);
   }
