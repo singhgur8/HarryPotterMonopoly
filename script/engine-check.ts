@@ -8,6 +8,7 @@ import {
   createInitialGameState, botStep, payWithCards, playProtego, declineProtego,
   chooseTarget, playCard, drawCards, paySilencio, getWaitingOn, flipWild,
   harryProtectColor, endTurn, timeTurnerChoose, bankCard, cancelChoice, cedricChooseSource, wakeUp,
+  sleepForDisconnect,
 } from "../worker/gameEngine";
 import { ANIMALS, SET_SIZES } from "../shared/schema";
 import type { GameState, PlayerState } from "../shared/schema";
@@ -293,6 +294,22 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.ok(botStep(t));
   assert.ok(!y.hand.some(c => c.defId === "action_protego_1"), "bot used its Protego");
   console.log("practice bots: ok");
+}
+
+// ---------- Dropped players are handed to the bot, and get it back ----------
+{
+  const s = newGame(2);
+  const p1 = s.players[1];
+  assert.equal(sleepForDisconnect(s, "p1"), false, "a connected player stays in control");
+  p1.isConnected = false;
+  assert.equal(sleepForDisconnect(s, "p1"), true);
+  assert.ok(p1.isSleeping);
+  assert.match(s.eventLog.at(-1)!.message, /lost connection/);
+  assert.equal(sleepForDisconnect(s, "p1"), false, "only logged once");
+  p1.isConnected = true;
+  assert.ok(wakeUp(s, "p1").success);
+  assert.ok(!p1.isSleeping);
+  console.log("disconnect takeover: ok");
 }
 
 console.log("all engine checks passed");
