@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import {
   createInitialGameState, botStep, payWithCards, playProtego, declineProtego,
   chooseTarget, playCard, drawCards, paySilencio, getWaitingOn, flipWild,
-  harryProtectColor, endTurn, timeTurnerChoose, bankCard, cancelChoice,
+  harryProtectColor, endTurn, timeTurnerChoose, bankCard, cancelChoice, cedricChooseSource,
 } from "../worker/gameEngine";
 import { ANIMALS, SET_SIZES } from "../shared/schema";
 import type { GameState, PlayerState } from "../shared/schema";
@@ -231,7 +231,25 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   console.log("take back: ok");
 }
 
-// ---------- 12. Reducto only destroys properties, never bank cards ----------
+// ---------- 12. Cedric takes the top 2 of the discard pile, and the log names them ----------
+{
+  const s = setup();
+  const [a, b] = s.players;
+  b.role = "cedric";
+  give(s, b, "hand", "money_1g_1");
+  s.discardPile.push(take(s, "prop_red_1"), take(s, "action_accio_1"), take(s, "money_5g_1"));
+  assert.ok(endTurn(s, "p0").success);
+  assert.equal(s.pendingAction?.type, "cedric_draw_choice");
+  assert.ok(cedricChooseSource(s, "p1", "discard").success);
+  assert.deepEqual(b.hand.map(c => c.defId), ["money_1g_1", "money_5g_1", "action_accio_1"]);
+  assert.deepEqual(s.discardPile.map(c => c.defId), ["prop_red_1"]);
+  const line = s.eventLog[s.eventLog.length - 1].message;
+  assert.ok(line.includes(CARD_DEF_MAP.money_5g_1.name) && line.includes(CARD_DEF_MAP.action_accio_1.name), line);
+  void a;
+  console.log("cedric discard draw: ok");
+}
+
+// ---------- 13. Reducto only destroys properties, never bank cards ----------
 {
   const s = setup();
   const [a, b] = s.players;

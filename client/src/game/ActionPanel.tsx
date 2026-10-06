@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import type { GameCard as Card, PlayerState, PropertyColor, PaymentResult } from "@shared/schema";
 import { GameCard } from "@/components/GameCard";
 import { useGame } from "./context";
+import { CardInfo, DiscardLink, DiscardPile } from "./DiscardPile";
 import {
   CARD_DEF_MAP, COLORS, label, fillOf, valueOf, sumValue, nameOf, groupSets, canTake, isComplete, shieldOf,
-  payableCards, playerName, waitingText, isPayment, hasProtego, drawCount, tileFill, getEffectiveColor,
+  payableCards, playerName, waitingText, isPayment, hasProtego, drawCount, tileFill, getEffectiveColor, cardBlurb,
   type PaySelection,
 } from "./helpers";
 
@@ -315,8 +316,10 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
         prompt = (
           <div className="hp-prompt wait">
             <div className="head"><p><b>Cedric's choice.</b> Draw {drawCount(me)} from the deck, or take the top {top.length} of the discard pile.</p></div>
+            <div className="hp-cardinfos">
+              {top.map((c, i) => <CardInfo key={c.defId} defId={c.defId} tag={i === 0 ? "Top" : undefined} />)}
+            </div>
             <div className="hp-row">
-              {top.map(c => <GameCard key={c.defId} defId={c.defId} size="sm" />)}
               <button className="hp-btn ghost" onClick={() => send("cedric_choose_source", { source: "discard" })}>Take these {top.length}</button>
               <button className="hp-btn gold" onClick={() => send("cedric_choose_source", { source: "deck" })}>Draw from the deck</button>
             </div>
@@ -340,10 +343,10 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
         const pile = s.discardPile.filter(c => CARD_DEF_MAP[c.defId]?.actionType !== "time_turner");
         prompt = (
           <div className="hp-prompt alert">
-            <div className="head"><p><b>Time-Turner.</b> Take any card from the discard pile. You play it straight away, for free.</p></div>
+            <div className="head"><p><b>Time-Turner.</b> Take any card from the discard pile. You play it straight away, for free.</p><DiscardLink /></div>
             <div className="hp-row">
               {pile.map(c => (
-                <button key={c.defId} className="hp-cardpick" onClick={() => send("time_turner_choose", { cardDefId: c.defId })} title={nameOf(c.defId)}>
+                <button key={c.defId} className="hp-cardpick" onClick={() => send("time_turner_choose", { cardDefId: c.defId })} title={`${nameOf(c.defId)}: ${cardBlurb(c.defId)}`}>
                   <GameCard defId={c.defId} size="sm" />
                 </button>
               ))}
@@ -368,9 +371,7 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
       <div className="hp-center">
         <div className="hp-piles">
           <div className="hp-pile deck">Deck<br />{s.drawPileCount ?? 0}</div>
-          {s.discardPile.length
-            ? <div title={`Discard pile: ${s.discardPile.length} cards`}><GameCard defId={s.discardPile[s.discardPile.length - 1].defId} size="sm" /></div>
-            : <div className="hp-pile empty">Discard<br />empty</div>}
+          <DiscardPile />
         </div>
         <div className="hp-turn">
           <div className="t">{winner ? "Game over" : isMyTurn ? "Your turn" : `${current?.animal.emoji} ${current?.animal.name}'s turn`}</div>
@@ -378,6 +379,7 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
           {!winner && dots}
           {!winner && (!isMyTurn || p) && <div className="hp-waitline">⏳ {waitingText(s, meId)}</div>}
           {mainButton && <div className="hp-mobile-only">{mainButton}</div>}
+          <div className="hp-mobile-only"><DiscardLink /></div>
         </div>
         <div className="hp-turn-side">
           {!winner && <span className={`hp-timer ${low ? "low" : ""}`} style={{ fontSize: 22 }}>{timer}</span>}
