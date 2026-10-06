@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { getCardImage, getCardName, getCardDef, groupPropertiesByColor, groupBankCards, totalBankValue, COLOR_MAP } from "@/lib/cardUtils";
+import { getCardImage, cardImageUrl, preloadCardImages, getCardName, getCardDef, groupPropertiesByColor, groupBankCards, totalBankValue, COLOR_MAP } from "@/lib/cardUtils";
 import { CARD_DEF_MAP } from "@shared/cardDefs";
 import { SET_SIZES, PROPERTY_COLORS } from "@shared/schema";
 import type { GameCard, PlayerState, PropertyColor, PendingAction, EventLogEntry } from "@shared/schema";
@@ -64,6 +64,7 @@ function CardImg({ defId, size = "md", onClick, className = "", glow = false, st
       <img
         src={src}
         alt={getCardName(defId)}
+        decoding="async"
         className={`${sizeClasses[size]} object-cover rounded-lg transition-transform ${onClick ? "hover:scale-105 hover:-translate-y-1" : ""} ${glow ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""}`}
         draggable={false}
       />
@@ -438,7 +439,7 @@ function GameView() {
                   <div key={evt.id} className="flex items-start gap-1.5 py-0.5">
                     <span>{evt.playerEmoji}</span>
                     <span className="flex-1"><b>{evt.playerName}</b> {evt.message}</span>
-                    {evt.cardImage && <img src={`/cards/${evt.cardImage}`} alt="" className="w-8 h-12 rounded object-cover" />}
+                    {evt.cardImage && <img src={cardImageUrl(evt.cardImage)} alt="" loading="lazy" className="w-8 h-12 rounded object-cover" />}
                   </div>
                 ))}
               </ScrollArea>
@@ -769,6 +770,10 @@ function TimeTurnerDialog({ discardPile, send, myVisitorId }: { discardPile: Gam
 export default function Room({ roomCode }: { roomCode: string }) {
   const socket = useGameSocket(roomCode);
   const { toast } = useToast();
+
+  useEffect(() => {
+    preloadCardImages();
+  }, []);
 
   useEffect(() => {
     if (socket.lastError) {

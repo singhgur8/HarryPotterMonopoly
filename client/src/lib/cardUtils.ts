@@ -15,10 +15,32 @@ export const COLOR_MAP: Record<PropertyColor, { label: string; bg: string; text:
   utility:    { label: "Utility",     bg: "bg-violet-500",   text: "text-violet-400",   border: "border-violet-500" },
 };
 
+// Bump when card artwork changes: card URLs are served with a long-lived
+// immutable cache header, so the query string is what busts browser caches.
+const CARD_ASSET_VERSION = "2";
+
+export function cardImageUrl(image: string): string {
+  return `/cards/${image}?v=${CARD_ASSET_VERSION}`;
+}
+
 export function getCardImage(defId: string): string {
   if (defId === "__hidden__") return "";
   const def = CARD_DEF_MAP[defId];
-  return def ? `/cards/${def.image}` : "";
+  return def ? cardImageUrl(def.image) : "";
+}
+
+// Warm the browser cache with every card face so cards appear instantly
+// the first time they are dealt or played.
+let cardsPreloaded = false;
+export function preloadCardImages() {
+  if (cardsPreloaded) return;
+  cardsPreloaded = true;
+  const images = new Set(Object.values(CARD_DEF_MAP).map((def) => def.image));
+  images.forEach((image) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.src = cardImageUrl(image);
+  });
 }
 
 export function getCardName(defId: string): string {

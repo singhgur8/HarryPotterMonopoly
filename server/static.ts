@@ -10,6 +10,16 @@ export function serveStatic(app: Express) {
     );
   }
 
+  // Card art URLs carry a version query (see client/src/lib/cardUtils.ts),
+  // so they can be cached for a year without going stale.
+  app.use(
+    "/cards",
+    express.static(path.join(distPath, "cards"), {
+      maxAge: "365d",
+      immutable: true,
+    }),
+  );
+
   app.use(express.static(distPath));
 
   // fall through to index.html if the file doesn't exist

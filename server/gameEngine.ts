@@ -764,7 +764,7 @@ export function playProtego(state: GameState, visitorId: string): { success: boo
   state.discardPile.push(protego);
 
   addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-    "cast Protego — action blocked!", "action_protego.png");
+    "cast Protego — action blocked!", "action_protego.webp");
 
   // The original attacker can counter with their own Protego (unlimited chain)
   const attacker = getPlayer(state, pending.sourcePlayerId);
