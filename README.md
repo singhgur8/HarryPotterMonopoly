@@ -2,7 +2,7 @@
 
 A Harry Potter themed Monopoly Deal card game for 2 to 5 players, played in the browser.
 
-It runs on Cloudflare Workers. Each room is a Durable Object (`worker/gameRoom.ts`) that keeps its game in storage, so games survive restarts and deploys. The React client and card images are served as static assets.
+It runs on Cloudflare Workers. Each room is a Durable Object (`worker/gameRoom.ts`) that keeps its game in storage, so games survive restarts and deploys. The React client is served as static assets from Cloudflare's CDN.
 
 ## Run locally
 

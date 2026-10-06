@@ -13,6 +13,21 @@ export const SET_SIZES: Record<PropertyColor, number> = {
   yellow: 3, green: 3, dark_blue: 2, transport: 4, utility: 2,
 };
 
+// Card colours for each set. `fill` is the set colour, `on` is readable text
+// on that fill, `tint` is the art background and `ink` the line-art colour.
+export const SET_STYLE: Record<PropertyColor, { label: string; fill: string; on: string; tint: string; ink: string }> = {
+  brown:      { label: "Brown",      fill: "#7a4a2a", on: "#ffffff", tint: "#eadccf", ink: "#5e3820" },
+  light_blue: { label: "Light Blue", fill: "#8fc6e8", on: "#14243a", tint: "#e1eef6", ink: "#2c6c94" },
+  pink:       { label: "Pink",       fill: "#e58fb3", on: "#3a1426", tint: "#f6e0e9", ink: "#a33c69" },
+  orange:     { label: "Orange",     fill: "#e8893a", on: "#2e1607", tint: "#f7e3d0", ink: "#a5520f" },
+  red:        { label: "Red",        fill: "#b8322f", on: "#ffffff", tint: "#f2d9d6", ink: "#8e2321" },
+  yellow:     { label: "Yellow",     fill: "#e9c440", on: "#2d2406", tint: "#f6eccb", ink: "#8e7110" },
+  green:      { label: "Green",      fill: "#2f7d4f", on: "#ffffff", tint: "#d8eadf", ink: "#21603b" },
+  dark_blue:  { label: "Dark Blue",  fill: "#23397a", on: "#ffffff", tint: "#d9deec", ink: "#23397a" },
+  transport:  { label: "Transport",  fill: "#3b3f46", on: "#ffffff", tint: "#e0e1e3", ink: "#3b3f46" },
+  utility:    { label: "Utility",    fill: "#7d5bb5", on: "#ffffff", tint: "#e6def3", ink: "#5d3f93" },
+};
+
 // Rent tables for each color
 export const RENT_TABLE: Record<PropertyColor, number[]> = {
   brown:      [1, 2],
@@ -46,8 +61,10 @@ export interface CardDef {
   id: string;           // Unique card ID (e.g., "money_1g_1", "prop_brown_1")
   type: CardType;
   name: string;         // Display name
-  image: string;        // Filename in /cards/
   value: number;        // Galleon value (for banking or payment)
+  shortName?: string;   // Shown when the card is drawn small (board, bank)
+  text?: string;        // Rules sentence printed on the card (actions, wilds, roles)
+  target?: "self" | "one" | "all" | "reaction"; // Who an action affects, shown in the card footer
   
   // Property-specific
   color?: PropertyColor;
@@ -148,7 +165,7 @@ export interface EventLogEntry {
   playerName: string;
   playerColor: string;
   message: string;
-  cardImage?: string;
+  cardDefId?: string;
 }
 
 // Chat message

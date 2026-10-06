@@ -21,7 +21,7 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-function addEvent(state: GameState, playerEmoji: string, playerName: string, playerColor: string, message: string, cardImage?: string) {
+function addEvent(state: GameState, playerEmoji: string, playerName: string, playerColor: string, message: string, cardDefId?: string) {
   state.eventLog.push({
     id: uuidv4(),
     timestamp: Date.now(),
@@ -29,7 +29,7 @@ function addEvent(state: GameState, playerEmoji: string, playerName: string, pla
     playerName,
     playerColor,
     message,
-    cardImage,
+    cardDefId,
   });
   // Keep last 100 events
   if (state.eventLog.length > 100) {
@@ -253,7 +253,7 @@ export function playCard(state: GameState, visitorId: string, cardDefId: string,
       player.bank.push({ defId: cardDefId });
       state.actionsUsed++;
       addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        `banked ${def.name}`, def.image);
+        `banked ${def.name}`, def.id);
       return { success: true };
 
     case "property":
@@ -261,7 +261,7 @@ export function playCard(state: GameState, visitorId: string, cardDefId: string,
       player.properties.push({ defId: cardDefId, assignedColor: def.color });
       state.actionsUsed++;
       addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        `played ${def.name}`, def.image);
+        `played ${def.name}`, def.id);
       checkWinCondition(state, visitorId);
       return { success: true };
 
@@ -286,7 +286,7 @@ function playWildCard(state: GameState, player: PlayerState, cardDefId: string, 
     player.properties.push({ defId: cardDefId, assignedColor: targetColor });
     state.actionsUsed++;
     addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-      `played Polyjuice Potion as ${targetColor}`, def.image);
+      `played Polyjuice Potion as ${targetColor}`, def.id);
   } else if (Array.isArray(def.wildColors)) {
     // Two-color wild: if targetColor specified, use it; otherwise default to first color
     const color = targetColor && def.wildColors.includes(targetColor) ? targetColor : def.wildColors[0];
@@ -294,7 +294,7 @@ function playWildCard(state: GameState, player: PlayerState, cardDefId: string, 
     player.properties.push({ defId: cardDefId, assignedColor: color });
     state.actionsUsed++;
     addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-      `played ${def.name} as ${color}`, def.image);
+      `played ${def.name} as ${color}`, def.id);
   }
   checkWinCondition(state, player.visitorId);
   return { success: true };
@@ -356,7 +356,7 @@ function playRentCard(state: GameState, player: PlayerState, cardDefId: string, 
   }
 
   addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-    `charged ${rentAmount}G ${rentColor} rent`, def.image);
+    `charged ${rentAmount}G ${rentColor} rent`, def.id);
 
   return { success: true };
 }
@@ -373,7 +373,7 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
         if (card) player.hand.push(card);
       }
       addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        "used Felix Felicis — drew 2 extra cards", def.image);
+        "used Felix Felicis — drew 2 extra cards", def.id);
       return { success: true };
     }
 
@@ -389,7 +389,7 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
         cardDefId,
       };
       addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        "cast Accio — choose a property to steal", def.image);
+        "cast Accio — choose a property to steal", def.id);
       return { success: true, needsTarget: true };
     }
 
@@ -404,7 +404,7 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
         cardDefId,
       };
       addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        "cast Confundus Charm — choose properties to swap", def.image);
+        "cast Confundus Charm — choose properties to swap", def.id);
       return { success: true, needsTarget: true };
     }
 
@@ -419,7 +419,7 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
         cardDefId,
       };
       addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        "cast Expelliarmus — choose a complete set to steal", def.image);
+        "cast Expelliarmus — choose a complete set to steal", def.id);
       return { success: true, needsTarget: true };
     }
 
@@ -436,7 +436,7 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
         cardDefId,
       };
       addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        "sent a Gringotts Goblin — choose who owes 5G", def.image);
+        "sent a Gringotts Goblin — choose who owes 5G", def.id);
       return { success: true, needsTarget: true };
     }
 
@@ -457,7 +457,7 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
         };
       }
       addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        "threw a Yule Ball — everyone pays 2G", def.image);
+        "threw a Yule Ball — everyone pays 2G", def.id);
       return { success: true };
     }
 
@@ -472,7 +472,7 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
         cardDefId,
       };
       addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        "cast Reducto — choose what to destroy", def.image);
+        "cast Reducto — choose what to destroy", def.id);
       return { success: true, needsTarget: true };
     }
 
@@ -488,7 +488,7 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
         cardDefId,
       };
       addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        "cast Silencio — choose who to silence", def.image);
+        "cast Silencio — choose who to silence", def.id);
       return { success: true, needsTarget: true };
     }
 
@@ -500,7 +500,7 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
       
       if (state.discardPile.length <= 1) { // Only the Time-Turner itself
         addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-          "used Time-Turner but the discard pile is empty", def.image);
+          "used Time-Turner but the discard pile is empty", def.id);
         return { success: true };
       }
       
@@ -512,7 +512,7 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
         cardDefId,
       };
       addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        "activated the Time-Turner — choose a card from the discard pile", def.image);
+        "activated the Time-Turner — choose a card from the discard pile", def.id);
       return { success: true, needsTarget: true };
     }
 
@@ -523,7 +523,7 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
       player.bank.push({ defId: cardDefId });
       state.actionsUsed++;
       addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-        "banked Protego for later use", def.image);
+        "banked Protego for later use", def.id);
       return { success: true };
     }
 
@@ -549,7 +549,7 @@ export function bankCard(state: GameState, visitorId: string, cardDefId: string)
   state.actionsUsed++;
 
   addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-    `banked ${def.name} (${def.value}G)`, def.image);
+    `banked ${def.name} (${def.value}G)`, def.id);
 
   return { success: true };
 }
@@ -658,7 +658,7 @@ export function flipWild(state: GameState, visitorId: string, cardDefId: string,
   }
 
   addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-    `flipped ${def.name} to ${newColor}`, def.image);
+    `flipped ${def.name} to ${newColor}`, def.id);
 
   checkWinCondition(state, visitorId);
   return { success: true };
@@ -764,7 +764,7 @@ export function playProtego(state: GameState, visitorId: string): { success: boo
   state.discardPile.push(protego);
 
   addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-    "cast Protego — action blocked!", "action_protego.png");
+    "cast Protego — action blocked!", "action_protego.webp");
 
   // The original attacker can counter with their own Protego (unlimited chain)
   const attacker = getPlayer(state, pending.sourcePlayerId);
@@ -851,7 +851,7 @@ export function chooseTarget(state: GameState, visitorId: string, targetPlayerId
         if (card) {
           attacker.properties.push(card);
           addEvent(state, attacker.animal.emoji, attacker.animal.name, attacker.animal.colorClass,
-            `used Accio to steal ${def.name} from ${target.animal.name}`, def.image);
+            `used Accio to steal ${def.name} from ${target.animal.name}`, def.id);
         }
         state.pendingAction = null;
         checkWinCondition(state, visitorId);
@@ -1001,7 +1001,7 @@ export function chooseTarget(state: GameState, visitorId: string, targetPlayerId
           state.discardPile.push(card);
           const def = CARD_DEF_MAP[targetCardDefId];
           addEvent(state, attacker.animal.emoji, attacker.animal.name, attacker.animal.colorClass,
-            `used Reducto to destroy ${def?.name} from ${target.animal.name}`, def?.image);
+            `used Reducto to destroy ${def?.name} from ${target.animal.name}`, def?.id);
         }
         state.pendingAction = null;
       }
@@ -1081,7 +1081,7 @@ export function timeTurnerChoose(state: GameState, visitorId: string, cardDefId:
 
   const def = CARD_DEF_MAP[cardDefId];
   addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass,
-    `retrieved ${def?.name} from the discard pile with Time-Turner`, def?.image);
+    `retrieved ${def?.name} from the discard pile with Time-Turner`, def?.id);
 
   // Must play it immediately (it counts as the Time-Turner action already used)
   // For now, clear pending - the card is in hand and player must play it
