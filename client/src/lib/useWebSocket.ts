@@ -1,29 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WSMessage } from "@shared/schema";
 
-// Build the WebSocket base URL.
-// __PORT_5000__ is replaced at deploy time with "port/5000" on Perplexity.
-// On Render (or any direct host), we connect straight to the same origin.
-function buildWsUrl(roomCode: string): string {
-  const portToken = "__PORT_5000__";
-  const isLocal = portToken.startsWith("__");
-  
-  if (isLocal) {
-    // Local dev or direct hosting (e.g. Render): connect to same origin
-    if (typeof location !== "undefined" && location.hostname !== "localhost") {
-      // Deployed on a direct host (Render, Railway, etc.)
-      const proto = location.protocol === "https:" ? "wss:" : "ws:";
-      return `${proto}//${location.host}/ws?room=${roomCode}`;
+// Secret token that identifies this browser to the server, so a dropped
+// connection rejoins the same seat. Kept in localStorage across reloads.
+const TOKEN_KEY = "hp-player-token";
+let fallbackToken: string | null = null;
+
+function getPlayerToken(): string {
+  try {
+    let token = localStorage.getItem(TOKEN_KEY);
+    if (!token) {
+      token = crypto.randomUUID();
+      localStorage.setItem(TOKEN_KEY, token);
     }
-    // Local dev: connect directly to the Express server
-    return `ws://localhost:5000/ws?room=${roomCode}`;
+    return token;
+  } catch {
+    // Storage blocked (private mode): keep one token for this page load
+    fallbackToken ??= crypto.randomUUID();
+    return fallbackToken;
   }
-  
-  // Perplexity deploy: construct URL through the proxy
-  // Strip trailing filename (e.g. /index.html) from pathname
-  const base = location.pathname.replace(/\/[^/]*\.[^/]*$/, '').replace(/\/$/, '');
+}
+
+function buildWsUrl(roomCode: string): string {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${location.host}${base}/${portToken}/ws?room=${roomCode}`;
+  const params = new URLSearchParams({ room: roomCode, token: getPlayerToken() });
+  return `${proto}//${location.host}/ws?${params}`;
 }
 
 export function useGameSocket(roomCode: string | null) {
@@ -91,6 +92,16 @@ export function useGameSocket(roomCode: string | null) {
       ws.close();
     };
   }, [roomCode]);
+
+  // The server only sends the turn timer with state updates; count down locally in between.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setGameState((prev: any) =>
+        prev?.status === "playing" && prev.turnTimer > 0 ? { ...prev, turnTimer: prev.turnTimer - 1 } : prev,
+      );
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     connect();

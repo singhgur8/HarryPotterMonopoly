@@ -1,0 +1,13 @@
+{
+  "include": ["./**/*", "../shared/**/*"],
+  "compilerOptions": {
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "lib": ["ES2023"],
+    "types": ["@cloudflare/workers-types"]
+  }
+}

@@ -8,7 +8,7 @@ import {
   createInitialGameState, botStep, payWithCards, playProtego, declineProtego,
   chooseTarget, playCard, drawCards, paySilencio, getWaitingOn, flipWild,
   harryProtectColor, endTurn, timeTurnerChoose, bankCard, cancelChoice,
-} from "../server/gameEngine";
+} from "../worker/gameEngine";
 import { ANIMALS, SET_SIZES } from "../shared/schema";
 import type { GameState, PlayerState } from "../shared/schema";
 import { CARD_DEF_MAP, countCompleteSets } from "../shared/cardDefs";
