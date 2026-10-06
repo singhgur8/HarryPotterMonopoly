@@ -1,6 +1,6 @@
 /**
  * Worker entry: room API and WebSocket routing. Everything else (the React
- * client and card images) is served as static assets before this runs.
+ * client) is served as static assets before this runs.
  */
 import { GameRoom, type Env } from "./gameRoom";
 
