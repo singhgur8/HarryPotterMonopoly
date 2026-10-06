@@ -9,6 +9,7 @@ import { HandDock } from "./HandDock";
 import { usePhone } from "./useMedia";
 import { isPayment } from "./helpers";
 import { useGameSounds } from "./sounds";
+import { HomeButton } from "./Brand";
 
 type Entry = { id: string; ts: number; who: string; text: string; chat: boolean };
 
@@ -154,7 +155,8 @@ export function GameTable() {
   return (
     <div className="hp-game" data-testid="game-board">
       <header className="hp-top">
-        <span className="room">Monopoly Deal</span>
+        <HomeButton inGame={!!me && s.status === "playing"} roomCode={s.roomCode} />
+        <span className="room hp-desk-only">Monopoly Deal</span>
         <span className="hp-muted" style={{ fontSize: 13 }}>Room <b style={{ letterSpacing: ".1em" }}>{s.roomCode}</b></span>
         {!connected && <span className="hp-chip late">Reconnecting…</span>}
         <span style={{ flex: 1 }} />
