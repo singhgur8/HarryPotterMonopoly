@@ -131,3 +131,45 @@ export function cardBlurb(defId: string): string {
     default: return def.text ?? "";
   }
 }
+
+// ---------- what's worth nudging toward ----------
+
+/** True when a card in hand would do something if played now (not just banked). Mirrors the engine's checks. */
+export function usefulToPlay(s: GameState, me: PlayerState, defId: string): boolean {
+  const def = CARD_DEF_MAP[defId];
+  if (!def) return false;
+  const others = s.players.filter(p => p.visitorId !== me.visitorId);
+  const anyTakeable = others.some(o => o.properties.some(c => canTake(me, o, c)));
+  switch (def.type) {
+    case "property": case "wild": return true;
+    case "rent": {
+      const colors = def.rentColors === "rainbow" ? COLORS : (def.rentColors ?? []) as PropertyColor[];
+      return colors.some(c => rentFor(me, c) > 0);
+    }
+    case "action":
+      switch (def.actionType) {
+        case "accio": case "reducto": return anyTakeable;
+        case "confundus_charm": return me.properties.length > 0 && anyTakeable;
+        case "expelliarmus": return others.some(o => COLORS.some(c => isComplete(o, c) && shieldOf(o) !== c));
+        case "silencio": return others.some(o => !o.isSilenced);
+        case "time_turner": return s.discardPile.some(c => CARD_DEF_MAP[c.defId]?.actionType !== "time_turner");
+        case "protego": return false; // only blocks attacks; on your turn it can just be banked
+        default: return true;
+      }
+    default: return false;
+  }
+}
+
+/** Wilds on your table that could still be moved to another colour (free, on your turn). */
+export const movableWilds = (me: PlayerState) => me.properties.filter(c => CARD_DEF_MAP[c.defId]?.type === "wild");
+
+/**
+ * Nothing left to do this turn: no actions (or no cards) left and no wilds to move.
+ * Only then is it safe to end the turn for the player.
+ */
+export function outOfMoves(s: GameState, me: PlayerState): boolean {
+  if (s.status !== "playing" || s.players[s.currentTurnIndex]?.visitorId !== me.visitorId) return false;
+  if (!s.drawnThisTurn || s.pendingAction || s.freePlayCardId || me.isSleeping) return false;
+  const noPlays = s.actionsUsed >= s.maxActions || me.hand.length === 0;
+  return noPlays && movableWilds(me).length === 0;
+}

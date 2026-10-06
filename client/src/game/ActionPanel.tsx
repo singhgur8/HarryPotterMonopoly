@@ -7,7 +7,7 @@ import { useGame } from "./context";
 import { CardInfo, DiscardLink, DiscardPile } from "./DiscardPile";
 import {
   CARD_DEF_MAP, COLORS, label, fillOf, valueOf, sumValue, nameOf, groupSets, canTake, isComplete, shieldOf, roleName,
-  payableCards, playerName, waitingText, isPayment, hasProtego, drawCount, tileFill, getEffectiveColor, cardBlurb,
+  payableCards, playerName, waitingText, isPayment, hasProtego, drawCount, tileFill, getEffectiveColor, cardBlurb, outOfMoves,
   type PaySelection,
 } from "./helpers";
 
@@ -183,6 +183,38 @@ function TargetPicker() {
   );
 }
 
+// ---------- ending the turn for you ----------
+
+const AUTO_END_SECONDS = 5;
+
+/**
+ * Once there's truly nothing left to do (no actions or cards to play, no wilds
+ * to move), count down a few seconds and end the turn. "Keep my turn" stops it
+ * for the rest of this turn.
+ */
+function useAutoEnd() {
+  const { s, me, send } = useGame();
+  const ready = !!me && outOfMoves(s, me);
+  // Identifies this turn, so stopping the countdown doesn't carry into the next one
+  const turnKey = `${s.currentTurnIndex}-${[...s.eventLog].reverse().find(e => e.message === "starts their turn")?.id ?? ""}`;
+  const [kept, setKept] = useState<string | null>(null);
+  const [left, setLeft] = useState<number | null>(null);
+  const running = ready && kept !== turnKey;
+
+  useEffect(() => {
+    if (!running) { setLeft(null); return; }
+    setLeft(AUTO_END_SECONDS);
+    const id = window.setInterval(() => setLeft(n => (n === null ? null : n - 1)), 1000);
+    return () => clearInterval(id);
+  }, [running, turnKey]);
+
+  useEffect(() => {
+    if (running && left !== null && left <= 0) { setLeft(null); send("end_turn"); }
+  }, [running, left, send]);
+
+  return running && left !== null ? { left: Math.max(0, left), keep: () => setKept(turnKey) } : null;
+}
+
 // ---------- the panel ----------
 
 export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay }: {
@@ -223,11 +255,20 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
     <div className="hp-acts">Actions {Array.from({ length: s.maxActions }, (_, i) => <i key={i} className={i < s.actionsUsed ? "used" : ""} />)} {s.actionsUsed} of {s.maxActions} used</div>
   );
 
+  const autoEnd = useAutoEnd();
   let mainButton: React.ReactNode = null;
   if (isMyTurn && !p && s.status === "playing" && !me?.isSleeping) {
     // Pulse the button when it's the only thing left to do, or time is nearly up
     const endNow = !s.freePlayCardId && (s.actionsUsed >= s.maxActions || s.turnTimer <= 10);
-    mainButton = !s.drawnThisTurn
+    mainButton = autoEnd
+      ? (
+        <div className="hp-autoend" data-testid="auto-end">
+          <button className="hp-btn gold big hp-nudge" onClick={() => send("end_turn")} data-testid="button-end-turn">End turn · {autoEnd.left}</button>
+          <span className="hp-muted">No moves left, so your turn ends in {autoEnd.left}s.</span>
+          <button className="hp-btn ghost" onClick={autoEnd.keep}>Keep my turn</button>
+        </div>
+      )
+      : !s.drawnThisTurn
       ? <button className="hp-btn gold big hp-nudge" onClick={() => send("draw_cards")} data-testid="button-draw">Draw {drawCount(me!)} cards</button>
       : <button className={`hp-btn big ${s.actionsUsed >= s.maxActions ? "gold" : "ghost"} ${endNow ? "hp-nudge" : ""}`} onClick={() => send("end_turn")} disabled={!!s.freePlayCardId} data-testid="button-end-turn">End turn</button>;
   }

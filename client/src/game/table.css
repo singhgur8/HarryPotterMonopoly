@@ -67,6 +67,12 @@
 .hp-opp { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: grid; gap: 8px; text-align: left; min-width: 0; overflow: hidden; }
 .hp-opp.turn { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
 .hp-opp.away { opacity: .7; }
+/* Ring around the waited-on player's avatar; it empties as their time runs down */
+.hp-ava-ring { background: conic-gradient(var(--gold) var(--frac), var(--line) 0); padding: 3px; }
+.hp-ava-ring.low { background: conic-gradient(var(--alert) var(--frac), var(--line) 0); }
+.hp-ava-ring > span { width: 100%; height: 100%; border-radius: 50%; background: var(--sunk); display: grid; place-items: center; }
+.hp-steal { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; border-radius: 10px; background: var(--gold-soft); border: 1px solid var(--gold-line); }
+.hp-inspect .cards .hp-cardpick.hp-useful:not([aria-pressed="true"]) { box-shadow: 0 0 0 2px var(--gold-line), 0 0 10px 1px rgba(156, 116, 20, .3); }
 .hp-opp-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .hp-opp-top .nm { font-weight: 800; }
 .hp-opp-top .hand { margin-left: auto; font-size: 12.5px; color: var(--muted); }
@@ -102,6 +108,7 @@
 .hp-acts i.used { background: var(--gold); }
 .hp-waitline { font-size: 13px; background: var(--gold-soft); border: 1px solid var(--gold-line); border-radius: 999px; padding: 3px 12px; }
 .hp-turn-side { display: grid; gap: 6px; justify-items: center; min-width: 90px; }
+.hp-autoend { display: grid; gap: 6px; justify-items: center; text-align: center; max-width: 220px; font-size: 12.5px; }
 
 /* prompts */
 .hp-prompt { border-radius: 12px; padding: 12px 14px; display: grid; gap: 10px; background: var(--panel); border: 1px solid var(--line); }
@@ -170,6 +177,7 @@ button.hp-cn[aria-pressed="true"] { background: var(--gold); color: #fff; border
 .hp-hand-row .hp-cardpick { transition: transform .15s; }
 .hp-hand-row .hp-cardpick:hover:not([aria-disabled="true"]) { transform: translateY(-5px); }
 .hp-hand-row .hp-cardpick[aria-pressed="true"] { transform: translateY(-10px); }
+.hp-hand-row .hp-cardpick.hp-useful:not([aria-pressed="true"]) { box-shadow: 0 0 0 2px var(--gold-line), 0 0 12px 2px rgba(156, 116, 20, .35); }
 .hp-ctx { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13.5px; color: var(--muted); min-height: 38px; }
 .hp-ctx strong { color: var(--fg); }
 .hp-free { outline: 3px dashed var(--gold); outline-offset: 2px; border-radius: 8px; }

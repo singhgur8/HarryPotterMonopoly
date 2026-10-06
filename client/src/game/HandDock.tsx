@@ -5,7 +5,7 @@ import { useGame } from "./context";
 import { usePhone, useTall } from "./useMedia";
 import {
   CARD_DEF_MAP, COLORS, label, fillOf, rentFor, rentStep, countOf, valueOf, nameOf, groupSets, getEffectiveColor,
-  hasProtego,
+  hasProtego, usefulToPlay, movableWilds,
 } from "./helpers";
 
 function Swatch({ color, onClick, children }: { color: PropertyColor; onClick: () => void; children?: ReactNode }) {
@@ -161,9 +161,9 @@ export function HandDock({ sel, setSel, flipId, setFlip, discard }: {
   else if (sel && canPlay && (!free || free === sel)) ctx = <CardMoves defId={sel} done={() => setSel(null)} />;
   else if (sel) ctx = <CardInfo defId={sel} why={why} done={() => setSel(null)} />;
   else if (free && isMyTurn) ctx = <span><strong>{nameOf(free)}</strong> came back with Rewind. Play it now, for free.</span>;
-  else if (canPlay) ctx = <span>Pick a card to play or bank it. The gold coin is what it's worth.{handFull ? " You'll need to discard down to 7 at the end of your turn." : ""}</span>;
+  else if (canPlay) ctx = <span>Pick a card to play or bank it. Glowing cards would do something now. Money and actions can also be banked for their gold coin value.{handFull ? " You'll need to discard down to 7 at the end of your turn." : ""}</span>;
   else if (isMyTurn && !s.drawnThisTurn && !s.pendingAction) ctx = <span>Draw your cards to start your turn.</span>;
-  else if (isMyTurn && s.actionsUsed >= s.maxActions && !s.pendingAction) ctx = <span>No actions left. End your turn when you're ready. You can still move wilds.</span>;
+  else if (isMyTurn && s.actionsUsed >= s.maxActions && !s.pendingAction) ctx = <span>No actions left. End your turn when you're ready.{movableWilds(me).length ? " You can still move wilds." : ""}</span>;
   else if (offTurn) ctx = <span>Tap a card to read what it does. You play and move wilds on your turn.{hasProtego(me) ? " If someone targets you, you can block it with Just Say No from the panel above." : ""}</span>;
   else ctx = <span>Tap a card to read what it does.</span>;
 
@@ -177,10 +177,12 @@ export function HandDock({ sel, setSel, flipId, setFlip, discard }: {
         {me.hand.map(c => {
           const picked = discard.active ? discard.picked.includes(c.defId) : sel === c.defId;
           const locked = !discard.active && !!free && free !== c.defId;
+          // A soft glow on cards that would do something now; nothing else is blocked
+          const useful = canPlay && !free && !discard.active && usefulToPlay(s, me, c.defId);
           return (
             <button
               key={c.defId}
-              className={`hp-cardpick ${free === c.defId ? "hp-free" : ""}`}
+              className={`hp-cardpick ${free === c.defId ? "hp-free" : ""} ${useful ? "hp-useful" : ""}`}
               aria-pressed={picked}
               aria-disabled={locked}
               aria-label={`${nameOf(c.defId)}, worth ${valueOf(c)}M`}
