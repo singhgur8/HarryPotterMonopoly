@@ -1,25 +1,30 @@
 /**
- * Room Manager — WebSocket-based room management for HP Monopoly Deal.
- * Handles room creation, joining, lobby, and message routing.
+ * GameRoom — one Durable Object per room code.
+ * Holds the lobby, seats and game state, saves it to Durable Object storage
+ * after every event so rooms survive restarts and deploys, and uses
+ * WebSocket hibernation so idle rooms cost nothing.
  */
-import { WebSocketServer, WebSocket } from "ws";
+import { DurableObject } from "cloudflare:workers";
 import { v4 as uuidv4 } from "uuid";
-import type { Server } from "http";
-import type {
-  GameState, PlayerState, WSMessage, AnimalProfile, RoleType, PropertyColor,
-} from "../shared/schema";
+import type { GameState, WSMessage, AnimalProfile } from "../shared/schema";
 import { ANIMALS } from "../shared/schema";
 import {
   createInitialGameState, drawCards, playCard, bankCard, endTurn,
   flipWild, payWithCards, playProtego, declineProtego, chooseTarget,
   harryProtectColor, cedricChooseSource, timeTurnerChoose, paySilencio,
-  discardCards, sanitizeStateForPlayer, cedricDrawFromDiscard,
+  discardCards, sanitizeStateForPlayer,
 } from "./gameEngine";
+
+export interface Env {
+  ROOMS: DurableObjectNamespace<GameRoom>;
+}
+
+// Rooms nobody has connected to for this long are deleted.
+const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 
 // ========== TYPES ==========
 
 interface RoomClient {
-  ws: WebSocket;
   visitorId: string;
   animal: AnimalProfile;
   seatIndex: number | null; // null = spectator
@@ -32,64 +37,59 @@ interface Room {
   gameSpeed: number;
   clients: Map<string, RoomClient>;
   gameState: GameState | null;
-  turnTimerInterval: NodeJS.Timeout | null;
+  usedAnimals: number[];
+  timerSetAt: number; // when gameState.turnTimer was last brought up to date
+  lastActivity: number;
+  // Not persisted: how to reach the room's open sockets.
+  sockets: () => { ws: WebSocket; visitorId: string }[];
 }
 
-// ========== STATE ==========
-
-const rooms = new Map<string, Room>();
-const usedAnimals = new Map<string, Set<number>>(); // roomCode -> Set<animalIndex>
+type StoredRoom = Omit<Room, "clients" | "sockets"> & { clients: RoomClient[] };
 
 // ========== HELPERS ==========
 
-function generateRoomCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 5; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return code;
-}
-
-function getRandomAnimal(roomCode: string): AnimalProfile {
-  if (!usedAnimals.has(roomCode)) {
-    usedAnimals.set(roomCode, new Set());
-  }
-  const used = usedAnimals.get(roomCode)!;
-  const available = ANIMALS.filter((_, i) => !used.has(i));
+function getRandomAnimal(room: Room): AnimalProfile {
+  const available = ANIMALS.map((_, i) => i).filter(i => !room.usedAnimals.includes(i));
   if (available.length === 0) {
     // All used, just pick random
     return ANIMALS[Math.floor(Math.random() * ANIMALS.length)];
   }
-  const idx = ANIMALS.indexOf(available[Math.floor(Math.random() * available.length)]);
-  used.add(idx);
+  const idx = available[Math.floor(Math.random() * available.length)];
+  room.usedAnimals.push(idx);
   return ANIMALS[idx];
+}
+
+function send(ws: WebSocket, data: string) {
+  try {
+    ws.send(data);
+  } catch {
+    // Socket already closing
+  }
 }
 
 function broadcastToRoom(room: Room, msg: WSMessage, exclude?: string) {
   const data = JSON.stringify(msg);
-  for (const [vid, client] of room.clients) {
-    if (vid !== exclude && client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(data);
-    }
+  for (const { ws, visitorId } of room.sockets()) {
+    if (visitorId !== exclude) send(ws, data);
   }
 }
 
-function sendToClient(client: RoomClient, msg: WSMessage) {
-  if (client.ws.readyState === WebSocket.OPEN) {
-    client.ws.send(JSON.stringify(msg));
+function sendToClient(room: Room, client: RoomClient, msg: WSMessage) {
+  const data = JSON.stringify(msg);
+  for (const { ws, visitorId } of room.sockets()) {
+    if (visitorId === client.visitorId) send(ws, data);
   }
 }
 
-function sendError(client: RoomClient, error: string) {
-  sendToClient(client, { type: "error", payload: { error } });
+function sendError(room: Room, client: RoomClient, error: string) {
+  sendToClient(room, client, { type: "error", payload: { error } });
 }
 
 function broadcastGameState(room: Room) {
   if (!room.gameState) return;
-  for (const [vid, client] of room.clients) {
-    const sanitized = sanitizeStateForPlayer(room.gameState, vid);
-    sendToClient(client, { type: "game_state", payload: sanitized });
+  for (const { ws, visitorId } of room.sockets()) {
+    const sanitized = sanitizeStateForPlayer(room.gameState, visitorId);
+    send(ws, JSON.stringify({ type: "game_state", payload: sanitized }));
   }
 }
 
@@ -126,29 +126,22 @@ function broadcastLobbyState(room: Room) {
 }
 
 // ========== TURN TIMER ==========
+// The timer is counted down lazily from timerSetAt instead of ticking every
+// second, so a sleeping room does no work. Clients count down locally.
 
-function startTurnTimer(room: Room) {
-  if (room.turnTimerInterval) clearInterval(room.turnTimerInterval);
-  
-  room.turnTimerInterval = setInterval(() => {
-    if (!room.gameState || room.gameState.status !== "playing") {
-      if (room.turnTimerInterval) clearInterval(room.turnTimerInterval);
-      return;
-    }
+function tickTurnTimer(room: Room) {
+  const state = room.gameState;
+  if (!state || state.status !== "playing") return;
+  const elapsed = Math.floor((Date.now() - room.timerSetAt) / 1000);
+  if (elapsed <= 0) return;
+  state.turnTimer = Math.max(0, state.turnTimer - elapsed);
+  room.timerSetAt += elapsed * 1000;
+}
 
-    room.gameState.turnTimer--;
-    
-    if (room.gameState.turnTimer <= 0) {
-      room.gameState.turnTimer = 0;
-      // Timer expired — don't auto-sleep, just notify
-      broadcastGameState(room);
-    }
-
-    // Broadcast timer update every 5 seconds (or at 0)
-    if (room.gameState.turnTimer % 5 === 0 || room.gameState.turnTimer <= 10) {
-      broadcastGameState(room);
-    }
-  }, 1000);
+function turnDeadline(room: Room): number | null {
+  const state = room.gameState;
+  if (!state || state.status !== "playing" || state.turnTimer <= 0) return null;
+  return room.timerSetAt + state.turnTimer * 1000;
 }
 
 // ========== MESSAGE HANDLERS ==========
@@ -164,7 +157,7 @@ function handleJoinRoom(room: Room, client: RoomClient, payload: any) {
       broadcastGameState(room);
     } else {
       // New spectator during game
-      sendToClient(client, { type: "game_state", payload: sanitizeStateForPlayer(room.gameState, client.visitorId) });
+      sendToClient(room, client, { type: "game_state", payload: sanitizeStateForPlayer(room.gameState, client.visitorId) });
     }
   } else {
     broadcastLobbyState(room);
@@ -172,17 +165,17 @@ function handleJoinRoom(room: Room, client: RoomClient, payload: any) {
 }
 
 function handleSitDown(room: Room, client: RoomClient, payload: any) {
-  if (room.gameState) return sendError(client, "Game already in progress");
+  if (room.gameState) return sendError(room, client, "Game already in progress");
   
   const seatIndex = payload?.seatIndex;
   if (typeof seatIndex !== "number" || seatIndex < 0 || seatIndex > 4) {
-    return sendError(client, "Invalid seat");
+    return sendError(room, client, "Invalid seat");
   }
 
   // Check if seat is taken
   for (const [_, c] of room.clients) {
     if (c.seatIndex === seatIndex && c.visitorId !== client.visitorId) {
-      return sendError(client, "Seat already taken");
+      return sendError(room, client, "Seat already taken");
     }
   }
 
@@ -192,7 +185,7 @@ function handleSitDown(room: Room, client: RoomClient, payload: any) {
 }
 
 function handleStandUp(room: Room, client: RoomClient) {
-  if (room.gameState) return sendError(client, "Game in progress");
+  if (room.gameState) return sendError(room, client, "Game in progress");
   client.seatIndex = null;
   client.isReady = false;
   broadcastLobbyState(room);
@@ -200,25 +193,25 @@ function handleStandUp(room: Room, client: RoomClient) {
 
 function handleToggleReady(room: Room, client: RoomClient) {
   if (room.gameState) return;
-  if (client.seatIndex === null) return sendError(client, "Must be seated");
+  if (client.seatIndex === null) return sendError(room, client, "Must be seated");
   client.isReady = !client.isReady;
   broadcastLobbyState(room);
 }
 
 function handleSetGameSpeed(room: Room, client: RoomClient, payload: any) {
-  if (client.visitorId !== room.hostVisitorId) return sendError(client, "Only host can change speed");
-  if (room.gameState) return sendError(client, "Game in progress");
+  if (client.visitorId !== room.hostVisitorId) return sendError(room, client, "Only host can change speed");
+  if (room.gameState) return sendError(room, client, "Game in progress");
   
   const speed = payload?.speed;
-  if (![30, 60, 90].includes(speed)) return sendError(client, "Invalid speed");
+  if (![30, 60, 90].includes(speed)) return sendError(room, client, "Invalid speed");
   
   room.gameSpeed = speed;
   broadcastLobbyState(room);
 }
 
 function handleStartGame(room: Room, client: RoomClient) {
-  if (client.visitorId !== room.hostVisitorId) return sendError(client, "Only host can start");
-  if (room.gameState) return sendError(client, "Game already started");
+  if (client.visitorId !== room.hostVisitorId) return sendError(room, client, "Only host can start");
+  if (room.gameState) return sendError(room, client, "Game already started");
 
   // Collect seated & ready players
   const seatedPlayers: { visitorId: string; seatIndex: number; animal: AnimalProfile }[] = [];
@@ -228,21 +221,21 @@ function handleStartGame(room: Room, client: RoomClient) {
     }
   }
 
-  if (seatedPlayers.length < 2) return sendError(client, "Need at least 2 ready players");
-  if (seatedPlayers.length > 5) return sendError(client, "Max 5 players");
+  if (seatedPlayers.length < 2) return sendError(room, client, "Need at least 2 ready players");
+  if (seatedPlayers.length > 5) return sendError(room, client, "Max 5 players");
 
   // Sort by seat index
   seatedPlayers.sort((a, b) => a.seatIndex - b.seatIndex);
 
   room.gameState = createInitialGameState(room.code, seatedPlayers, room.gameSpeed);
-  startTurnTimer(room);
+  room.timerSetAt = Date.now();
   broadcastGameState(room);
 }
 
 function handleDrawCards(room: Room, client: RoomClient) {
   if (!room.gameState) return;
   const result = drawCards(room.gameState, client.visitorId);
-  if (!result.success) return sendError(client, result.error!);
+  if (!result.success) return sendError(room, client, result.error!);
   broadcastGameState(room);
 }
 
@@ -250,7 +243,7 @@ function handlePlayCard(room: Room, client: RoomClient, payload: any) {
   if (!room.gameState) return;
   const { cardDefId, asProperty, targetColor } = payload || {};
   const result = playCard(room.gameState, client.visitorId, cardDefId, asProperty, targetColor);
-  if (!result.success) return sendError(client, result.error!);
+  if (!result.success) return sendError(room, client, result.error!);
   broadcastGameState(room);
 }
 
@@ -258,14 +251,14 @@ function handleBankCard(room: Room, client: RoomClient, payload: any) {
   if (!room.gameState) return;
   const { cardDefId } = payload || {};
   const result = bankCard(room.gameState, client.visitorId, cardDefId);
-  if (!result.success) return sendError(client, result.error!);
+  if (!result.success) return sendError(room, client, result.error!);
   broadcastGameState(room);
 }
 
 function handleEndTurn(room: Room, client: RoomClient) {
   if (!room.gameState) return;
   const result = endTurn(room.gameState, client.visitorId);
-  if (!result.success) return sendError(client, result.error!);
+  if (!result.success) return sendError(room, client, result.error!);
   
   // Reset timer
   room.gameState.turnTimer = room.gameState.gameSpeed;
@@ -276,7 +269,7 @@ function handleFlipWild(room: Room, client: RoomClient, payload: any) {
   if (!room.gameState) return;
   const { cardDefId, newColor } = payload || {};
   const result = flipWild(room.gameState, client.visitorId, cardDefId, newColor);
-  if (!result.success) return sendError(client, result.error!);
+  if (!result.success) return sendError(room, client, result.error!);
   broadcastGameState(room);
 }
 
@@ -284,21 +277,21 @@ function handlePayWithCards(room: Room, client: RoomClient, payload: any) {
   if (!room.gameState) return;
   const { cardDefIds } = payload || {};
   const result = payWithCards(room.gameState, client.visitorId, cardDefIds || []);
-  if (!result.success) return sendError(client, result.error!);
+  if (!result.success) return sendError(room, client, result.error!);
   broadcastGameState(room);
 }
 
 function handlePlayProtego(room: Room, client: RoomClient) {
   if (!room.gameState) return;
   const result = playProtego(room.gameState, client.visitorId);
-  if (!result.success) return sendError(client, result.error!);
+  if (!result.success) return sendError(room, client, result.error!);
   broadcastGameState(room);
 }
 
 function handleDeclineProtego(room: Room, client: RoomClient) {
   if (!room.gameState) return;
   const result = declineProtego(room.gameState, client.visitorId);
-  if (!result.success) return sendError(client, result.error!);
+  if (!result.success) return sendError(room, client, result.error!);
   broadcastGameState(room);
 }
 
@@ -306,7 +299,7 @@ function handleChooseTarget(room: Room, client: RoomClient, payload: any) {
   if (!room.gameState) return;
   const { targetPlayerId, targetCardDefId, ownCardDefId } = payload || {};
   const result = chooseTarget(room.gameState, client.visitorId, targetPlayerId, targetCardDefId, ownCardDefId);
-  if (!result.success) return sendError(client, result.error!);
+  if (!result.success) return sendError(room, client, result.error!);
   broadcastGameState(room);
 }
 
@@ -314,7 +307,7 @@ function handleHarryProtectColor(room: Room, client: RoomClient, payload: any) {
   if (!room.gameState) return;
   const { color } = payload || {};
   const result = harryProtectColor(room.gameState, client.visitorId, color);
-  if (!result.success) return sendError(client, result.error!);
+  if (!result.success) return sendError(room, client, result.error!);
   room.gameState.turnTimer = room.gameState.gameSpeed;
   broadcastGameState(room);
 }
@@ -323,7 +316,7 @@ function handleCedricChooseSource(room: Room, client: RoomClient, payload: any) 
   if (!room.gameState) return;
   const { source } = payload || {};
   const result = cedricChooseSource(room.gameState, client.visitorId, source);
-  if (!result.success) return sendError(client, result.error!);
+  if (!result.success) return sendError(room, client, result.error!);
   broadcastGameState(room);
 }
 
@@ -331,7 +324,7 @@ function handleTimeTurnerChoose(room: Room, client: RoomClient, payload: any) {
   if (!room.gameState) return;
   const { cardDefId } = payload || {};
   const result = timeTurnerChoose(room.gameState, client.visitorId, cardDefId);
-  if (!result.success) return sendError(client, result.error!);
+  if (!result.success) return sendError(room, client, result.error!);
   broadcastGameState(room);
 }
 
@@ -339,7 +332,7 @@ function handlePaySilencio(room: Room, client: RoomClient, payload: any) {
   if (!room.gameState) return;
   const { cardDefIds } = payload || {};
   const result = paySilencio(room.gameState, client.visitorId, cardDefIds || []);
-  if (!result.success) return sendError(client, result.error!);
+  if (!result.success) return sendError(room, client, result.error!);
   broadcastGameState(room);
 }
 
@@ -347,7 +340,7 @@ function handleDiscardCards(room: Room, client: RoomClient, payload: any) {
   if (!room.gameState) return;
   const { cardDefIds } = payload || {};
   const result = discardCards(room.gameState, client.visitorId, cardDefIds || []);
-  if (!result.success) return sendError(client, result.error!);
+  if (!result.success) return sendError(room, client, result.error!);
   room.gameState.turnTimer = room.gameState.gameSpeed;
   broadcastGameState(room);
 }
@@ -381,10 +374,10 @@ function handlePutToSleep(room: Room, client: RoomClient, payload: any) {
   if (!target) return;
   
   // Can only put to sleep if their timer is at 0
-  if (room.gameState.turnTimer > 0) return sendError(client, "Timer hasn't expired yet");
+  if (room.gameState.turnTimer > 0) return sendError(room, client, "Timer hasn't expired yet");
   
   const currentPlayer = room.gameState.players[room.gameState.currentTurnIndex];
-  if (currentPlayer?.visitorId !== targetPlayerId) return sendError(client, "Can only sleep the current player");
+  if (currentPlayer?.visitorId !== targetPlayerId) return sendError(room, client, "Can only sleep the current player");
 
   target.isSleeping = true;
   broadcastGameState(room);
@@ -428,72 +421,101 @@ function handleMessage(room: Room, client: RoomClient, msg: WSMessage) {
     case "pay_silencio": return handlePaySilencio(room, client, payload);
     case "discard_cards": return handleDiscardCards(room, client, payload);
     default:
-      sendError(client, `Unknown message type: ${type}`);
+      sendError(room, client, `Unknown message type: ${type}`);
   }
 }
 
-// ========== SETUP ==========
+// ========== DURABLE OBJECT ==========
 
-export function setupWebSocket(server: Server) {
-  const wss = new WebSocketServer({ noServer: true });
+export class GameRoom extends DurableObject<Env> {
+  private room: Room | null = null;
 
-  // Handle upgrade manually to be flexible with proxy paths
-  server.on("upgrade", (req, socket, head) => {
-    const url = new URL(req.url || "/", `http://${req.headers.host}`);
-    // Accept any path ending with /ws (handles both /ws and /port/5000/ws)
-    if (url.pathname === "/ws" || url.pathname.endsWith("/ws")) {
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        wss.emit("connection", ws, req);
-      });
-    } else {
-      socket.destroy();
-    }
-  });
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    ctx.blockConcurrencyWhile(async () => {
+      const stored = await ctx.storage.get<StoredRoom>("room");
+      if (stored) this.room = this.hydrate(stored);
+    });
+  }
 
-  wss.on("connection", (ws: WebSocket, req) => {
-    // Extract visitor ID from header (injected by proxy)
-    const visitorId = req.headers["x-visitor-id"] as string || uuidv4();
-    
-    // Extract room code from URL query
-    const url = new URL(req.url || "/", `http://${req.headers.host}`);
-    const roomCode = url.searchParams.get("room");
+  private hydrate(stored: StoredRoom): Room {
+    return {
+      ...stored,
+      clients: new Map(stored.clients.map(c => [c.visitorId, c])),
+      sockets: () => this.ctx.getWebSockets().map(ws => ({
+        ws,
+        visitorId: (ws.deserializeAttachment() as { visitorId: string }).visitorId,
+      })),
+    };
+  }
 
-    if (!roomCode) {
-      ws.send(JSON.stringify({ type: "error", payload: { error: "No room code" } }));
-      ws.close();
-      return;
-    }
+  private newRoom(code: string, hostVisitorId: string): Room {
+    return this.hydrate({
+      code,
+      hostVisitorId,
+      gameSpeed: 60,
+      clients: [],
+      gameState: null,
+      usedAnimals: [],
+      timerSetAt: Date.now(),
+      lastActivity: Date.now(),
+    });
+  }
 
-    let room = rooms.get(roomCode);
-    
+  /** Save the room and schedule the next alarm (turn timer expiry or room expiry). */
+  private async save(room: Room, isActivity = true) {
+    if (isActivity) room.lastActivity = Date.now();
+    const { sockets, ...rest } = room;
+    const stored: StoredRoom = { ...rest, clients: [...room.clients.values()] };
+    await this.ctx.storage.put("room", stored);
+
+    const deadline = turnDeadline(room);
+    const expiry = room.lastActivity + ROOM_TTL_MS;
+    await this.ctx.storage.setAlarm(deadline !== null ? Math.min(deadline, expiry) : expiry);
+  }
+
+  // ----- RPC from the Worker -----
+
+  /** Reserve this room code. Returns false if it is already in use. */
+  async create(code: string): Promise<boolean> {
+    if (this.room) return false;
+    this.room = this.newRoom(code, "");
+    await this.save(this.room);
+    return true;
+  }
+
+  async exists(): Promise<boolean> {
+    return this.room !== null;
+  }
+
+  // ----- WebSockets -----
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const roomCode = url.searchParams.get("room")!;
+    const visitorId = url.searchParams.get("visitor")!;
+
+    const pair = new WebSocketPair();
+    const [clientWs, serverWs] = Object.values(pair);
+    this.ctx.acceptWebSocket(serverWs, [visitorId]);
+    serverWs.serializeAttachment({ visitorId });
+
+    let room = this.room;
     if (!room) {
       // Create room (first person is host)
-      room = {
-        code: roomCode,
-        hostVisitorId: visitorId,
-        gameSpeed: 60,
-        clients: new Map(),
-        gameState: null,
-        turnTimerInterval: null,
-      };
-      rooms.set(roomCode, room);
+      room = this.room = this.newRoom(roomCode, visitorId);
     } else if (room.clients.size === 0) {
-      // First WS connection to an empty room — adopt as host
+      // First connection to an empty room — adopt as host
       room.hostVisitorId = visitorId;
     }
+    tickTurnTimer(room);
 
     // Get or create client for this visitor
     let client = room.clients.get(visitorId);
-    if (client) {
-      // Reconnection
-      client.ws = ws;
-    } else {
-      // New client
-      const animal = getRandomAnimal(roomCode);
+    if (!client) {
       client = {
-        ws,
         visitorId,
-        animal,
+        animal: getRandomAnimal(room),
         seatIndex: null,
         isReady: false,
       };
@@ -502,79 +524,85 @@ export function setupWebSocket(server: Server) {
 
     // Send initial state
     if (room.gameState && room.gameState.status === "playing") {
-      sendToClient(client, {
+      sendToClient(room, client, {
         type: "game_state",
         payload: sanitizeStateForPlayer(room.gameState, visitorId),
       });
     } else {
-      sendToClient(client, {
-        type: "game_state",
-        payload: getLobbyState(room),
-      });
+      sendToClient(room, client, { type: "game_state", payload: getLobbyState(room) });
     }
 
     // Also send the client their identity
-    sendToClient(client, {
+    sendToClient(room, client, {
       type: "player_joined",
       payload: { visitorId, animal: client.animal },
     });
 
-    ws.on("message", (data) => {
-      try {
-        const msg = JSON.parse(data.toString()) as WSMessage;
-        handleMessage(room!, client!, msg);
-      } catch (err) {
-        sendError(client!, "Invalid message format");
+    // Mark a returning player connected again and tell everyone
+    handleJoinRoom(room, client, null);
+
+    await this.save(room);
+    return new Response(null, { status: 101, webSocket: clientWs });
+  }
+
+  async webSocketMessage(ws: WebSocket, data: string | ArrayBuffer) {
+    const room = this.room;
+    if (!room) return ws.close(1011, "Room closed");
+    const { visitorId } = ws.deserializeAttachment() as { visitorId: string };
+    const client = room.clients.get(visitorId);
+    if (!client) return;
+
+    let msg: WSMessage;
+    try {
+      msg = JSON.parse(typeof data === "string" ? data : new TextDecoder().decode(data));
+    } catch {
+      return sendError(room, client, "Invalid message format");
+    }
+
+    tickTurnTimer(room);
+    handleMessage(room, client, msg);
+    await this.save(room);
+  }
+
+  async webSocketClose(ws: WebSocket) {
+    try {
+      ws.close();
+    } catch {
+      // Already closed
+    }
+    const room = this.room;
+    if (!room) return;
+    const { visitorId } = ws.deserializeAttachment() as { visitorId: string };
+    const stillOpen = room.sockets().some(s => s.ws !== ws && s.visitorId === visitorId);
+    if (room.gameState && !stillOpen) {
+      const player = room.gameState.players.find(p => p.visitorId === visitorId);
+      if (player) {
+        player.isConnected = false;
+        tickTurnTimer(room);
+        broadcastGameState(room);
+        await this.save(room);
       }
-    });
+    }
+  }
 
-    ws.on("close", () => {
-      if (room && room.gameState) {
-        const player = room.gameState.players.find(p => p.visitorId === visitorId);
-        if (player) {
-          player.isConnected = false;
-          broadcastGameState(room);
-        }
-      }
+  async webSocketError(ws: WebSocket) {
+    await this.webSocketClose(ws);
+  }
 
-      // Clean up empty rooms after delay
-      setTimeout(() => {
-        if (room && room.clients.size === 0) {
-          if (room.turnTimerInterval) clearInterval(room.turnTimerInterval);
-          rooms.delete(roomCode!);
-          usedAnimals.delete(roomCode!);
-        }
-      }, 60000);
-    });
+  async alarm() {
+    const room = this.room;
+    if (!room) return;
 
-    ws.on("error", () => {
-      // Silently handle
-    });
-  });
+    if (this.ctx.getWebSockets().length === 0 && Date.now() - room.lastActivity >= ROOM_TTL_MS) {
+      // Abandoned room — delete it
+      this.room = null;
+      await this.ctx.storage.deleteAll();
+      return;
+    }
 
-  return wss;
-}
-
-// ========== REST API HELPERS ==========
-
-export function createRoom(hostVisitorId: string): string {
-  let code: string;
-  do {
-    code = generateRoomCode();
-  } while (rooms.has(code));
-  
-  const room: Room = {
-    code,
-    hostVisitorId,
-    gameSpeed: 60,
-    clients: new Map(),
-    gameState: null,
-    turnTimerInterval: null,
-  };
-  rooms.set(code, room);
-  return code;
-}
-
-export function roomExists(code: string): boolean {
-  return rooms.has(code);
+    // Turn timer ran out — show everyone the expired timer
+    tickTurnTimer(room);
+    broadcastGameState(room);
+    await this.save(room, false);
+  }
 }

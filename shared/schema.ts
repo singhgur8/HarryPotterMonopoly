@@ -1,20 +1,3 @@
-import { pgTable, text, serial, integer, boolean, jsonb } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod";
-
-// Database table for persisting rooms (optional, mostly in-memory for real-time)
-export const rooms = pgTable("rooms", {
-  id: serial("id").primaryKey(),
-  code: text("code").notNull().unique(),
-  hostVisitorId: text("host_visitor_id").notNull(),
-  gameSpeed: integer("game_speed").notNull().default(60),
-  status: text("status").notNull().default("lobby"), // lobby, playing, finished
-});
-
-export const insertRoomSchema = createInsertSchema(rooms).omit({ id: true });
-export type InsertRoom = z.infer<typeof insertRoomSchema>;
-export type Room = typeof rooms.$inferSelect;
-
 // ========== GAME TYPES (shared between client & server) ==========
 
 // Card color groups
