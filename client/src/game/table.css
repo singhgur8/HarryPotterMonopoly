@@ -227,9 +227,23 @@ button.hp-cn[aria-pressed="true"] { background: var(--gold); color: #fff; border
 .hp-page { min-height: 100dvh; display: flex; justify-content: center; align-items: flex-start; padding: 24px 16px; }
 .hp-lob { background: var(--table); border: 1px solid var(--line); border-radius: 18px; padding: 22px; display: grid; gap: 18px; width: 100%; max-width: 780px; }
 .hp-crest { display: flex; align-items: center; gap: 12px; }
-.hp-crest .mark { width: 48px; height: 48px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, var(--coin-hi), var(--coin) 70%); border: 3px solid var(--paper); box-shadow: 0 0 0 1px var(--gold-line); display: grid; place-items: center; font: 800 18px var(--display); color: var(--fg); flex-shrink: 0; }
+.hp-crest .hp-logo { flex-shrink: 0; filter: drop-shadow(0 2px 3px rgba(20,16,40,.18)); }
 .hp-crest h1 { font: 800 24px/1.1 var(--display); }
 .hp-crest p { margin: 2px 0 0; font: 800 12px var(--label); letter-spacing: .12em; color: var(--muted); }
+.hp-crest.big { flex-direction: column; text-align: center; gap: 8px; }
+.hp-crest.big h1 { font-size: 38px; }
+.hp-crest.big p { font-size: 13px; letter-spacing: .2em; color: var(--gold); }
+.hp-home { padding: 3px 10px 3px 6px; gap: 6px; }
+.hp-stripe { display: flex; height: 6px; border-radius: 999px; overflow: hidden; width: min(260px, 80%); justify-self: center; }
+.hp-stripe span { flex: 1; }
+.hp-home-page { align-items: center; background: radial-gradient(ellipse at 50% 0%, var(--gold-soft), transparent 60%); }
+.hp-hero { max-width: 440px; justify-items: stretch; padding: 30px 26px; box-shadow: 0 10px 40px rgba(20,16,40,.08); }
+.hp-hero > .hp-crest, .hp-hero > .hp-how { justify-self: center; justify-content: center; }
+.hp-tag { margin: 0; text-align: center; color: var(--muted); text-wrap: balance; }
+.hp-or { display: flex; align-items: center; gap: 10px; color: var(--muted); font: 800 11px var(--body); letter-spacing: .12em; text-transform: uppercase; }
+.hp-or::before, .hp-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.hp-rejoin { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--gold-soft); border: 1px solid var(--gold-line); border-radius: 12px; padding: 10px 12px; text-align: left; }
+.hp-rejoin b { display: block; font: 800 20px var(--display); letter-spacing: .14em; }
 .hp-codebox { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
 .hp-codetiles { display: flex; gap: 5px; margin-top: 4px; }
 .hp-codetiles span { width: 36px; height: 44px; border-radius: 7px; background: var(--paper); border: 1px solid #23202f2e; display: grid; place-items: center; font: 800 22px var(--display); }

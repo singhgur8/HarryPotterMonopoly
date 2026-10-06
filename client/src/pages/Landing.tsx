@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { Crest, HowToWin } from "@/game/Lobby";
+import { HowToWin } from "@/game/Lobby";
+import { Crest, SetStripe, forgetRoom, lastRoom } from "@/game/Brand";
 import "@/game/table.css";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -9,6 +10,19 @@ export default function Landing() {
   const [joinCode, setJoinCode] = useState("");
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
+  const [rejoin, setRejoin] = useState<string | null>(null);
+
+  // Offer the room this browser was last in, if it is still open
+  useEffect(() => {
+    const code = lastRoom();
+    if (!code) return;
+    let live = true;
+    apiRequest("GET", `/api/rooms/${code}`)
+      .then(r => r.json())
+      .then(d => { if (live && d.exists) setRejoin(code); })
+      .catch(() => forgetRoom(code));
+    return () => { live = false; };
+  }, []);
 
   async function createRoom() {
     setCreating(true);
@@ -42,14 +56,25 @@ export default function Landing() {
 
   return (
     <div className="hp">
-      <div className="hp-page" style={{ alignItems: "center" }} data-testid="landing-page">
-        <div className="hp-lob" style={{ maxWidth: 420 }}>
-          <Crest />
+      <div className="hp-page hp-home-page" data-testid="landing-page">
+        <div className="hp-lob hp-hero">
+          <Crest big />
+          <SetStripe />
+          <p className="hp-tag">Collect three full property sets before anyone else. Charge rent, steal deals and say no.</p>
+          {rejoin && (
+            <button className="hp-rejoin" onClick={() => navigate(`/room/${rejoin}`)} data-testid="button-rejoin">
+              <span>
+                <span className="hp-label">Your last room</span>
+                <b>{rejoin}</b>
+              </span>
+              <span className="hp-btn gold">Rejoin</span>
+            </button>
+          )}
           <button className="hp-btn gold big" onClick={createRoom} disabled={creating} data-testid="button-create-game">
             {creating ? "Creating…" : "Create a game"}
           </button>
-          <div className="hp-label" style={{ textAlign: "center" }}>or join with a room code</div>
-          <form className="hp-row" style={{ display: "flex", gap: 8 }} onSubmit={e => { e.preventDefault(); joinRoom(); }}>
+          <div className="hp-or"><span>or join with a room code</span></div>
+          <form style={{ display: "flex", gap: 8 }} onSubmit={e => { e.preventDefault(); joinRoom(); }}>
             <input
               className="hp-input"
               placeholder="CODE"
@@ -63,7 +88,7 @@ export default function Landing() {
           </form>
           {error && <p style={{ color: "var(--alert)", margin: 0, textAlign: "center" }} data-testid="text-error">{error}</p>}
           <HowToWin />
-          <p className="hp-muted" style={{ margin: 0, fontSize: 13 }}>2 to 5 players. No login needed. Share the link and everyone picks a seat.</p>
+          <p className="hp-muted" style={{ margin: 0, fontSize: 13, textAlign: "center" }}>2 to 5 players. No login needed. Share the link, or add bots and play solo.</p>
         </div>
       </div>
     </div>

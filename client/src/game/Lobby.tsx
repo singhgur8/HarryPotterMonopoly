@@ -1,23 +1,12 @@
 import { useRoom } from "./context";
 import { ROLE_INFO } from "./helpers";
+import { Crest, HomeButton } from "./Brand";
 
 const SPEEDS = [
   { s: 30, label: "Fast" },
   { s: 60, label: "Normal" },
   { s: 90, label: "Relaxed" },
 ];
-
-export function Crest() {
-  return (
-    <div className="hp-crest">
-      <span className="mark" aria-hidden="true">MD</span>
-      <div>
-        <h1>Monopoly Deal</h1>
-        <p>WIZARDING WORLD EDITION</p>
-      </div>
-    </div>
-  );
-}
 
 export function HowToWin() {
   return (
@@ -38,6 +27,7 @@ export function Lobby() {
         <div className="hp-lob" style={{ maxWidth: 360, justifyItems: "center", textAlign: "center" }}>
           <Crest />
           <p className="hp-muted">Connecting to the room…</p>
+          <HomeButton />
         </div>
       </div>
     );
@@ -62,7 +52,11 @@ export function Lobby() {
   return (
     <div className="hp-page">
       <div className="hp-lob" data-testid="lobby-page">
-        <Crest />
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Crest />
+          <span style={{ flex: 1 }} />
+          <HomeButton />
+        </div>
 
         <div className="hp-codebox">
           <div>
