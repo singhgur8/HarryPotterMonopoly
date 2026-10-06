@@ -67,25 +67,33 @@ function saveRail(open: boolean) {
   try { localStorage.setItem(RAIL_KEY, open ? "1" : "0"); } catch { /* storage blocked */ }
 }
 
-function useEntries(): Entry[] {
+function useEntries(): { log: Entry[]; chat: Entry[] } {
   const { s } = useGame();
-  return useMemo(() => {
-    const ev = (s.eventLog || []).map((e: EventLogEntry) => ({ id: e.id, ts: e.timestamp, who: `${e.playerEmoji} ${e.playerName}`, text: e.message, chat: false }));
-    const ch = (s.chatMessages || []).map((m: ChatMessage) => ({ id: m.id, ts: m.timestamp, who: `${m.playerEmoji} ${m.playerName}`, text: m.message, chat: true }));
-    return [...ev, ...ch].sort((a, b) => a.ts - b.ts);
-  }, [s.eventLog, s.chatMessages]);
+  return useMemo(() => ({
+    log: (s.eventLog || []).map((e: EventLogEntry) => ({ id: e.id, ts: e.timestamp, who: `${e.playerEmoji} ${e.playerName}`, text: e.message, chat: false })),
+    chat: (s.chatMessages || []).map((m: ChatMessage) => ({ id: m.id, ts: m.timestamp, who: `${m.playerEmoji} ${m.playerName}`, text: m.message, chat: true })),
+  }), [s.eventLog, s.chatMessages]);
 }
 
-/** Log + chat list with the tab switch and the chat box. */
-function LogBody({ entries, tab, setTab, unreadChat }: { entries: Entry[]; tab: "all" | "chat"; setTab: (t: "all" | "chat") => void; unreadChat: number }) {
-  const { send } = useGame();
-  const [text, setText] = useState("");
+/** A list that stays pinned to its newest line. */
+function Feed({ entries, empty, live }: { entries: Entry[]; empty: string; live?: boolean }) {
   const listRef = useRef<HTMLUListElement>(null);
-  const shown = tab === "chat" ? entries.filter(e => e.chat) : entries;
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [shown.length, tab]);
+  }, [entries.length]);
+  return (
+    <ul className="hp-log" ref={listRef} aria-live={live ? "polite" : undefined}>
+      {entries.map(e => <li key={e.id} className={e.chat ? "chat" : ""}><b>{e.who}</b> {e.chat ? e.text : <LogText text={e.text} />}</li>)}
+      {entries.length === 0 && <li>{empty}</li>}
+    </ul>
+  );
+}
+
+/** Chat messages and the message box. */
+function ChatBody({ chat }: { chat: Entry[] }) {
+  const { send } = useGame();
+  const [text, setText] = useState("");
   const submit = () => {
     const t = text.trim();
     if (!t) return;
@@ -94,14 +102,7 @@ function LogBody({ entries, tab, setTab, unreadChat }: { entries: Entry[]; tab: 
   };
   return (
     <>
-      <div className="hp-tabs">
-        <button aria-pressed={tab === "all"} onClick={() => setTab("all")}>Everything</button>
-        <button aria-pressed={tab === "chat"} onClick={() => setTab("chat")}>Chat{unreadChat > 0 && <span className="hp-badge">{unreadChat}</span>}</button>
-      </div>
-      <ul className="hp-log" ref={listRef} aria-live="polite">
-        {shown.map(e => <li key={e.id} className={e.chat ? "chat" : ""}><b>{e.who}</b> {e.chat ? e.text : <LogText text={e.text} />}</li>)}
-        {shown.length === 0 && <li>{tab === "chat" ? "No messages yet. Say hi." : "Nothing has happened yet."}</li>}
-      </ul>
+      <Feed entries={chat} empty="No messages yet. Say hi." live />
       <form className="hp-chatin" onSubmit={e => { e.preventDefault(); submit(); }}>
         <input value={text} onChange={e => setText(e.target.value)} placeholder="Message the table" maxLength={200} aria-label="Chat message" data-testid="input-chat" />
         <button type="submit" className="hp-btn gold" disabled={!text.trim()}>Send</button>
@@ -122,26 +123,26 @@ export function GameTable() {
   const [silencioOpen, setSilencioOpen] = useState(false);
 
   const [railOpen, setRailOpen] = useState(readRail);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [tab, setTab] = useState<"all" | "chat">("all");
-  const logOpen = mobile ? sheetOpen : railOpen;
+  const [sheet, setSheet] = useState<null | "log" | "chat">(null);
+  const logOpen = mobile ? sheet === "log" : railOpen;
+  const chatOpen = mobile ? sheet === "chat" : railOpen;
 
-  // Unread: anything that arrived while the log was hidden
-  const [seen, setSeen] = useState(entries.length);
-  const [seenChat, setSeenChat] = useState(entries.filter(e => e.chat).length);
-  const chatCount = entries.filter(e => e.chat).length;
-  useEffect(() => {
-    if (logOpen) { setSeen(entries.length); if (tab === "chat" || !mobile) setSeenChat(chatCount); }
-  }, [logOpen, entries.length, chatCount, tab, mobile]);
-  const unread = Math.max(0, entries.length - seen);
+  // Unread: lines that arrived while their panel was hidden
+  const logCount = entries.log.length;
+  const chatCount = entries.chat.length;
+  const [seenLog, setSeenLog] = useState(logCount);
+  const [seenChat, setSeenChat] = useState(chatCount);
+  useEffect(() => { if (logOpen) setSeenLog(logCount); }, [logOpen, logCount]);
+  useEffect(() => { if (chatOpen) setSeenChat(chatCount); }, [chatOpen, chatCount]);
+  const unreadLog = Math.max(0, logCount - seenLog);
   const unreadChat = Math.max(0, chatCount - seenChat);
 
-  // Peek bubble for a new chat line while the log is hidden
+  // Peek bubble for a new chat line while the chat is hidden
   const [peek, setPeek] = useState<Entry | null>(null);
   const lastChat = useRef(chatCount);
   useEffect(() => {
-    if (chatCount > lastChat.current && !logOpen) {
-      const latest = [...entries].reverse().find(e => e.chat) ?? null;
+    if (chatCount > lastChat.current && !chatOpen) {
+      const latest = entries.chat[entries.chat.length - 1] ?? null;
       if (latest && latest.who !== `${me?.animal.emoji} ${me?.animal.name}`) {
         setPeek(latest);
         const t = setTimeout(() => setPeek(null), 5000);
@@ -150,7 +151,8 @@ export function GameTable() {
       }
     }
     lastChat.current = chatCount;
-  }, [chatCount, logOpen, entries, me]);
+  }, [chatCount, chatOpen, entries, me]);
+  useEffect(() => { if (chatOpen) setPeek(null); }, [chatOpen]);
 
   // Selections go stale when the table changes under them
   const handKey = me?.hand.map(c => c.defId).join(",") ?? "";
@@ -173,10 +175,11 @@ export function GameTable() {
   const pay = { active: !!payKey, picked: payPicked, toggle: togglePay, set: setPayPicked };
 
   const togglePick = (id: string) => setPicked(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
-  const openLog = (t: "all" | "chat" = tab) => {
-    setTab(t);
-    setPeek(null);
-    if (mobile) setSheetOpen(true);
+  // Phone: one header button; it opens chat when there's something new to read there
+  const lastSheet = useRef<"log" | "chat">("chat");
+  useEffect(() => { if (sheet) lastSheet.current = sheet; }, [sheet]);
+  const openPanel = (p: "log" | "chat") => {
+    if (mobile) setSheet(p);
     else { setRailOpen(true); saveRail(true); }
   };
   const setRail = (open: boolean) => { setRailOpen(open); saveRail(open); };
@@ -206,8 +209,8 @@ export function GameTable() {
           {muted ? "🔇" : "🔊"}
         </button>
         {s.status === "playing" && <span className={`hp-timer hp-mobile-only ${s.turnTimer <= 10 ? "low" : ""}`}>{timer}</span>}
-        <button className="hp-btn ghost hp-mobile-only" onClick={() => openLog()} aria-label="Open log and chat">
-          💬{unread > 0 && <span className="hp-badge">{unread}</span>}
+        <button className="hp-btn ghost hp-mobile-only" onClick={() => openPanel(unreadChat > 0 ? "chat" : lastSheet.current)} aria-label="Open game log and chat" title="Game log and chat" data-testid="button-open-chat">
+          💬{unreadChat > 0 && <span className="hp-badge">{unreadChat}</span>}
         </button>
       </header>
 
@@ -230,20 +233,31 @@ export function GameTable() {
 
         {railOpen ? (
           <aside className="hp-rail" aria-label="Game log and chat">
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span className="hp-label" style={{ flex: 1 }}>Log and chat</span>
-              <button className="hp-btn ghost" style={{ padding: "2px 10px" }} onClick={() => setRail(false)} aria-label="Hide log">Hide</button>
-            </div>
-            <LogBody entries={entries} tab={tab} setTab={setTab} unreadChat={unreadChat} />
+            <section className="hp-panel log" aria-label="Game log">
+              <div className="hp-panel-head">
+                <span className="hp-label" style={{ flex: 1 }}>📜 Game log</span>
+                <button className="hp-btn ghost" style={{ padding: "2px 10px" }} onClick={() => setRail(false)} aria-label="Hide log and chat">Hide</button>
+              </div>
+              <Feed entries={entries.log} empty="Nothing has happened yet." />
+            </section>
+            <section className="hp-panel chat" aria-label="Chat">
+              <div className="hp-panel-head">
+                <span className="hp-label" style={{ flex: 1 }}>💬 Chat</span>
+              </div>
+              <ChatBody chat={entries.chat} />
+            </section>
           </aside>
         ) : (
           <aside className="hp-rail closed" aria-label="Game log and chat, hidden">
-            <button className="hp-btn ghost" style={{ padding: "6px 8px", flexDirection: "column" }} onClick={() => setRail(true)} aria-label="Show log and chat">
-              💬{unread > 0 && <span className="hp-badge">{unread}</span>}
+            <button className="hp-btn ghost" style={{ padding: "6px 8px", flexDirection: "column" }} onClick={() => setRail(true)} aria-label="Show game log" title="Game log">
+              📜{unreadLog > 0 && <span className="hp-badge soft">{unreadLog}</span>}
+            </button>
+            <button className="hp-btn ghost" style={{ padding: "6px 8px", flexDirection: "column" }} onClick={() => setRail(true)} aria-label="Show chat" title="Chat">
+              💬{unreadChat > 0 && <span className="hp-badge">{unreadChat}</span>}
             </button>
             <span className="vert">LOG &amp; CHAT</span>
             {peek && !mobile && (
-              <div className="hp-peek" onClick={() => openLog("chat")} role="button" tabIndex={0}>
+              <div className="hp-peek" onClick={() => openPanel("chat")} role="button" tabIndex={0}>
                 <b>{peek.who}</b> {peek.text}
               </div>
             )}
@@ -251,21 +265,26 @@ export function GameTable() {
         )}
       </div>
 
-      {mobile && peek && !sheetOpen && (
-        <div className="hp-mpeek" onClick={() => openLog("chat")} role="button" tabIndex={0}>
+      {mobile && peek && !sheet && (
+        <div className="hp-mpeek" onClick={() => openPanel("chat")} role="button" tabIndex={0}>
           <b>{peek.who}</b> {peek.text}
         </div>
       )}
-      {mobile && sheetOpen && (
+      {mobile && sheet && (
         <>
-          <div className="hp-sheet-back" onClick={() => setSheetOpen(false)} />
-          <div className="hp-sheet" role="dialog" aria-label="Game log and chat">
+          <div className="hp-sheet-back" onClick={() => setSheet(null)} />
+          <div className="hp-sheet" role="dialog" aria-label={sheet === "chat" ? "Chat" : "Game log"}>
             <div className="hp-grab" />
-            <div style={{ display: "flex", alignItems: "center" }}>
-              <span className="hp-label" style={{ flex: 1 }}>Log and chat</span>
-              <button className="hp-btn ghost" style={{ padding: "2px 10px" }} onClick={() => setSheetOpen(false)}>Close</button>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div className="hp-tabs" style={{ flex: 1 }}>
+                <button aria-pressed={sheet === "log"} onClick={() => setSheet("log")}>📜 Game log{unreadLog > 0 && <span className="hp-badge soft">{unreadLog}</span>}</button>
+                <button aria-pressed={sheet === "chat"} onClick={() => setSheet("chat")}>💬 Chat{unreadChat > 0 && <span className="hp-badge">{unreadChat}</span>}</button>
+              </div>
+              <button className="hp-btn ghost" style={{ padding: "2px 10px" }} onClick={() => setSheet(null)}>Close</button>
             </div>
-            <LogBody entries={entries} tab={tab} setTab={setTab} unreadChat={unreadChat} />
+            {sheet === "chat"
+              ? <ChatBody chat={entries.chat} />
+              : <Feed entries={entries.log} empty="Nothing has happened yet." />}
           </div>
         </>
       )}
