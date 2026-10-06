@@ -300,16 +300,30 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
       }
       case "harry_protect": {
         const owned = groupSets(me.properties).map(g => g.color);
+        const current = me.protectedColor;
+        const moveTo = owned.filter(c => c !== current);
         prompt = (
           <div className="hp-prompt wait">
-            <div className="head"><p><b>Harry's charm.</b> Shield one colour until your next turn. It can't be stolen or charged rent.</p></div>
+            <div className="head"><p>
+              <b>Harry's charm.</b>{" "}
+              {current
+                ? <>Your shield is on {label(current)}. Keep it there or move it? It stays until you move it.</>
+                : <>Shield one colour. It can't be stolen or charged rent, and it stays until you move it.</>}
+            </p></div>
             <div className="hp-row">
-              {owned.map(c => (
+              {current && (
+                <button className="hp-swatch-btn" onClick={() => send("harry_protect_color", {})}>
+                  <span className="sq" style={{ background: fillOf(current) }} />Keep on {label(current)}
+                </button>
+              )}
+              {moveTo.map(c => (
                 <button key={c} className="hp-swatch-btn" onClick={() => send("harry_protect_color", { color: c })}>
-                  <span className="sq" style={{ background: fillOf(c) }} />Shield {label(c)}
+                  <span className="sq" style={{ background: fillOf(c) }} />{current ? "Move to" : "Shield"} {label(c)}
                 </button>
               ))}
-              <button className="hp-btn ghost" onClick={() => send("harry_protect_color", {})}>{owned.length ? "No shield" : "Nothing to shield, end turn"}</button>
+              {current
+                ? <button className="hp-btn ghost" onClick={() => send("harry_protect_color", { color: null })}>Drop shield</button>
+                : <button className="hp-btn ghost" onClick={() => send("harry_protect_color", {})}>{owned.length ? "No shield" : "Nothing to shield, end turn"}</button>}
             </div>
           </div>
         );
