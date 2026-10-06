@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import {
   createInitialGameState, botStep, payWithCards, playProtego, declineProtego,
   chooseTarget, playCard, drawCards, paySilencio, getWaitingOn, flipWild,
-  harryProtectColor, endTurn, timeTurnerChoose, bankCard, cancelChoice, cedricChooseSource,
+  harryProtectColor, endTurn, timeTurnerChoose, bankCard, cancelChoice, cedricChooseSource, wakeUp,
 } from "../worker/gameEngine";
 import { ANIMALS, SET_SIZES } from "../shared/schema";
 import type { GameState, PlayerState } from "../shared/schema";
@@ -28,7 +28,8 @@ let finished = 0;
 for (let g = 0; g < 300; g++) {
   const s = newGame(2 + (g % 4));
   const total = countCards(s);
-  s.players.forEach(p => (p.isSleeping = true));
+  // Half the games use practice bots, which also charge rent and play Protego
+  s.players.forEach(p => { p.isSleeping = true; p.isBot = g % 2 === 1; });
   let steps = 0;
   while (s.status === "playing" && steps < 5000) {
     assert.ok(botStep(s), `bot got stuck in game ${g} at step ${steps}: ${JSON.stringify(s.pendingAction)}`);
@@ -265,6 +266,33 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.ok(!b.properties.some(c => c.defId === "prop_green_1"), "the property is destroyed");
   assert.ok(b.bank.some(c => c.defId === "money_5g_1"), "the bank is untouched");
   console.log("reducto: ok");
+}
+
+// ---------- 14. Practice bots charge rent, and block with Protego ----------
+{
+  const s = setup();
+  const [a, b] = s.players;
+  s.currentTurnIndex = 1;
+  b.isBot = b.isSleeping = true;
+  give(s, b, "properties", "prop_red_1");
+  give(s, b, "hand", "rent_red_yellow_1");
+  give(s, a, "bank", "money_5g_1");
+  assert.ok(botStep(s));
+  assert.equal(s.pendingAction?.type, "pay_rent", "bot charges rent for its red property");
+  assert.ok(wakeUp(s, "p1").success);
+  assert.ok(b.isSleeping, "a practice bot never wakes up");
+
+  const t = setup();
+  const [x, y] = t.players;
+  y.isBot = y.isSleeping = true;
+  give(t, x, "hand", "action_goblin_1");
+  give(t, y, "hand", "action_protego_1");
+  t.actionsUsed = 0;
+  assert.ok(playCard(t, "p0", "action_goblin_1").success);
+  assert.ok(chooseTarget(t, "p0", "p1").success);
+  assert.ok(botStep(t));
+  assert.ok(!y.hand.some(c => c.defId === "action_protego_1"), "bot used its Protego");
+  console.log("practice bots: ok");
 }
 
 console.log("all engine checks passed");

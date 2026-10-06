@@ -131,7 +131,7 @@ function payableCards(player: PlayerState): GameCard[] {
 
 export function createInitialGameState(
   roomCode: string,
-  players: { visitorId: string; seatIndex: number; animal: AnimalProfile }[],
+  players: { visitorId: string; seatIndex: number; animal: AnimalProfile; isBot?: boolean }[],
   gameSpeed: number,
 ): GameState {
   const drawPile: GameCard[] = shuffle(getPlayDeckCardIds()).map(id => ({ defId: id }));
@@ -146,7 +146,8 @@ export function createInitialGameState(
     properties: [],
     bank: [],
     isReady: false,
-    isSleeping: false,
+    isSleeping: !!p.isBot,
+    isBot: !!p.isBot,
     isConnected: true,
     protectedColor: undefined,
     isSilenced: false,
@@ -961,7 +962,7 @@ export function putToSleep(state: GameState, actorId: string, targetPlayerId: st
 export function wakeUp(state: GameState, visitorId: string): Result {
   const player = getPlayer(state, visitorId);
   if (!player) return fail("Player not found");
-  if (!player.isSleeping) return ok;
+  if (!player.isSleeping || player.isBot) return ok;
   player.isSleeping = false;
   log(state, player, "is back");
   return ok;
@@ -1009,7 +1010,22 @@ export function botStep(state: GameState): boolean {
   const pending = state.pendingAction;
 
   if (pending) {
+    // Practice bots defend themselves with Protego when they hold one
+    if (bot.isBot && hasProtegoInHand(bot) && pending.targetPlayerId === id &&
+        (pending.type === "protego_response" || PAYMENT_TYPES.includes(pending.type)) &&
+        playProtego(state, id).success) {
+      return true;
+    }
     switch (pending.type) {
+      case "choose_goblin":
+        if (bot.isBot) {
+          const richest = state.players.filter(p => p.visitorId !== id)
+            .sort((a, b) => worth(b) - worth(a))[0];
+          if (richest && chooseTarget(state, id, richest.visitorId).success) return true;
+        }
+        log(state, bot, "'s action was dropped while they were asleep");
+        state.pendingAction = null;
+        return true;
       case "pay_rent": case "pay_debt": case "pay_birthday":
         return payWithCards(state, id, botPayment(state, bot, pending.amount ?? 0)).success
           || payWithCards(state, id, payableCards(bot).map(c => c.defId)).success;
@@ -1063,10 +1079,35 @@ export function botStep(state: GameState): boolean {
       const colors = def.wildColors === "rainbow" ? [...PROPERTY_COLORS] : def.wildColors as PropertyColor[];
       return playCard(state, id, wild.defId, false, bestColorFor(bot, colors)).success;
     }
+    if (bot.isBot && botAttack(state, bot)) return true;
     const money = bot.hand.find(c => CARD_DEF_MAP[c.defId]?.type === "money");
     if (money) return playCard(state, id, money.defId).success;
   }
   return endTurn(state, id).success;
+}
+
+const worth = (p: PlayerState) => [...p.bank, ...p.properties].reduce((n, c) => n + cardValue(c), 0);
+const hasProtegoInHand = (p: PlayerState) => p.hand.some(c => CARD_DEF_MAP[c.defId]?.actionType === "protego");
+
+/**
+ * Practice bots also charge you, so you can test paying and Protego on your own:
+ * they play rent for their best set, Yule Ball, Gringotts Goblin and Felix Felicis.
+ * They still never steal or destroy cards.
+ */
+function botAttack(state: GameState, bot: PlayerState): boolean {
+  const id = bot.visitorId;
+  for (const card of bot.hand) {
+    const def = CARD_DEF_MAP[card.defId];
+    if (def?.type === "rent") {
+      const colors = def.rentColors === "rainbow" ? [...PROPERTY_COLORS] : def.rentColors as PropertyColor[];
+      const best = [...colors].sort((a, b) => calculateRent(bot, b) - calculateRent(bot, a))[0];
+      if (best && calculateRent(bot, best) > 0 && playCard(state, id, card.defId, false, best).success) return true;
+    }
+    if (def?.type === "action" && ["yule_ball", "gringotts_goblin", "felix_felicis"].includes(def.actionType!)) {
+      if (playCard(state, id, card.defId).success) return true;
+    }
+  }
+  return false;
 }
 
 // ========== WIN CONDITION ==========

@@ -100,6 +100,7 @@ export interface PlayerState {
   bank: GameCard[];        // Money/action cards banked
   isReady: boolean;
   isSleeping: boolean;
+  isBot?: boolean;       // A practice bot added in the lobby; always played by the bot
   isConnected: boolean;
   protectedColor?: PropertyColor;  // Harry's power
   isSilenced: boolean;             // Silencio debuff active
@@ -220,6 +221,8 @@ export type WSMessageType =
   | "toggle_ready"
   | "set_game_speed"
   | "start_game"
+  | "add_bot"
+  | "remove_bot"
   | "draw_cards"
   | "play_card"
   | "bank_card"

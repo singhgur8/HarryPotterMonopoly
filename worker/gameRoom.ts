@@ -108,6 +108,7 @@ function getLobbyState(room: Room): any {
         animal: client.animal,
         isReady: client.isReady,
         isHost: vid === room.hostVisitorId,
+        isBot: isBotId(vid),
       };
     } else {
       spectators.push(client.animal);
@@ -222,15 +223,40 @@ function handleSetGameSpeed(room: Room, client: RoomClient, payload: any) {
   broadcastLobbyState(room);
 }
 
+// ----- Practice bots: seats with no person behind them, played by botStep -----
+
+const BOT_PREFIX = "bot_";
+const isBotId = (visitorId: string) => visitorId.startsWith(BOT_PREFIX);
+
+function handleAddBot(room: Room, client: RoomClient) {
+  if (client.visitorId !== room.hostVisitorId) return sendError(room, client, "Only the host can add bots");
+  if (room.gameState) return sendError(room, client, "Game already in progress");
+  const taken = new Set([...room.clients.values()].map(c => c.seatIndex));
+  const seatIndex = [0, 1, 2, 3, 4].find(i => !taken.has(i));
+  if (seatIndex === undefined) return sendError(room, client, "No open seats");
+  const visitorId = BOT_PREFIX + crypto.randomUUID();
+  room.clients.set(visitorId, { visitorId, animal: getRandomAnimal(room), seatIndex, isReady: true });
+  broadcastLobbyState(room);
+}
+
+function handleRemoveBot(room: Room, client: RoomClient, payload: any) {
+  if (client.visitorId !== room.hostVisitorId) return sendError(room, client, "Only the host can remove bots");
+  if (room.gameState) return sendError(room, client, "Game already in progress");
+  const id = payload?.visitorId;
+  if (typeof id !== "string" || !isBotId(id)) return sendError(room, client, "That isn't a bot");
+  room.clients.delete(id);
+  broadcastLobbyState(room);
+}
+
 function handleStartGame(room: Room, client: RoomClient) {
   if (client.visitorId !== room.hostVisitorId) return sendError(room, client, "Only host can start");
   if (room.gameState) return sendError(room, client, "Game already started");
 
   // Collect seated & ready players
-  const seatedPlayers: { visitorId: string; seatIndex: number; animal: AnimalProfile }[] = [];
+  const seatedPlayers: { visitorId: string; seatIndex: number; animal: AnimalProfile; isBot: boolean }[] = [];
   for (const [vid, c] of room.clients) {
     if (c.seatIndex !== null && c.isReady) {
-      seatedPlayers.push({ visitorId: vid, seatIndex: c.seatIndex, animal: c.animal });
+      seatedPlayers.push({ visitorId: vid, seatIndex: c.seatIndex, animal: c.animal, isBot: isBotId(vid) });
     }
   }
 
@@ -471,6 +497,8 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
     case "toggle_ready": return handleToggleReady(room, client);
     case "set_game_speed": return handleSetGameSpeed(room, client, payload);
     case "start_game": return handleStartGame(room, client);
+    case "add_bot": return handleAddBot(room, client);
+    case "remove_bot": return handleRemoveBot(room, client, payload);
     case "draw_cards": return handleDrawCards(room, client);
     case "play_card": return handlePlayCard(room, client, payload);
     case "bank_card": return handleBankCard(room, client, payload);
