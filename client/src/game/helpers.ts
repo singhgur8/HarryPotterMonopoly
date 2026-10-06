@@ -14,7 +14,7 @@ export const nameOf = (defId: string) => CARD_DEF_MAP[defId]?.name ?? "Card";
 export const ROLE_INFO: Record<string, { name: string; power: string }> = {
   harry: { name: "Harry Potter", power: "Shield one colour at the end of your turn. It can't be stolen or charged rent until your next turn." },
   hermione: { name: "Hermione Granger", power: "Play up to 4 actions a turn instead of 3." },
-  draco: { name: "Draco Malfoy", power: "Accio, Confundus and Reducto can target complete sets." },
+  draco: { name: "Draco Malfoy", power: "Sly Deal, Forced Deal and Demolish can target complete sets." },
   cedric: { name: "Cedric Diggory", power: "Start your turn by drawing from the deck or taking the top 2 of the discard pile." },
   luna: { name: "Luna Lovegood", power: "Draw 3 cards at the start of your turn instead of 2." },
 };
@@ -41,11 +41,11 @@ export function rentFor(p: PlayerState, c: PropertyColor): number {
   return t[Math.min(n, t.length) - 1];
 }
 
-/** What rent becomes if one more card joins the set, e.g. "Red rent 3G → 6G". */
+/** What rent becomes if one more card joins the set, e.g. "Red rent 3M → 6M". */
 export function rentStep(p: PlayerState, c: PropertyColor): string {
   const n = countOf(p, c);
   if (n >= SET_SIZES[c]) return `${label(c)} is already complete`;
-  return `${label(c)} rent ${n ? RENT_TABLE[c][n - 1] : 0}G → ${RENT_TABLE[c][n]}G`;
+  return `${label(c)} rent ${n ? RENT_TABLE[c][n - 1] : 0}M → ${RENT_TABLE[c][n]}M`;
 }
 
 export const roleActive = (p: PlayerState | undefined, role: string) => !!p && p.role === role && !p.isSilenced;
@@ -92,14 +92,14 @@ export function waitingText(s: GameState, meId: string): string {
   if (!p) return s.waitingOn === meId ? "Your move" : `Waiting on ${who} to play`;
   const card = p.cardDefId ? nameOf(p.cardDefId) : "";
   switch (p.type) {
-    case "pay_rent": return `Waiting on ${who} to pay ${p.amount}G rent`;
-    case "pay_birthday": return `Waiting on ${who} to pay 2G for the Yule Ball`;
-    case "pay_debt": return `Waiting on ${who} to pay the Goblin 5G`;
-    case "protego_response": return `Waiting on ${who} to decide on Protego`;
+    case "pay_rent": return `Waiting on ${who} to pay ${p.amount}M rent`;
+    case "pay_birthday": return `Waiting on ${who} to pay 2M for It's My Birthday`;
+    case "pay_debt": return `Waiting on ${who} to pay the Debt Collector 5M`;
+    case "protego_response": return `Waiting on ${who} to decide on Just Say No`;
     case "harry_protect": return `Waiting on ${who} to pick a colour to shield`;
     case "cedric_draw_choice": return `Waiting on ${who} to choose where to draw from`;
     case "discard_excess": return `Waiting on ${who} to discard down to 7`;
-    case "time_turner_play": return `Waiting on ${who} to pick a card with the Time-Turner`;
+    case "time_turner_play": return `Waiting on ${who} to pick a card with Rewind`;
     default: return `Waiting on ${who} to choose a target for ${card}`;
   }
 }
@@ -126,7 +126,7 @@ export function cardBlurb(defId: string): string {
   if (!def) return "";
   const both = (cs: PropertyColor[]) => cs.map(label).join(" or ");
   switch (def.type) {
-    case "money": return `Money. Bank it for ${def.value}G.`;
+    case "money": return `Money. Bank it for ${def.value}M.`;
     case "property": return `${label(def.color!)} property. ${SET_SIZES[def.color!]} make a full set.`;
     case "wild": return def.wildColors === "rainbow" ? "Wild property. Joins any colour." : `Wild property. Counts as ${both(def.wildColors as PropertyColor[])}.`;
     case "rent": return def.rentColors === "rainbow" ? "Rent. Charge everyone for any one of your sets." : `Rent. Charge everyone for ${both(def.rentColors as PropertyColor[])}.`;

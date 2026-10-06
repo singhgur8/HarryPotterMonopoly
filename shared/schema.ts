@@ -13,19 +13,20 @@ export const SET_SIZES: Record<PropertyColor, number> = {
   yellow: 3, green: 3, dark_blue: 2, transport: 4, utility: 2,
 };
 
-// Card colours for each set. `fill` is the set colour, `on` is readable text
-// on that fill, `tint` is the art background and `ink` the line-art colour.
+// Card colours for each set, matched to the Monopoly Deal deck. `fill` is the
+// set colour, `on` is readable text on that fill, `tint` is the art background
+// and `ink` the line-art colour.
 export const SET_STYLE: Record<PropertyColor, { label: string; fill: string; on: string; tint: string; ink: string }> = {
-  brown:      { label: "Brown",      fill: "#7a4a2a", on: "#ffffff", tint: "#eadccf", ink: "#5e3820" },
-  light_blue: { label: "Light Blue", fill: "#8fc6e8", on: "#14243a", tint: "#e1eef6", ink: "#2c6c94" },
-  pink:       { label: "Pink",       fill: "#e58fb3", on: "#3a1426", tint: "#f6e0e9", ink: "#a33c69" },
-  orange:     { label: "Orange",     fill: "#e8893a", on: "#2e1607", tint: "#f7e3d0", ink: "#a5520f" },
-  red:        { label: "Red",        fill: "#b8322f", on: "#ffffff", tint: "#f2d9d6", ink: "#8e2321" },
-  yellow:     { label: "Yellow",     fill: "#e9c440", on: "#2d2406", tint: "#f6eccb", ink: "#8e7110" },
-  green:      { label: "Green",      fill: "#2f7d4f", on: "#ffffff", tint: "#d8eadf", ink: "#21603b" },
-  dark_blue:  { label: "Dark Blue",  fill: "#23397a", on: "#ffffff", tint: "#d9deec", ink: "#23397a" },
-  transport:  { label: "Transport",  fill: "#3b3f46", on: "#ffffff", tint: "#e0e1e3", ink: "#3b3f46" },
-  utility:    { label: "Utility",    fill: "#7d5bb5", on: "#ffffff", tint: "#e6def3", ink: "#5d3f93" },
+  brown:      { label: "Brown",      fill: "#955436", on: "#ffffff", tint: "#efe2d8", ink: "#6e3c24" },
+  light_blue: { label: "Light Blue", fill: "#aae0fa", on: "#10283a", tint: "#e6f5fd", ink: "#2b7aa6" },
+  pink:       { label: "Pink",       fill: "#d93a96", on: "#ffffff", tint: "#f8dcec", ink: "#a8216f" },
+  orange:     { label: "Orange",     fill: "#f7941d", on: "#2e1607", tint: "#fde9d1", ink: "#b0610a" },
+  red:        { label: "Red",        fill: "#ed1b24", on: "#ffffff", tint: "#fcdcdd", ink: "#b3121a" },
+  yellow:     { label: "Yellow",     fill: "#fef200", on: "#2d2a06", tint: "#fffbcc", ink: "#8a8000" },
+  green:      { label: "Green",      fill: "#1fb25a", on: "#ffffff", tint: "#d6f1e1", ink: "#13803f" },
+  dark_blue:  { label: "Dark Blue",  fill: "#0072bb", on: "#ffffff", tint: "#d4e7f5", ink: "#00578f" },
+  transport:  { label: "Railroad",   fill: "#231f20", on: "#ffffff", tint: "#e2e1e1", ink: "#231f20" },
+  utility:    { label: "Utility",    fill: "#c5e3a8", on: "#1d3310", tint: "#eef7e5", ink: "#4f7d2c" },
 };
 
 // Rent tables for each color
@@ -142,7 +143,7 @@ export type PendingActionType =
   | "choose_steal_set"   // Expelliarmus: attacker picks set to steal
   | "choose_reducto"     // Reducto: attacker picks card to discard
   | "choose_silencio"    // Silencio: attacker picks player to silence
-  | "choose_goblin"      // Gringotts Goblin: attacker picks who owes 5G
+  | "choose_goblin"      // Gringotts Goblin: attacker picks who owes 5M
   | "protego_response"   // Player can respond with Protego
   | "harry_protect"      // Harry chooses color to protect at end of turn
   | "cedric_draw_choice" // Cedric chooses deck or discard
