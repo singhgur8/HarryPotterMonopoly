@@ -10,13 +10,14 @@ import "./game-card.css";
 export const CARD_WIDTHS = { xs: 32, sm: 64, md: 96, lg: 148, xl: 180 } as const;
 export type CardSize = keyof typeof CARD_WIDTHS;
 
-const METALS: Record<number, [string, string]> = {
-  1: ["#9c5f36", "Bronze"],
-  2: ["#7f8891", "Silver"],
-  3: ["#b48a22", "Gold"],
-  4: ["#2b7d53", "Emerald"],
-  5: ["#2d5aa8", "Sapphire"],
-  10: ["#6f4699", "Amethyst"],
+// Money colours from the Monopoly Deal deck: [fill, text on fill].
+const MONEY: Record<number, [string, string]> = {
+  1: ["#f3e7b4", "#3b2f0a"],
+  2: ["#f2a19b", "#3d1210"],
+  3: ["#b9dd9c", "#1d3310"],
+  4: ["#a6d5f0", "#10283a"],
+  5: ["#b8a2d4", "#24143d"],
+  10: ["#f7b25c", "#3a2104"],
 };
 
 const TARGET_LABEL = { self: "You", one: "1 player", all: "All players", reaction: "Reaction" } as const;
@@ -158,9 +159,9 @@ function ActionFace({ def }: { def: CardDef }) {
 }
 
 function MoneyFace({ def }: { def: CardDef }) {
-  const [fill, metal] = METALS[def.value] ?? ["#7f8891", "Money"];
+  const [fill, on] = MONEY[def.value] ?? ["#d9d9d9", "#222"];
   return (
-    <div className="gc-face t-money" style={{ "--set": fill, "--on": "#fff" } as CSSProperties}>
+    <div className="gc-face t-money" style={{ "--set": fill, "--on": on } as CSSProperties}>
       <Coin value={def.value} />
       <div className="art">
         <div>
@@ -168,7 +169,7 @@ function MoneyFace({ def }: { def: CardDef }) {
           <div className="unit">{def.value === 1 ? "Galleon" : "Galleons"}</div>
         </div>
       </div>
-      <footer className="foot"><span className="ftxt">Money</span><span>{metal}</span></footer>
+      <footer className="foot"><span className="ftxt">Money</span></footer>
     </div>
   );
 }

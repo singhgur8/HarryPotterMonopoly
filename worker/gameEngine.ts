@@ -22,6 +22,16 @@ const COLOR_LABEL: Record<PropertyColor, string> = {
 
 // ========== HELPERS ==========
 
+// Log tokens the client draws as colour chips: [[colour]] or [[colour|card name]].
+const colorTag = (color: PropertyColor) => `[[${color}]]`;
+function cardTag(card: GameCard | undefined, defId?: string): string {
+  const def = CARD_DEF_MAP[card?.defId ?? defId ?? ""];
+  if (!def) return "a card";
+  const color = card ? getEffectiveColor(card) : def.color;
+  return color ? `[[${color}|${def.name}]]` : def.name;
+}
+const ownedTag = (owner: PlayerState, defId: string) => cardTag(owner.properties.find(c => c.defId === defId), defId);
+
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -291,7 +301,7 @@ export function playCard(state: GameState, visitorId: string, cardDefId: string,
         removeCard(player.hand, cardDefId);
         player.properties.push({ defId: cardDefId, assignedColor: def.color });
         state.actionsUsed++;
-        log(state, player, `played ${def.name}`, def.id);
+        log(state, player, `played ${cardTag(undefined, cardDefId)}`, def.id);
         checkWinCondition(state, visitorId);
         return ok;
 
@@ -323,7 +333,7 @@ function playWildCard(state: GameState, player: PlayerState, cardDefId: string, 
   removeCard(player.hand, cardDefId);
   player.properties.push({ defId: cardDefId, assignedColor: color });
   state.actionsUsed++;
-  log(state, player, `played ${def.name} as ${COLOR_LABEL[color]}`, def.id);
+  log(state, player, `played ${def.name} as ${colorTag(color)}`, def.id);
   checkWinCondition(state, player.visitorId);
   return ok;
 }
@@ -348,7 +358,7 @@ function playRentCard(state: GameState, player: PlayerState, cardDefId: string, 
   removeCard(player.hand, cardDefId);
   state.discardPile.push({ defId: cardDefId });
   state.actionsUsed++;
-  log(state, player, `charged everyone ${rentAmount}G ${COLOR_LABEL[rentColor]} rent`, def.id);
+  log(state, player, `charged everyone ${rentAmount}G ${colorTag(rentColor)} rent`, def.id);
 
   // Every other player pays, one at a time
   const targets = state.players.filter(p => p.visitorId !== player.visitorId).map(p => p.visitorId);
@@ -376,7 +386,7 @@ function nextPayer(state: GameState, payment: PendingAction) {
     const next = getPlayer(state, nextId);
     if (!next) continue;
     if (payment.type === "pay_rent" && data.rentColor && shieldOf(next) === data.rentColor) {
-      log(state, next, `is shielded from ${COLOR_LABEL[data.rentColor as PropertyColor]} rent by Harry's charm`);
+      log(state, next, `is shielded from ${colorTag(data.rentColor as PropertyColor)} rent by Harry's charm`);
       data.results.push({ playerId: nextId, outcome: "shielded", amount: 0 });
       continue;
     }
@@ -568,7 +578,7 @@ export function flipWild(state: GameState, visitorId: string, cardDefId: string,
   }
   if (card.assignedColor === newColor) return ok;
   card.assignedColor = newColor;
-  log(state, player, `moved ${def.name} to ${COLOR_LABEL[newColor]}`, def.id);
+  log(state, player, `moved ${def.name} to ${colorTag(newColor)}`, def.id);
   checkWinCondition(state, visitorId);
   return ok;
 }
@@ -722,7 +732,7 @@ function executeAction(state: GameState, action: PendingAction) {
       if (!check.success) { log(state, attacker, `'s Accio fizzled: ${check.error}`); return; }
       const card = removeCard(target.properties, d.targetCardDefId)!;
       attacker.properties.push(card);
-      log(state, attacker, `used Accio to take ${CARD_DEF_MAP[card.defId]?.name} from ${target.animal.name}`, card.defId);
+      log(state, attacker, `used Accio to take ${cardTag(card)} from ${target.animal.name}`, card.defId);
       checkWinCondition(state, attacker.visitorId);
       return;
     }
@@ -734,7 +744,7 @@ function executeAction(state: GameState, action: PendingAction) {
       removeCard(attacker.properties, d.ownCardDefId);
       attacker.properties.push(theirs);
       target.properties.push(ours);
-      log(state, attacker, `used Confundus to swap ${CARD_DEF_MAP[ours.defId]?.name} for ${target.animal.name}'s ${CARD_DEF_MAP[theirs.defId]?.name}`);
+      log(state, attacker, `used Confundus to swap their ${cardTag(ours)} for ${target.animal.name}'s ${cardTag(theirs)}`);
       checkWinCondition(state, attacker.visitorId);
       if (state.status === "playing") checkWinCondition(state, target.visitorId);
       return;
@@ -745,7 +755,7 @@ function executeAction(state: GameState, action: PendingAction) {
       const stolen = target.properties.filter(c => getEffectiveColor(c) === color);
       target.properties = target.properties.filter(c => getEffectiveColor(c) !== color);
       attacker.properties.push(...stolen);
-      log(state, attacker, `used Expelliarmus to take ${target.animal.name}'s ${COLOR_LABEL[color]} set`);
+      log(state, attacker, `used Expelliarmus to take ${target.animal.name}'s ${colorTag(color)} set`);
       checkWinCondition(state, attacker.visitorId);
       return;
     }
@@ -760,7 +770,7 @@ function executeAction(state: GameState, action: PendingAction) {
       }
       if (!card) { log(state, attacker, "'s Reducto fizzled"); return; }
       state.discardPile.push({ defId: card.defId });
-      log(state, attacker, `used Reducto to destroy ${target.animal.name}'s ${CARD_DEF_MAP[card.defId]?.name}`, card.defId);
+      log(state, attacker, `used Reducto to destroy ${target.animal.name}'s ${cardTag(card)}`, card.defId);
       return;
     }
     case "choose_silencio": {
@@ -805,7 +815,7 @@ export function chooseTarget(state: GameState, visitorId: string, targetPlayerId
       if (!targetCardDefId) return fail("Choose a property to take");
       const check = canTakeProperty(attacker, target, targetCardDefId);
       if (!check.success) return check;
-      log(state, attacker, `aims Accio at ${target.animal.name}'s ${CARD_DEF_MAP[targetCardDefId]?.name}`);
+      log(state, attacker, `aims Accio at ${target.animal.name}'s ${ownedTag(target, targetCardDefId)}`);
       offerProtego(state, action("choose_steal", { targetCardDefId }));
       return ok;
     }
@@ -814,7 +824,7 @@ export function chooseTarget(state: GameState, visitorId: string, targetPlayerId
       if (!attacker.properties.some(c => c.defId === ownCardDefId)) return fail("That isn't your property");
       const check = canTakeProperty(attacker, target, targetCardDefId);
       if (!check.success) return check;
-      log(state, attacker, `aims Confundus at ${target.animal.name}'s ${CARD_DEF_MAP[targetCardDefId]?.name}`);
+      log(state, attacker, `aims Confundus at ${target.animal.name}'s ${ownedTag(target, targetCardDefId)}`);
       offerProtego(state, action("choose_swap", { targetCardDefId, ownCardDefId }));
       return ok;
     }
@@ -822,7 +832,7 @@ export function chooseTarget(state: GameState, visitorId: string, targetPlayerId
       const color = targetCardDefId as PropertyColor; // the colour is sent in this field
       if (!PROPERTY_COLORS.includes(color) || !isSetComplete(target, color)) return fail("That's not a complete set");
       if (shieldOf(target) === color) return fail("That colour is shielded by Harry's charm");
-      log(state, attacker, `aims Expelliarmus at ${target.animal.name}'s ${COLOR_LABEL[color]} set`);
+      log(state, attacker, `aims Expelliarmus at ${target.animal.name}'s ${colorTag(color)} set`);
       offerProtego(state, action("choose_steal_set", { color }));
       return ok;
     }
@@ -834,7 +844,7 @@ export function chooseTarget(state: GameState, visitorId: string, targetPlayerId
       } else if (!target.bank.some(c => c.defId === targetCardDefId)) {
         return fail("That card isn't there");
       }
-      log(state, attacker, `aims Reducto at ${target.animal.name}'s ${CARD_DEF_MAP[targetCardDefId]?.name}`);
+      log(state, attacker, `aims Reducto at ${target.animal.name}'s ${ownedTag(target, targetCardDefId)}`);
       offerProtego(state, action("choose_reducto", { targetCardDefId }));
       return ok;
     }
@@ -864,7 +874,7 @@ export function harryProtectColor(state: GameState, visitorId: string, color?: P
   if (color && !PROPERTY_COLORS.includes(color)) return fail("Invalid colour");
 
   player.protectedColor = color || undefined;
-  if (color) log(state, player, `shielded ${COLOR_LABEL[color]} until their next turn`);
+  if (color) log(state, player, `shielded ${colorTag(color)} until their next turn`);
   state.pendingAction = null;
   return finalizeTurn(state, visitorId);
 }

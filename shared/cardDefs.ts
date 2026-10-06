@@ -2,42 +2,42 @@ import type { CardDef, PropertyColor } from "./schema";
 
 // ========== MONEY CARDS (20) ==========
 const moneyCards: CardDef[] = [
-  // 6x 1G Bronze
+  // 6x 1G
   ...Array.from({ length: 6 }, (_, i) => ({
     id: `money_1g_${i + 1}`,
     type: "money" as const,
     name: "1 Galleon",
     value: 1,
   })),
-  // 5x 2G Silver
+  // 5x 2G
   ...Array.from({ length: 5 }, (_, i) => ({
     id: `money_2g_${i + 1}`,
     type: "money" as const,
     name: "2 Galleons",
     value: 2,
   })),
-  // 3x 3G Gold
+  // 3x 3G
   ...Array.from({ length: 3 }, (_, i) => ({
     id: `money_3g_${i + 1}`,
     type: "money" as const,
     name: "3 Galleons",
     value: 3,
   })),
-  // 3x 4G Emerald
+  // 3x 4G
   ...Array.from({ length: 3 }, (_, i) => ({
     id: `money_4g_${i + 1}`,
     type: "money" as const,
     name: "4 Galleons",
     value: 4,
   })),
-  // 2x 5G Sapphire
+  // 2x 5G
   ...Array.from({ length: 2 }, (_, i) => ({
     id: `money_5g_${i + 1}`,
     type: "money" as const,
     name: "5 Galleons",
     value: 5,
   })),
-  // 1x 10G Amethyst
+  // 1x 10G
   {
     id: "money_10g_1",
     type: "money" as const,

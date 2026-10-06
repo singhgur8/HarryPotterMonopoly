@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ChatMessage, EventLogEntry } from "@shared/schema";
+import type { ChatMessage, EventLogEntry, PropertyColor } from "@shared/schema";
+import { SET_STYLE } from "@shared/schema";
 import { useGame } from "./context";
 import { Opponents } from "./Opponents";
 import { ActionPanel } from "./ActionPanel";
@@ -8,6 +9,19 @@ import { HandDock } from "./HandDock";
 import { usePhone } from "./useMedia";
 
 type Entry = { id: string; ts: number; who: string; text: string; chat: boolean };
+
+/** Event text with [[colour]] / [[colour|card name]] tokens drawn as small colour chips. */
+function LogText({ text }: { text: string }) {
+  const parts = text.split(/\[\[([a-z_]+)(?:\|([^\]]*))?\]\]/);
+  return <>{parts.map((p, i) => {
+    if (i % 3 === 0) return p;
+    if (i % 3 === 2) return null;
+    const st = SET_STYLE[p as PropertyColor];
+    if (!st) return p;
+    const name = parts[i + 1];
+    return <span key={i} className="hp-logchip" style={{ background: st.fill, color: st.on }} title={name || undefined}>{st.label}</span>;
+  })}</>;
+}
 
 const RAIL_KEY = "hp-log-open";
 function readRail(): boolean {
@@ -49,7 +63,7 @@ function LogBody({ entries, tab, setTab, unreadChat }: { entries: Entry[]; tab: 
         <button aria-pressed={tab === "chat"} onClick={() => setTab("chat")}>Chat{unreadChat > 0 && <span className="hp-badge">{unreadChat}</span>}</button>
       </div>
       <ul className="hp-log" ref={listRef} aria-live="polite">
-        {shown.map(e => <li key={e.id} className={e.chat ? "chat" : ""}><b>{e.who}</b> {e.text}</li>)}
+        {shown.map(e => <li key={e.id} className={e.chat ? "chat" : ""}><b>{e.who}</b> {e.chat ? e.text : <LogText text={e.text} />}</li>)}
         {shown.length === 0 && <li>{tab === "chat" ? "No messages yet. Say hi." : "Nothing has happened yet."}</li>}
       </ul>
       <form className="hp-chatin" onSubmit={e => { e.preventDefault(); submit(); }}>
