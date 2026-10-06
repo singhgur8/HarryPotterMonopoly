@@ -13,7 +13,7 @@ import {
   createInitialGameState, drawCards, playCard, bankCard, endTurn,
   flipWild, payWithCards, playProtego, declineProtego, chooseTarget,
   harryProtectColor, cedricChooseSource, timeTurnerChoose, paySilencio,
-  discardCards, sanitizeStateForPlayer, cedricDrawFromDiscard,
+  discardCards, sanitizeStateForPlayer, putToSleep, wakeUp, botStep, getWaitingOn,
 } from "./gameEngine";
 
 // ========== TYPES ==========
@@ -33,6 +33,8 @@ interface Room {
   clients: Map<string, RoomClient>;
   gameState: GameState | null;
   turnTimerInterval: NodeJS.Timeout | null;
+  lastWaitingOn?: string | null;
+  botTimer?: NodeJS.Timeout | null;
 }
 
 // ========== STATE ==========
@@ -376,32 +378,65 @@ function handleSendChat(room: Room, client: RoomClient, payload: any) {
 
 function handlePutToSleep(room: Room, client: RoomClient, payload: any) {
   if (!room.gameState) return;
-  const { targetPlayerId } = payload || {};
-  const target = room.gameState.players.find(p => p.visitorId === targetPlayerId);
-  if (!target) return;
-  
-  // Can only put to sleep if their timer is at 0
-  if (room.gameState.turnTimer > 0) return sendError(client, "Timer hasn't expired yet");
-  
-  const currentPlayer = room.gameState.players[room.gameState.currentTurnIndex];
-  if (currentPlayer?.visitorId !== targetPlayerId) return sendError(client, "Can only sleep the current player");
-
-  target.isSleeping = true;
+  const result = putToSleep(room.gameState, client.visitorId, payload?.targetPlayerId);
+  if (!result.success) return sendError(client, result.error!);
   broadcastGameState(room);
 }
 
 function handleWakeUp(room: Room, client: RoomClient) {
   if (!room.gameState) return;
-  const player = room.gameState.players.find(p => p.visitorId === client.visitorId);
-  if (!player) return;
-  player.isSleeping = false;
+  const result = wakeUp(room.gameState, client.visitorId);
+  if (!result.success) return sendError(client, result.error!);
   room.gameState.turnTimer = room.gameState.gameSpeed;
   broadcastGameState(room);
 }
 
+// ========== AFTER EVERY GAME CHANGE ==========
+// The turn timer restarts whenever the game starts waiting on someone new,
+// and a sleeping player's moves are made by the bot, one step at a time.
+
+const BOT_STEP_MS = 900;
+
+function afterGameChange(room: Room) {
+  const state = room.gameState;
+  if (!state || state.status !== "playing") return;
+  const waitingOn = getWaitingOn(state);
+  if (waitingOn !== room.lastWaitingOn) {
+    room.lastWaitingOn = waitingOn;
+    state.turnTimer = state.gameSpeed;
+    broadcastGameState(room);
+  }
+  const waiting = state.players.find(p => p.visitorId === waitingOn);
+  if (waiting?.isSleeping && !room.botTimer) {
+    room.botTimer = setTimeout(() => {
+      room.botTimer = null;
+      if (!room.gameState) return;
+      if (botStep(room.gameState)) broadcastGameState(room);
+      afterGameChange(room);
+    }, BOT_STEP_MS);
+  }
+}
+
+// Messages that count as a player taking part in the game (and wake them up)
+const GAME_ACTIONS = new Set([
+  "draw_cards", "play_card", "bank_card", "end_turn", "flip_wild", "pay_with_cards",
+  "play_protego", "decline_protego", "choose_target", "harry_protect_color",
+  "cedric_choose_source", "time_turner_choose", "pay_silencio", "discard_cards",
+]);
+
 // ========== MAIN ROUTER ==========
 
 function handleMessage(room: Room, client: RoomClient, msg: WSMessage) {
+  const { type } = msg;
+  if (room.gameState && GAME_ACTIONS.has(type)) {
+    const me = room.gameState.players.find(p => p.visitorId === client.visitorId);
+    if (me?.isSleeping) wakeUp(room.gameState, client.visitorId);
+  }
+  routeMessage(room, client, msg);
+  afterGameChange(room);
+}
+
+function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
   const { type, payload } = msg;
 
   switch (type) {
@@ -422,6 +457,7 @@ function handleMessage(room: Room, client: RoomClient, msg: WSMessage) {
     case "choose_target": return handleChooseTarget(room, client, payload);
     case "harry_protect_color": return handleHarryProtectColor(room, client, payload);
     case "cedric_choose_source": return handleCedricChooseSource(room, client, payload);
+    case "time_turner_choose": return handleTimeTurnerChoose(room, client, payload);
     case "send_chat": return handleSendChat(room, client, payload);
     case "put_to_sleep": return handlePutToSleep(room, client, payload);
     case "wake_up": return handleWakeUp(room, client);

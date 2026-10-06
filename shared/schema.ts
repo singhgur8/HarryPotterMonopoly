@@ -159,6 +159,7 @@ export type PendingActionType =
   | "choose_steal_set"   // Expelliarmus: attacker picks set to steal
   | "choose_reducto"     // Reducto: attacker picks card to discard
   | "choose_silencio"    // Silencio: attacker picks player to silence
+  | "choose_goblin"      // Gringotts Goblin: attacker picks who owes 5G
   | "protego_response"   // Player can respond with Protego
   | "harry_protect"      // Harry chooses color to protect at end of turn
   | "cedric_draw_choice" // Cedric chooses deck or discard
@@ -172,6 +173,13 @@ export interface PendingAction {
   amount?: number;            // For payments
   cardDefId?: string;         // Related card
   data?: any;                 // Extra data
+}
+
+// How each player's part of a multi-player payment ended (shown in the tracker)
+export interface PaymentResult {
+  playerId: string;
+  outcome: "paid" | "nothing" | "blocked" | "shielded";
+  amount: number;
 }
 
 // Event log entry
@@ -214,6 +222,10 @@ export interface GameState {
   chatMessages: ChatMessage[];
   winnerId: string | null;
   roleCards: RoleType[];       // Available role cards (for assignment)
+  freePlayCardId?: string | null; // Card taken with the Time-Turner, played next for free
+  // Sent to clients only
+  drawPileCount?: number;
+  waitingOn?: string | null;   // Player the game needs input from next
 }
 
 // WebSocket message types
@@ -242,6 +254,7 @@ export type WSMessageType =
   | "put_to_sleep"
   | "wake_up"
   | "send_chat"
+  | "time_turner_choose"
   // Server -> Client
   | "game_state"
   | "error"
