@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import {
   createInitialGameState, botStep, payWithCards, playProtego, declineProtego,
   chooseTarget, playCard, drawCards, paySilencio, getWaitingOn, flipWild,
-  harryProtectColor, endTurn, timeTurnerChoose, bankCard, cancelChoice, cedricChooseSource, wakeUp,
+  harryProtectColor, endTurn, timeTurnerChoose, bankCard, cancelChoice, cedricChooseSource, wakeUp, forfeit,
 } from "../worker/gameEngine";
 import { ANIMALS, SET_SIZES } from "../shared/schema";
 import type { GameState, PlayerState } from "../shared/schema";
@@ -320,6 +320,86 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   // No version given (older saves) means classic
   assert.equal(newGame(2).variation, "classic");
   console.log("game versions: ok");
+}
+
+// ---------- Forfeit: cards go back into the draw pile and the player leaves ----------
+{
+  // Quitting on someone else's turn
+  const s = setup(3);
+  const [a, b] = s.players;
+  give(s, b, "hand", "money_1g_1"); give(s, b, "bank", "money_5g_1"); give(s, b, "properties", "prop_red_1");
+  const total = countCards(s), pile = s.drawPile.length;
+  assert.ok(forfeit(s, "p1").success);
+  assert.equal(s.players.length, 2);
+  assert.ok(!s.players.some(p => p.visitorId === "p1"));
+  assert.equal(s.drawPile.length, pile + 3, "quitter's hand, bank and properties go into the draw pile");
+  assert.ok(s.drawPile.every(c => !c.assignedColor));
+  assert.equal(countCards(s), total);
+  assert.equal(s.players[s.currentTurnIndex], a, "still the same player's turn");
+  assert.equal(s.status, "playing");
+  assert.ok(!forfeit(s, "p1").success, "can't forfeit twice");
+  assert.ok(!drawCards(s, "p1").success, "a quitter can't play");
+}
+{
+  // Quitting on your own turn passes it to the next player
+  const s = setup(3);
+  s.currentTurnIndex = 2;
+  assert.ok(forfeit(s, "p2").success);
+  assert.equal(s.players[s.currentTurnIndex].visitorId, "p0");
+  assert.equal(s.drawnThisTurn, false);
+  // Earlier seat leaving keeps the turn with the same person
+  const t = setup(4);
+  t.currentTurnIndex = 2;
+  assert.ok(forfeit(t, "p0").success);
+  assert.equal(t.players[t.currentTurnIndex].visitorId, "p2");
+}
+{
+  // Quitting while you owe rent moves on to the next payer; their part is gone from the tracker
+  const s = setup(3);
+  const [a, b, c] = s.players;
+  a.role = "luna"; b.role = "hermione"; c.role = "draco";
+  give(s, a, "properties", "prop_red_1"); give(s, a, "hand", "rent_red_yellow_1");
+  give(s, c, "bank", "money_5g_1");
+  assert.ok(playCard(s, "p0", "rent_red_yellow_1", false, "red").success);
+  assert.equal(getWaitingOn(s), "p1");
+  assert.ok(forfeit(s, "p1").success);
+  assert.equal(getWaitingOn(s), "p2");
+  assert.ok(!s.pendingAction?.data.allTargets.includes("p1"));
+  // The attacker quitting drops the charge for everyone
+  assert.ok(forfeit(s, "p0").success);
+  assert.equal(s.status, "finished");
+  assert.equal(s.winnerId, "p2", "last player standing wins");
+}
+{
+  // Only practice bots left: the game ends
+  const s = setup(3);
+  s.players[1].isBot = s.players[2].isBot = true;
+  s.players[1].isSleeping = s.players[2].isSleeping = true;
+  give(s, s.players[2], "properties", "prop_darkblue_1"); give(s, s.players[2], "properties", "prop_darkblue_2");
+  assert.ok(forfeit(s, "p0").success);
+  assert.equal(s.status, "finished");
+  assert.equal(s.winnerId, "p2", "the bot closest to winning takes it");
+}
+{
+  // Bot games keep going after someone quits mid-game
+  for (let g = 0; g < 100; g++) {
+    const s = newGame(3 + (g % 3));
+    s.players.forEach(p => { p.isSleeping = true; p.isBot = g % 2 === 1; });
+    const total = countCards(s);
+    let steps = 0;
+    while (s.status === "playing" && steps < 5000) {
+      if (steps === 20 + g) {
+        const quitter = s.players[g % s.players.length].visitorId;
+        assert.ok(forfeit(s, quitter).success);
+        assert.equal(countCards(s), total);
+        steps++;
+        continue;
+      }
+      assert.ok(botStep(s), `bot stuck after a forfeit in game ${g}: ${JSON.stringify(s.pendingAction)}`);
+      steps++;
+    }
+  }
+  console.log("forfeit: ok");
 }
 
 console.log("all engine checks passed");
