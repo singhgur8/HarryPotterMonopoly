@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { GameCard as Card, PlayerState, PropertyColor, PaymentResult } from "@shared/schema";
 import { GameCard } from "@/components/GameCard";
-import { SET_SIZES } from "@shared/schema";
+import { SET_SIZES, inDrawStep } from "@shared/schema";
 import { countCompleteSets } from "@shared/cardDefs";
 import { useGame } from "./context";
 import { CardInfo, DiscardLink, DiscardPile } from "./DiscardPile";
@@ -196,7 +196,9 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
   const meId = me?.visitorId ?? "";
   const mine = !!me && s.waitingOn === meId;
   const waitedOn = s.players.find(x => x.visitorId === s.waitingOn);
-  const low = s.turnTimer <= 10;
+  // The short draw step at the start of a turn has its own timer; the cards draw themselves when it runs out
+  const drawStep = inDrawStep(s);
+  const low = s.turnTimer <= (drawStep ? 3 : 10);
   const timer = `${Math.floor(Math.max(0, s.turnTimer) / 60)}:${String(Math.max(0, s.turnTimer) % 60).padStart(2, "0")}`;
   const winner = s.players.find(x => x.visitorId === s.winnerId);
 
@@ -223,9 +225,11 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
 
   let mainButton: React.ReactNode = null;
   if (isMyTurn && !p && s.status === "playing" && !me?.isSleeping) {
+    // Pulse the button when it's the only thing left to do, or time is nearly up
+    const endNow = !s.freePlayCardId && (s.actionsUsed >= s.maxActions || s.turnTimer <= 10);
     mainButton = !s.drawnThisTurn
-      ? <button className="hp-btn gold big" onClick={() => send("draw_cards")} data-testid="button-draw">Draw {drawCount(me!)} cards</button>
-      : <button className={`hp-btn big ${s.actionsUsed >= s.maxActions ? "gold" : "ghost"}`} onClick={() => send("end_turn")} disabled={!!s.freePlayCardId} data-testid="button-end-turn">End turn</button>;
+      ? <button className="hp-btn gold big hp-nudge" onClick={() => send("draw_cards")} data-testid="button-draw">Draw {drawCount(me!)} cards</button>
+      : <button className={`hp-btn big ${s.actionsUsed >= s.maxActions ? "gold" : "ghost"} ${endNow ? "hp-nudge" : ""}`} onClick={() => send("end_turn")} disabled={!!s.freePlayCardId} data-testid="button-end-turn">End turn</button>;
   }
 
   // What I need to do right now
@@ -333,7 +337,7 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
         const top = s.discardPile.slice(-2).reverse();
         prompt = (
           <div className="hp-prompt wait">
-            <div className="head"><p><b>Cedric's choice.</b> Draw {drawCount(me)} from the deck, or take the top {top.length} of the discard pile.</p></div>
+            <div className="head"><p><b>Cedric's choice.</b> Draw {drawCount(me)} from the deck, or take the top {top.length} of the discard pile. When the timer runs out you draw from the deck.</p></div>
             <div className="hp-cardinfos">
               {top.map((c, i) => <CardInfo key={c.defId} defId={c.defId} tag={i === 0 ? "Top" : undefined} />)}
             </div>
@@ -400,7 +404,11 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
           <div className="hp-mobile-only"><DiscardLink /></div>
         </div>
         <div className="hp-turn-side">
-          {!winner && <span className={`hp-timer ${low ? "low" : ""}`} style={{ fontSize: 22 }}>{timer}</span>}
+          {!winner && (
+            <span className={`hp-timer ${low ? "low" : ""}`} style={{ fontSize: 22 }} title={drawStep ? "Cards are drawn automatically when this runs out" : undefined}>
+              {drawStep && <small className="hp-timer-label">Draw</small>}{timer}
+            </span>
+          )}
           {mainButton}
         </div>
       </div>

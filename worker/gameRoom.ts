@@ -7,13 +7,13 @@
 import { DurableObject } from "cloudflare:workers";
 import { v4 as uuidv4 } from "uuid";
 import type { GameState, WSMessage, AnimalProfile, VariationId } from "../shared/schema";
-import { ANIMALS } from "../shared/schema";
+import { ANIMALS, freshTurnTimer, inDrawStep } from "../shared/schema";
 import { DEFAULT_VARIATION, isVariationId } from "../shared/variations";
 import {
   createInitialGameState, drawCards, playCard, bankCard, endTurn,
   flipWild, payWithCards, playProtego, declineProtego, chooseTarget,
   harryProtectColor, cedricChooseSource, timeTurnerChoose, paySilencio,
-  discardCards, sanitizeStateForPlayer, putToSleep, wakeUp, botStep, getWaitingOn,
+  discardCards, sanitizeStateForPlayer, putToSleep, wakeUp, botStep, getWaitingOn, autoDraw,
   cancelChoice, forfeit, sleepForDisconnect,
 } from "./gameEngine";
 import { parseMessage, MessageRateLimiter, MAX_SOCKETS_PER_ROOM, MAX_SOCKETS_PER_VISITOR } from "./security";
@@ -63,6 +63,7 @@ interface Room {
   // Not persisted: how to reach the room's open sockets.
   sockets: () => { ws: WebSocket; visitorId: string }[];
   lastWaitingOn: string | null; // whose move the game was last waiting on
+  lastDrawStep: boolean; // whether that was the draw step at the start of a turn
   botDueAt: number | null; // when a sleeping player's next bot move is due
   moveBonuses: number; // extra-time bonuses given since the game last started waiting on someone new
   finishedAt: number | null; // when the game ended
@@ -205,7 +206,7 @@ function handleJoinRoom(room: Room, client: RoomClient, payload: any) {
       delete room.dropDeadlines[client.visitorId];
       if (wasOffline && existingPlayer.isSleeping && room.gameState.status === "playing") {
         wakeUp(room.gameState, client.visitorId);
-        if (getWaitingOn(room.gameState) === client.visitorId) room.gameState.turnTimer = room.gameState.gameSpeed;
+        if (getWaitingOn(room.gameState) === client.visitorId) room.gameState.turnTimer = freshTurnTimer(room.gameState);
         afterGameChange(room);
       }
     }
@@ -346,7 +347,7 @@ function handleEndTurn(room: Room, client: RoomClient) {
   if (!result.success) return sendError(room, client, result.error!);
   
   // Reset timer
-  room.gameState.turnTimer = room.gameState.gameSpeed;
+  room.gameState.turnTimer = freshTurnTimer(room.gameState);
   broadcastGameState(room);
 }
 
@@ -394,7 +395,7 @@ function handleHarryProtectColor(room: Room, client: RoomClient, payload: any) {
   // No colour keeps the shield where it is; null drops it
   const result = harryProtectColor(room.gameState, client.visitorId, color === null ? null : color || undefined);
   if (!result.success) return sendError(room, client, result.error!);
-  room.gameState.turnTimer = room.gameState.gameSpeed;
+  room.gameState.turnTimer = freshTurnTimer(room.gameState);
   broadcastGameState(room);
 }
 
@@ -427,7 +428,7 @@ function handleDiscardCards(room: Room, client: RoomClient, payload: any) {
   const { cardDefIds } = payload || {};
   const result = discardCards(room.gameState, client.visitorId, Array.isArray(cardDefIds) ? cardDefIds : []);
   if (!result.success) return sendError(room, client, result.error!);
-  room.gameState.turnTimer = room.gameState.gameSpeed;
+  room.gameState.turnTimer = freshTurnTimer(room.gameState);
   broadcastGameState(room);
 }
 
@@ -464,7 +465,7 @@ function handleWakeUp(room: Room, client: RoomClient) {
   if (!room.gameState) return;
   const result = wakeUp(room.gameState, client.visitorId);
   if (!result.success) return sendError(room, client, result.error!);
-  room.gameState.turnTimer = room.gameState.gameSpeed;
+  room.gameState.turnTimer = freshTurnTimer(room.gameState);
   broadcastGameState(room);
 }
 
@@ -479,8 +480,9 @@ function handleForfeit(room: Room, client: RoomClient) {
 }
 
 // ========== AFTER EVERY GAME CHANGE ==========
-// The turn timer restarts whenever the game starts waiting on someone new,
-// and a sleeping player's moves are made by the bot, one step at a time.
+// The turn timer restarts whenever the game starts waiting on someone new
+// or the current player finishes drawing (the short draw timer hands over to
+// the turn length the host picked), and a sleeping player's moves are made by the bot, one step at a time.
 
 const BOT_STEP_MS = 900;
 
@@ -492,9 +494,11 @@ function afterGameChange(room: Room) {
     return;
   }
   const waitingOn = getWaitingOn(state);
-  if (waitingOn !== room.lastWaitingOn) {
+  const drawStep = inDrawStep(state);
+  if (waitingOn !== room.lastWaitingOn || drawStep !== room.lastDrawStep) {
     room.lastWaitingOn = waitingOn;
-    state.turnTimer = state.gameSpeed;
+    room.lastDrawStep = drawStep;
+    state.turnTimer = freshTurnTimer(state);
     room.timerSetAt = Date.now();
     room.moveBonuses = 0;
     broadcastGameState(room);
@@ -630,6 +634,7 @@ export class GameRoom extends DurableObject<Env> {
       ...stored,
       clients: new Map(stored.clients.map(c => [c.visitorId, c])),
       lastWaitingOn: stored.lastWaitingOn ?? null,
+      lastDrawStep: stored.lastDrawStep ?? false,
       botDueAt: stored.botDueAt ?? null,
       moveBonuses: stored.moveBonuses ?? 0,
       variation: isVariationId(stored.variation) ? stored.variation : DEFAULT_VARIATION,
@@ -653,6 +658,7 @@ export class GameRoom extends DurableObject<Env> {
       gameState: null,
       usedAnimals: [],
       lastWaitingOn: null,
+      lastDrawStep: false,
       botDueAt: null,
       moveBonuses: 0,
       finishedAt: null,
@@ -880,6 +886,10 @@ export class GameRoom extends DurableObject<Env> {
     if (room.botDueAt !== null && now >= room.botDueAt) {
       // A sleeping player's move
       runBotStep(room);
+    } else if (room.gameState && inDrawStep(room.gameState) && room.gameState.turnTimer <= 0) {
+      // Draw timer ran out: draw for them so the turn gets going
+      if (autoDraw(room.gameState).success) broadcastGameState(room);
+      afterGameChange(room);
     } else if (timerDue !== null && now >= timerDue) {
       // Turn timer ran out — show everyone the expired timer
       broadcastGameState(room);
