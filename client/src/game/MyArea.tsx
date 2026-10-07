@@ -28,7 +28,7 @@ export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
   const canFlip = isMyTurn && s.status === "playing" && !pay.active && !me.isSleeping;
   const sets = groupSets(me.properties);
   const coins = [...me.bank].sort((a, b) => valueOf(b) - valueOf(a));
-  const role = roleInfo(me.role);
+  const roles = (me.roles ?? []).map(r => roleInfo(r)!).filter(Boolean);
   const shield = shieldOf(me);
 
   const area = (
@@ -112,10 +112,14 @@ export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
             : <span key={c.defId} className="hp-cn" title={nameOf(c.defId)}>{valueOf(c)}</span>)
             : <span className="hp-muted" style={{ fontSize: 12.5 }}>Nothing banked yet</span>}
         </div>
-        {role && (
+        {roles.length > 0 && (
           <div className="hp-myrole">
-            <b style={me.isSilenced ? { textDecoration: "line-through" } : undefined}>{role.name}</b>
-            <span>{role.power}</span>
+            {roles.map(role => (
+              <div key={role.name} style={{ display: "grid", gap: 2 }}>
+                <b style={me.isSilenced ? { textDecoration: "line-through" } : undefined}>{role.name}</b>
+                <span>{role.power}</span>
+              </div>
+            ))}
             {me.isSilenced && (
               <>
                 <span className="hp-chip late" style={{ justifySelf: "start" }}>Power Outage · power off</span>

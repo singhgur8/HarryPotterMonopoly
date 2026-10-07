@@ -5,11 +5,11 @@
 import { v4 as uuidv4 } from "uuid";
 import type {
   GameState, PlayerState, GameCard, PendingAction, PaymentResult,
-  PropertyColor, RoleType, AnimalProfile, VariationId,
+  PropertyColor, RoleType, AnimalProfile, VariationId, CustomRules,
 } from "../shared/schema";
 import { SET_SIZES, RENT_TABLE, PROPERTY_COLORS, freshTurnTimer } from "../shared/schema";
 import { CARD_DEF_MAP, getEffectiveColor, countCompleteSets } from "../shared/cardDefs";
-import { variationOf } from "../shared/variations";
+import { gameSetup, type GameSetup } from "../shared/variations";
 
 type Result = { success: boolean; error?: string };
 const ok: Result = { success: true };
@@ -76,7 +76,7 @@ function isCurrentTurn(state: GameState, visitorId: string): boolean {
 
 // A role power only works while the player isn't silenced
 export function roleActive(player: PlayerState | undefined, role: RoleType): boolean {
-  return !!player && player.role === role && !player.isSilenced;
+  return !!player && player.roles.includes(role) && !player.isSilenced;
 }
 
 // Harry's shielded colour, only while his power is switched on
@@ -142,19 +142,20 @@ function payableCards(player: PlayerState): GameCard[] {
 
 export function createInitialGameState(
   roomCode: string,
-  players: { visitorId: string; seatIndex: number; animal: AnimalProfile; isBot?: boolean }[],
+  players: { visitorId: string; seatIndex: number; animal: AnimalProfile; isBot?: boolean; pickedRoles?: RoleType[] }[],
   gameSpeed: number,
   variationId?: VariationId,
+  custom?: CustomRules,
 ): GameState {
-  const variation = variationOf(variationId);
-  const drawPile: GameCard[] = shuffle(variation.deck).map(id => ({ defId: id }));
-  const roleTypes: RoleType[] = shuffle(variation.roles);
+  const setup = gameSetup(variationId, custom);
+  const drawPile: GameCard[] = shuffle(setup.deck).map(id => ({ defId: id }));
+  const roles = dealRoles(setup, players);
 
   const playerStates: PlayerState[] = players.map((p, i) => ({
     visitorId: p.visitorId,
     seatIndex: p.seatIndex,
     animal: p.animal,
-    role: roleTypes[i % roleTypes.length],
+    roles: roles[i],
     hand: [],
     properties: [],
     bank: [],
@@ -183,8 +184,8 @@ export function createInitialGameState(
     eventLog: [],
     chatMessages: [],
     winnerId: null,
-    variation: variation.id,
-    roleCards: roleTypes,
+    variation: setup.variation,
+    roleCards: setup.roles,
     freePlayCardId: null,
   };
 
@@ -199,6 +200,27 @@ export function createInitialGameState(
   state.turnTimer = freshTurnTimer(state);
   addEvent(state, "⚡", "System", "#FFD700", "The game begins! Wands at the ready...");
   return state;
+}
+
+/**
+ * Roles for each player. When players choose, they keep their picks from the
+ * roles in play (bots get one at random). Otherwise each player is dealt
+ * rolesPerPlayer different roles, spread so no role repeats until all are out.
+ */
+function dealRoles(setup: GameSetup, players: { isBot?: boolean; pickedRoles?: RoleType[] }[]): RoleType[][] {
+  const pool = setup.roles;
+  if (pool.length === 0) return players.map(() => []);
+  const used = new Map<RoleType, number>(pool.map(r => [r, 0]));
+  const take = (n: number): RoleType[] => {
+    const order = shuffle(pool).sort((a, b) => used.get(a)! - used.get(b)!);
+    const picked = order.slice(0, Math.min(n, pool.length));
+    for (const r of picked) used.set(r, used.get(r)! + 1);
+    return picked;
+  };
+  return players.map(p => {
+    if (setup.roleMode === "choose" && !p.isBot) return pool.filter(r => p.pickedRoles?.includes(r));
+    return take(setup.roleMode === "choose" ? 1 : setup.rolesPerPlayer);
+  });
 }
 
 // ========== WHO THE GAME IS WAITING ON ==========
@@ -353,6 +375,12 @@ function playWildCard(state: GameState, player: PlayerState, cardDefId: string, 
   return ok;
 }
 
+function rentColorsOf(defId: string): PropertyColor[] {
+  const def = CARD_DEF_MAP[defId];
+  if (def?.type !== "rent") return [];
+  return def.rentColors === "rainbow" ? [...PROPERTY_COLORS] : [...(def.rentColors as PropertyColor[])];
+}
+
 function playRentCard(state: GameState, player: PlayerState, cardDefId: string, targetColor?: PropertyColor): Result {
   const def = CARD_DEF_MAP[cardDefId];
   let rentColor: PropertyColor | undefined;
@@ -367,13 +395,17 @@ function playRentCard(state: GameState, player: PlayerState, cardDefId: string, 
   }
   if (!rentColor) return fail("Invalid rent colour");
 
-  const rentAmount = calculateRent(player, rentColor);
-  if (rentAmount === 0) return fail(`You have no ${COLOR_LABEL[rentColor]} properties, so the rent would be 0`);
+  const baseRent = calculateRent(player, rentColor);
+  if (baseRent === 0) return fail(`You have no ${COLOR_LABEL[rentColor]} properties, so the rent would be 0`);
+  const multiplier = state.rentMultiplier ?? 1;
+  const rentAmount = baseRent * multiplier;
 
   removeCard(player.hand, cardDefId);
   state.discardPile.push({ defId: cardDefId });
   state.actionsUsed++;
-  log(state, player, `charged everyone ${rentAmount}M ${colorTag(rentColor)} rent`, def.id);
+  state.rentMultiplier = undefined;
+  const doubled = multiplier > 1 ? ` (${multiplier === 2 ? "doubled" : `${multiplier}x`})` : "";
+  log(state, player, `charged everyone ${rentAmount}M ${colorTag(rentColor)} rent${doubled}`, def.id);
 
   // Every other player pays, one at a time
   const targets = state.players.filter(p => p.visitorId !== player.visitorId).map(p => p.visitorId);
@@ -489,6 +521,21 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
       return choose("time_turner_play", "played Rewind and is choosing a card from the discard pile");
     }
 
+    case "double_rent": {
+      const rents = player.hand.filter(c => CARD_DEF_MAP[c.defId]?.type === "rent");
+      if (rents.length === 0) return fail("You need a rent card in your hand to double");
+      if (!rents.some(c => rentColorsOf(c.defId).some(col => calculateRent(player, col) > 0))) {
+        return fail("You have no properties to charge rent for yet");
+      }
+      // This card and the rent card both use a play (unless this one came free from Rewind)
+      const needed = state.freePlayCardId === cardDefId ? 1 : 2;
+      if (state.actionsUsed + needed > state.maxActions) return fail("You need a play left for the rent card too");
+      discardIt();
+      state.rentMultiplier = (state.rentMultiplier ?? 1) * 2;
+      log(state, player, "played Double the Rent. Their next rent is doubled", def.id);
+      return ok;
+    }
+
     case "protego":
       // Protego is played in response to an attack; on your own turn it can only be banked
       removeCard(player.hand, cardDefId);
@@ -568,6 +615,7 @@ function beginTurn(state: GameState) {
   state.drawnThisTurn = false;
   state.pendingAction = null;
   state.freePlayCardId = null;
+  state.rentMultiplier = undefined;
 
   const next = getCurrentPlayer(state)!;
   state.maxActions = maxActionsFor(next);
@@ -1206,7 +1254,7 @@ function botAttack(state: GameState, bot: PlayerState): boolean {
       const best = [...colors].sort((a, b) => calculateRent(bot, b) - calculateRent(bot, a))[0];
       if (best && calculateRent(bot, best) > 0 && playCard(state, id, card.defId, false, best).success) return true;
     }
-    if (def?.type === "action" && ["yule_ball", "gringotts_goblin", "felix_felicis"].includes(def.actionType!)) {
+    if (def?.type === "action" && ["yule_ball", "gringotts_goblin", "felix_felicis", "double_rent"].includes(def.actionType!)) {
       if (playCard(state, id, card.defId).success) return true;
     }
   }

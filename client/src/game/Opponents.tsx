@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { GameCard } from "@/components/GameCard";
 import { useGame } from "./context";
 import {
-  groupSets, SET_SIZES, tileFill, valueOf, sumValue, label, fillOf, roleName, roleInfo, shieldOf, nameOf, otherColor, completeSets,
+  groupSets, SET_SIZES, tileFill, valueOf, sumValue, label, fillOf, roleName, roleNames, roleInfo, shieldOf, nameOf, otherColor, completeSets,
   CARD_DEF_MAP, canTake, isComplete, RENT_TABLE, STACK_STEP,
 } from "./helpers";
 
@@ -108,7 +108,7 @@ export function OpponentSeat({ p, onOpen }: { p: PlayerState; onOpen: () => void
       <div className="hp-opp-top">
         <TimerAvatar p={p} />
         <span className="nm">{p.animal.name}</span>
-        {p.role && <span className={`hp-role ${p.isSilenced ? "off" : ""}`} title={`${roleInfo(p.role)?.power ?? ""}${p.isSilenced ? " (power off)" : ""}`}>{roleName(p.role).split(" ")[0]}</span>}
+        {p.roles.length > 0 && <span className={`hp-role ${p.isSilenced ? "off" : ""}`} title={`${p.roles.map(r => roleInfo(r)?.power ?? "").join(" ")}${p.isSilenced ? " (power off)" : ""}`}>{roleNames(p, true)}</span>}
         <SeatChips p={p} target={target} />
         <span className="hand">Hand <b>{p.hand.length}</b></span>
       </div>
@@ -148,10 +148,14 @@ export function Opponents({ full }: { full: boolean }) {
               </DialogHeader>
               <div className="hp-inspect">
                 <div className="hp-muted" style={{ fontSize: 13 }}>{shown.hand.length} cards in hand</div>
-                {shown.role && (
+                {shown.roles.length > 0 && (
                   <div className="hp-rolec">
-                    <b style={shown.isSilenced ? { textDecoration: "line-through" } : undefined}>{roleName(shown.role)}</b>
-                    <span>{roleInfo(shown.role)?.power}</span>
+                    {shown.roles.map(r => (
+                      <span key={r} style={{ display: "grid", gap: 2 }}>
+                        <b style={shown.isSilenced ? { textDecoration: "line-through" } : undefined}>{roleName(r)}</b>
+                        <span>{roleInfo(r)?.power}</span>
+                      </span>
+                    ))}
                     {shown.isSilenced && <span>Their power is switched off right now.</span>}
                     {shieldOf(shown) && <span>Shield is on {label(shieldOf(shown)!)}.</span>}
                   </div>
@@ -204,7 +208,6 @@ function OpponentRow({ p }: { p: PlayerState }) {
   const sets = groupSets(p.properties);
   const shield = shieldOf(p);
   const coins = [...p.bank].sort((a, b) => valueOf(b) - valueOf(a));
-  const role = roleInfo(p.role);
   const target = st.names.length > 0;
   return (
     <section
@@ -215,7 +218,7 @@ function OpponentRow({ p }: { p: PlayerState }) {
       <div className="hp-zone-head">
         <TimerAvatar p={p} />
         <span className="nm">{p.animal.name}</span>
-        {p.role && <span className={`hp-role ${p.isSilenced ? "off" : ""}`}>{roleName(p.role)}</span>}
+        {p.roles.length > 0 && <span className={`hp-role ${p.isSilenced ? "off" : ""}`}>{roleNames(p)}</span>}
         <SeatChips p={p} target={target} />
         <span className="hand">Hand <b>{p.hand.length}</b></span>
       </div>
@@ -272,10 +275,14 @@ function OpponentRow({ p }: { p: PlayerState }) {
             {coins.length ? coins.map(c => <span key={c.defId} className="hp-cn" title={nameOf(c.defId)}>{valueOf(c)}</span>)
               : <span className="hp-muted" style={{ fontSize: 12.5 }}>Nothing banked yet</span>}
           </div>
-          {role && (
+          {p.roles.length > 0 && (
             <div className="hp-myrole">
-              <b style={p.isSilenced ? { textDecoration: "line-through" } : undefined}>{role.name}</b>
-              <span>{role.power}</span>
+              {p.roles.map(r => (
+                <div key={r} style={{ display: "grid", gap: 2 }}>
+                  <b style={p.isSilenced ? { textDecoration: "line-through" } : undefined}>{roleName(r)}</b>
+                  <span>{roleInfo(r)?.power}</span>
+                </div>
+              ))}
               {p.isSilenced && <span>Their power is switched off right now.</span>}
             </div>
           )}

@@ -45,6 +45,7 @@ export const CARD_ART: Record<string, string> = {
   "It's My Birthday": '<path d="M24 3v30M11 10l26 16M11 26l26-16M20 5l4 4 4-4M20 31l4-4 4 4"/>',
   "Demolish": '<path d="M24 4l3 9 9-4-4 9 9 3-9 3 4 9-9-4-3 9-3-9-9 4 4-9-9-3 9-3-4-9 9 4z"/>',
   "Power Outage": '<path d="M8 6h32v18H22l-8 7v-7H8zM18 11l12 8M30 11l-12 8"/>',
+  "Double the Rent": '<path d="M8 10h18v22H8zM22 10V4h18v22h-14M12 17h10M12 22h10M12 27h6M34 14V8M31 11l3-3 3 3"/>',
   "Rewind": '<path d="M14 3h20M14 33h20M16 3c0 8 8 10 8 15s-8 7-8 15M32 3c0 8-8 10-8 15s8 7 8 15"/>',
   "Property Wild Card": '<path d="M20 4h8M21 4v8l-8 14a4 4 0 0 0 4 6h14a4 4 0 0 0 4-6l-8-14V4M16 22h16"/>',
 };
