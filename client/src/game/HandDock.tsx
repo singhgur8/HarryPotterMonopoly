@@ -78,8 +78,9 @@ function CardMoves({ defId, done }: { defId: string; done: () => void }) {
       );
     }
     case "action":
-      if (def.actionType === "protego") {
-        return <><strong>Just Say No</strong><span>Keep it in your hand to block an attack, or</span>{bankBtn}</>;
+      if (def.actionType === "protego" || def.actionType === "chargeback" || def.actionType === "reverse") {
+        const use = def.actionType === "protego" ? "to block an attack" : def.actionType === "chargeback" ? "for when you're charged" : "for when an action is played on you";
+        return <><strong>{def.name}</strong><span>Keep it in your hand {use}, or</span>{bankBtn}</>;
       }
       return (
         <>

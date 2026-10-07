@@ -68,11 +68,12 @@ export function borrowedText(s: GameState, p: PlayerState): string {
 export const shieldOf = (p: PlayerState) => (roleActive(p, "harry") ? p.protectedColor : undefined);
 
 /** Mirrors the server's rule for Accio, Confundus and Reducto. */
-export function canTake(attacker: PlayerState, target: PlayerState, card: GameCard): boolean {
+/** `allowComplete`: Destroy can hit a complete set. */
+export function canTake(attacker: PlayerState, target: PlayerState, card: GameCard, allowComplete = false): boolean {
   const c = colorOnTable(card, target.properties);
   if (!c) return true; // a wild on its own is in no set, so nothing protects it
   if (shieldOf(target) === c) return false;
-  if (isComplete(target, c) && !roleActive(attacker, "draco")) return false;
+  if (!allowComplete && isComplete(target, c) && !roleActive(attacker, "draco")) return false;
   return true;
 }
 
@@ -110,7 +111,8 @@ export function waitingText(s: GameState, meId: string): string {
   switch (p.type) {
     case "pay_rent": return `Waiting on ${who} to pay ${p.amount}M rent`;
     case "pay_birthday": return `Waiting on ${who} to pay 2M for It's My Birthday`;
-    case "pay_debt": return `Waiting on ${who} to pay the Debt Collector 5M`;
+    case "pay_debt": return CARD_DEF_MAP[p.cardDefId ?? ""]?.actionType === "gringotts_goblin"
+      ? `Waiting on ${who} to pay the Debt Collector 5M` : `Waiting on ${who} to pay ${p.amount}M for ${card}`;
     case "protego_response": return `Waiting on ${who} to decide on Just Say No`;
     case "harry_protect": return `Waiting on ${who} to keep or move Harry's shield`;
     case "cedric_draw_choice": return `Waiting on ${who} to choose where to draw from`;
@@ -127,8 +129,10 @@ export type PaySelection = { active: boolean; picked: string[]; toggle: (id: str
 export const isPayment = (p: PendingAction | null) => !!p && ["pay_rent", "pay_debt", "pay_birthday"].includes(p.type);
 
 export function hasProtego(p: PlayerState) {
-  return p.hand.some(c => CARD_DEF_MAP[c.defId]?.actionType === "protego");
+  return hasAction(p, "protego");
 }
+
+export const hasAction = (p: PlayerState, type: string) => p.hand.some(c => CARD_DEF_MAP[c.defId]?.actionType === type);
 
 export function drawCount(p: PlayerState) {
   if (p.hand.length === 0) return 5;
@@ -175,7 +179,11 @@ export function usefulToPlay(s: GameState, me: PlayerState, defId: string): bool
         case "expelliarmus": return others.some(o => COLORS.some(c => isComplete(o, c) && shieldOf(o) !== c));
         case "silencio": return others.some(o => !o.isSilenced);
         case "time_turner": return s.discardPile.some(c => CARD_DEF_MAP[c.defId]?.actionType !== "time_turner");
-        case "protego": return false; // only blocks attacks; on your turn it can just be banked
+        case "protego": case "chargeback": case "reverse": return false; // they answer attacks; on your turn they can just be banked
+        case "hand_seven": return me.hand.length - 1 < 7;
+        case "hand_steal": return others.some(o => o.hand.length > 0);
+        case "destroy": return others.some(o => o.properties.some(c => canTake(me, o, c, true)));
+        case "bank_robber": return others.some(o => o.bank.length > 0);
         case "double_rent": return s.actionsUsed + 2 <= s.maxActions && me.hand.some(c => {
           const d = CARD_DEF_MAP[c.defId];
           return d?.type === "rent" && (d.rentColors === "rainbow" ? COLORS : (d.rentColors ?? []) as PropertyColor[]).some(col => rentFor(me, col) > 0);

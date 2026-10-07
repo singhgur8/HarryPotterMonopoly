@@ -15,7 +15,7 @@
  * To add a variation: add its id to VariationId in schema.ts and an entry here.
  */
 import type { ActionType, CustomRules, GameRules, RoleType, VariationId } from "./schema";
-import { ALL_CARD_DEFS, CARD_DEF_MAP, CLASSIC_DECK, MONOPOLY_DEAL_DECK } from "./cardDefs";
+import { ALL_CARD_DEFS, CARD_DEF_MAP, CLASSIC_DECK, MONOPOLY_DEAL_DECK, PRIME_DECK, PRIME_EXTRA_COPIES } from "./cardDefs";
 
 export interface Variation {
   id: VariationId;
@@ -34,14 +34,17 @@ export const ALL_ROLES: RoleType[] = ALL_CARD_DEFS.filter(d => d.type === "role"
 /** Every action card a Custom game can include, with how many copies it adds. */
 export const ACTION_CHOICES: { type: ActionType; name: string; text: string; copies: number }[] = [];
 for (const d of ALL_CARD_DEFS) {
-  if (d.type !== "action" || !d.actionType) continue;
+  if (d.type !== "action" || !d.actionType || PRIME_EXTRA_COPIES.includes(d.id)) continue;
   const known = ACTION_CHOICES.find(a => a.type === d.actionType);
   if (known) known.copies++;
   else ACTION_CHOICES.push({ type: d.actionType, name: d.name, text: d.text ?? "", copies: 1 });
 }
 
 /** Action cards that aren't in a regular Monopoly Deal deck: off by default in Custom. */
-export const NON_CLASSIC_ACTIONS: ActionType[] = ["reducto", "silencio", "time_turner", "double_rent"];
+export const NON_CLASSIC_ACTIONS: ActionType[] = [
+  "reducto", "silencio", "time_turner", "double_rent",
+  "hand_seven", "hand_steal", "chargeback", "reverse", "destroy", "bank_robber",
+];
 
 export const DEFAULT_CUSTOM_RULES: CustomRules = {
   roles: ["harry", "hermione", "draco", "cedric", "luna"],
@@ -53,7 +56,7 @@ export const DEFAULT_CUSTOM_RULES: CustomRules = {
 /** Money, properties, wilds and rent from the classic deck, plus the chosen action cards. */
 export function customDeck(rules: CustomRules): string[] {
   const base = CLASSIC_DECK.filter(id => CARD_DEF_MAP[id].type !== "action");
-  const actions = ALL_CARD_DEFS.filter(d => d.type === "action" && rules.actions.includes(d.actionType!)).map(d => d.id);
+  const actions = ALL_CARD_DEFS.filter(d => d.type === "action" && !PRIME_EXTRA_COPIES.includes(d.id) && rules.actions.includes(d.actionType!)).map(d => d.id);
   return [...base, ...actions];
 }
 
@@ -80,6 +83,14 @@ export const VARIATIONS: Record<VariationId, Variation> = {
     description: "The real card game: no roles, Double the Rent, and Wild Rent charges one player.",
     roles: [],
     deck: MONOPOLY_DEAL_DECK,
+    rules: { wildRentOneTarget: true },
+  },
+  prime: {
+    id: "prime",
+    name: "Prime",
+    description: "Monopoly Deal plus 19 Prime cards: Hand 7, Hand Steal, Chargeback, Reverse, Destroy and Bank Robber.",
+    roles: [],
+    deck: PRIME_DECK,
     rules: { wildRentOneTarget: true },
   },
   classic: {

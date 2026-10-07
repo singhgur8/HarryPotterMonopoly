@@ -253,6 +253,37 @@ const extraActionCards: CardDef[] = [
   })),
 ];
 
+// ========== PRIME EDITION ==========
+// Added on top of the Monopoly Deal deck in Prime games (19 cards).
+const primeCards: CardDef[] = [
+  { id: "money_1g_7", type: "money", name: "1M", value: 1 },
+  { id: "money_2g_6", type: "money", name: "2M", value: 2 },
+  { id: "money_3g_4", type: "money", name: "3M", value: 3 },
+  { id: "money_4g_4", type: "money", name: "4M", value: 4 },
+  { id: "money_5g_3", type: "money", name: "5M", value: 5 },
+  { id: "wild_rainbow_3", type: "wild", name: "Property Wild Card", shortName: "Any colour", text: "Counts as any colour. You can move it between sets on your turn.", value: 0, wildColors: "rainbow" },
+  { id: "wild_lb_brown_2", type: "wild", name: "Property Wild Card (Light Blue / Brown)", value: 1, wildColors: ["light_blue", "brown"] },
+  { id: "wild_trans_util_2", type: "wild", name: "Property Wild Card (Railroad / Utility)", value: 2, wildColors: ["transport", "utility"] },
+  { id: "wild_red_yellow_3", type: "wild", name: "Property Wild Card (Red / Yellow)", value: 3, wildColors: ["red", "yellow"] },
+  { id: "wild_green_trans_2", type: "wild", name: "Property Wild Card (Green / Railroad)", value: 4, wildColors: ["green", "transport"] },
+  { id: "action_protego_4", type: "action", name: "Just Say No", value: 4, actionType: "protego", text: "Cancel an action played against you.", target: "reaction" },
+  { id: "action_hand_seven_1", type: "action", name: "Hand 7", value: 1, actionType: "hand_seven", text: "Draw until you have 7 cards in your hand.", target: "self" },
+  ...Array.from({ length: 2 }, (_, i) => ({
+    id: `action_hand_steal_${i + 1}`, type: "action" as const, name: "Hand Steal", value: 3, actionType: "hand_steal" as const,
+    text: "Take a random card from another player's hand.", target: "one" as const,
+  })),
+  ...Array.from({ length: 2 }, (_, i) => ({
+    id: `action_chargeback_${i + 1}`, type: "action" as const, name: "Chargeback", value: 4, actionType: "chargeback" as const,
+    text: "When you're charged, cancel it. Instead, you charge a player of your choice that same amount.", target: "reaction" as const,
+  })),
+  { id: "action_reverse_1", type: "action", name: "Reverse", value: 5, actionType: "reverse", text: "Stop an action played on you and turn it back on the player who played it. If it can't be turned back, it works as a Just Say No.", target: "reaction" },
+  { id: "action_destroy_1", type: "action", name: "Destroy", value: 5, actionType: "destroy", text: "Discard one of another player's properties, even from a complete set.", target: "one" },
+  { id: "action_bank_robber_1", type: "action", name: "Bank Robber", value: 10, actionType: "bank_robber", text: "Take all the money in another player's bank.", target: "one" },
+];
+
+/** Prime's extra copy of a card every deck already has: Custom games leave it out. */
+export const PRIME_EXTRA_COPIES = ["action_protego_4"];
+
 // ========== ROLE CARDS (5) ==========
 const roleCards: CardDef[] = [
   {
@@ -333,6 +364,7 @@ export const ALL_CARD_DEFS: CardDef[] = [
   ...rentCards,
   ...actionCards,
   ...extraActionCards,
+  ...primeCards,
   ...roleCards,
 ];
 
@@ -356,6 +388,9 @@ export const MONOPOLY_DEAL_DECK: string[] = [
   ...CLASSIC_DECK.filter((id) => !["reducto", "silencio", "time_turner"].includes(CARD_DEF_MAP[id].actionType ?? "")),
   ...extraActionCards.filter((c) => c.actionType === "double_rent").map((c) => c.id),
 ];
+
+// Prime: the Monopoly Deal deck plus the Prime cards
+export const PRIME_DECK: string[] = [...MONOPOLY_DEAL_DECK, ...primeCards.map((c) => c.id)];
 
 /** The role card for a role, e.g. role_harry. */
 export const roleDef = (role: RoleType): CardDef | undefined => CARD_DEF_MAP[`role_${role}`];

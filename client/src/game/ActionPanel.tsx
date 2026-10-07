@@ -7,7 +7,7 @@ import { useGame } from "./context";
 import { CardInfo, DiscardLink, DiscardPile } from "./DiscardPile";
 import {
   CARD_DEF_MAP, COLORS, label, fillOf, valueOf, sumValue, nameOf, groupSets, canTake, isComplete, shieldOf, roleName, roleNames,
-  payableCards, playerName, waitingText, isPayment, hasProtego, drawCount, tileFill, colorOnTable, looseWilds, cardBlurb, outOfMoves,
+  payableCards, playerName, waitingText, isPayment, hasProtego, hasAction, drawCount, tileFill, colorOnTable, looseWilds, cardBlurb, outOfMoves,
   type PaySelection,
 } from "./helpers";
 
@@ -31,13 +31,15 @@ function cheapestPick(p: PlayerState, amount: number): string[] {
   return total >= amount ? out : payableCards(p).map(c => c.defId);
 }
 
-function PaymentPicker({ pay, amount, title, payLabel, onPay, onProtego, onCancel, mustCover }: {
+function PaymentPicker({ pay, amount, title, payLabel, onPay, onProtego, onChargeback, onReverse, onCancel, mustCover }: {
   pay: PaySelection;
   amount: number;
   title: React.ReactNode;
   payLabel: (n: number) => string;
   onPay: (ids: string[]) => void;
   onProtego?: () => void;
+  onChargeback?: () => void;
+  onReverse?: () => void;
   onCancel?: () => void;
   mustCover?: boolean; // Silencio needs the full 10M, debts accept "everything you have"
 }) {
@@ -77,6 +79,8 @@ function PaymentPicker({ pay, amount, title, payLabel, onPay, onProtego, onCance
         <span style={{ flex: 1 }} />
         {!nothing && <button className="hp-btn ghost" onClick={() => setPicked(cheapestPick(me, amount))}>Pick cheapest for me</button>}
         {onProtego && <button className="hp-btn ghost" onClick={onProtego}>🛡️ Just Say No</button>}
+        {onChargeback && <button className="hp-btn ghost" onClick={onChargeback} data-testid="button-chargeback">Chargeback</button>}
+        {onReverse && <button className="hp-btn ghost" onClick={onReverse} data-testid="button-reverse">Reverse</button>}
         {onCancel && <button className="hp-btn ghost" onClick={onCancel}>Cancel</button>}
         <button className="hp-btn gold" disabled={!ok} onClick={() => { onPay(picked); setPicked([]); }} data-testid="button-pay">
           {nothing && !mustCover ? "Pay nothing" : payLabel(total)}
@@ -125,7 +129,8 @@ function TargetPicker() {
   const [own, setOwn] = useState<string | null>(null);
   useEffect(() => setOwn(null), [p.type]);
   if (!me) return null;
-  const others = s.players.filter(x => x.visitorId !== me.visitorId);
+  // A Reverse can only be played back on whoever played the action
+  const others = s.players.filter(x => x.visitorId !== me.visitorId && (!p.data?.onlyTarget || x.visitorId === p.data.onlyTarget));
   const pick = (target: string, targetCardDefId?: string, ownCardDefId?: string) =>
     send("choose_target", { targetPlayerId: target, targetCardDefId, ownCardDefId });
   const card = nameOf(p.cardDefId ?? "");
@@ -144,11 +149,17 @@ function TargetPicker() {
     choose_silencio: "Power Outage: pick who loses their role power.",
     choose_goblin: "Debt Collector: pick who owes you 5M.",
     choose_rent_target: `Wild Rent: pick who pays you ${p.amount ?? 0}M rent.`,
+    choose_destroy: "Destroy: pick a property to discard, even from a complete set.",
+    choose_hand_steal: "Hand Steal: pick whose hand to take a random card from.",
+    choose_bank_robber: "Bank Robber: pick whose whole bank to take.",
+    choose_chargeback: `Chargeback: pick who pays the ${p.amount ?? 0}M instead.`,
   };
+  const title = titles[p.type] ?? `Choose a target for ${card}`;
+  const fixed = !!p.data?.reversed || p.type === "choose_chargeback"; // can't be taken back
 
   return (
     <div className="hp-prompt alert" data-testid="target-prompt">
-      <div className="head"><p><b>{titles[p.type] ?? `Choose a target for ${card}`}</b>{["choose_steal", "choose_swap", "choose_reducto", "choose_steal_set"].includes(p.type) ? " Or tap a player's seat to see their cards up close and pick there." : ""}</p></div>
+      <div className="head"><p><b>{p.data?.reversed ? `Reverse! ${title}` : title}</b>{!p.data?.reversed && ["choose_steal", "choose_swap", "choose_reducto", "choose_destroy", "choose_steal_set"].includes(p.type) ? " Or tap a player's seat to see their cards up close and pick there." : ""}</p></div>
 
       {p.type === "choose_swap" && !own && (
         <div className="hp-row">{me.properties.map(c => cardButton(me, c, true, () => setOwn(c.defId)))}</div>
@@ -156,8 +167,9 @@ function TargetPicker() {
 
       {(p.type !== "choose_swap" || own) && others.map(o => {
         let body: React.ReactNode = null;
-        if (p.type === "choose_steal" || p.type === "choose_swap" || p.type === "choose_reducto") {
-          body = o.properties.length ? o.properties.map(c => cardButton(o, c, canTake(me, o, c), () => pick(o.visitorId, c.defId, own ?? undefined))) : <span className="hp-muted">No properties</span>;
+        if (p.type === "choose_steal" || p.type === "choose_swap" || p.type === "choose_reducto" || p.type === "choose_destroy") {
+          const any = p.type === "choose_destroy";
+          body = o.properties.length ? o.properties.map(c => cardButton(o, c, canTake(me, o, c, any), () => pick(o.visitorId, c.defId, own ?? undefined))) : <span className="hp-muted">No properties</span>;
         } else if (p.type === "choose_steal_set") {
           const sets = COLORS.filter(c => isComplete(o, c) && shieldOf(o) !== c);
           body = sets.length ? sets.map(c => (
@@ -168,6 +180,12 @@ function TargetPicker() {
         } else if (p.type === "choose_silencio") {
           body = <button className="hp-btn gold" disabled={o.isSilenced} onClick={() => pick(o.visitorId)}>{o.isSilenced ? "Power already off" : `Cut ${o.animal.name}'s power`}</button>;
         } else if (p.type === "choose_rent_target") {
+          body = <button className="hp-btn gold" onClick={() => pick(o.visitorId)}>Charge {o.animal.name} {p.amount}M (bank {sumValue(o.bank)}M)</button>;
+        } else if (p.type === "choose_hand_steal") {
+          body = <button className="hp-btn gold" disabled={!o.hand.length} onClick={() => pick(o.visitorId)}>{o.hand.length ? `Take from ${o.animal.name} (${o.hand.length} in hand)` : "Hand is empty"}</button>;
+        } else if (p.type === "choose_bank_robber") {
+          body = <button className="hp-btn gold" disabled={!o.bank.length} onClick={() => pick(o.visitorId)}>{o.bank.length ? `Rob ${o.animal.name} (${sumValue(o.bank)}M)` : "Bank is empty"}</button>;
+        } else if (p.type === "choose_chargeback") {
           body = <button className="hp-btn gold" onClick={() => pick(o.visitorId)}>Charge {o.animal.name} {p.amount}M (bank {sumValue(o.bank)}M)</button>;
         } else if (p.type === "choose_goblin") {
           body = <button className="hp-btn gold" onClick={() => pick(o.visitorId)}>Send to {o.animal.name} (bank {sumValue(o.bank)}M)</button>;
@@ -181,7 +199,7 @@ function TargetPicker() {
       })}
       <div className="hp-row">
         {p.type === "choose_swap" && own && <button className="hp-btn ghost" onClick={() => setOwn(null)}>Pick a different card of mine</button>}
-        <button className="hp-btn ghost" onClick={() => send("cancel_action")}>Take {card} back</button>
+        {!fixed && <button className="hp-btn ghost" onClick={() => send("cancel_action")}>Take {card} back</button>}
       </div>
     </div>
   );
@@ -313,17 +331,23 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
     const source = playerName(s, p.sourcePlayerId);
     switch (p.type) {
       case "pay_rent": case "pay_birthday": case "pay_debt": {
+        const answer = CARD_DEF_MAP[p.cardDefId ?? ""]?.actionType;
         const why = p.type === "pay_rent" ? `charged ${p.data?.rentColor ? label(p.data.rentColor) + " " : ""}rent`
-          : p.type === "pay_birthday" ? "played It's My Birthday" : "played Debt Collector";
+          : p.type === "pay_birthday" ? "played It's My Birthday"
+          : answer === "chargeback" ? "charged you with Chargeback"
+          : answer === "reverse" ? "turned your charge back on you with Reverse" : "played Debt Collector";
+        const answers = [hasProtego(me) && "Just Say No", hasAction(me, "chargeback") && "Chargeback", hasAction(me, "reverse") && "Reverse"].filter(Boolean) as string[];
         prompt = (
           <>
             <PaymentPicker
               pay={pay}
               amount={p.amount ?? 0}
-              title={<><b>{source} {why}.</b> You owe {p.amount}M. Pick what to pay with{hasProtego(me) ? ", or block it with Just Say No" : ""}. Cards you give go to {source}.</>}
+              title={<><b>{source} {why}.</b> You owe {p.amount}M. Pick what to pay with{answers.length ? `, or answer with ${answers.join(" or ")}` : ""}. Cards you give go to {source}.</>}
               payLabel={n => `Pay ${n}M`}
               onPay={ids => send("pay_with_cards", { cardDefIds: ids })}
               onProtego={hasProtego(me) ? () => send("play_protego") : undefined}
+              onChargeback={hasAction(me, "chargeback") ? () => send("play_chargeback") : undefined}
+              onReverse={hasAction(me, "reverse") ? () => send("play_reverse") : undefined}
             />
             <Tracker />
           </>
@@ -336,6 +360,7 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
         const attacking = orig?.sourcePlayerId === meId;
         const what = describeAction(s, orig);
         const canBlock = hasProtego(me);
+        const canReverse = !attacking && hasAction(me, "reverse");
         prompt = (
           <div className="hp-prompt alert" data-testid="protego-prompt">
             <div className="head">
@@ -347,6 +372,7 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
             <div className="hp-row">
               <button className="hp-btn ghost" onClick={() => send("decline_protego")} data-testid="button-allow">Allow</button>
               <button className="hp-btn gold" disabled={!canBlock} title={canBlock ? undefined : "You don't have a Just Say No"} onClick={() => send("play_protego")}>🛡️ Just Say No</button>
+              {canReverse && <button className="hp-btn gold" onClick={() => send("play_reverse")} data-testid="button-reverse">Reverse it</button>}
             </div>
           </div>
         );
@@ -514,9 +540,12 @@ function describeAction(s: any, a: any): string {
     case "choose_steal_set": return `is using Deal Breaker on the ${label(a.data?.color)} set`;
     case "choose_reducto": return `is using Demolish on ${nameOf(a.data?.targetCardDefId)}`;
     case "choose_silencio": return "is playing Power Outage";
+    case "choose_destroy": return `is using Destroy on ${nameOf(a.data?.targetCardDefId)}`;
+    case "choose_hand_steal": return "is using Hand Steal to take a random card from your hand";
+    case "choose_bank_robber": return "is using Bank Robber to take your whole bank";
     case "pay_rent": return `charged ${a.amount}M rent`;
     case "pay_birthday": return "played It's My Birthday (2M)";
-    case "pay_debt": return "played Debt Collector (5M)";
+    case "pay_debt": return CARD_DEF_MAP[a.cardDefId ?? ""]?.actionType === "gringotts_goblin" ? "played Debt Collector (5M)" : `charged you ${a.amount}M`;
     default: return "action";
   }
 }
