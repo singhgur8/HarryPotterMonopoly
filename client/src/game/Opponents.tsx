@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { GameCard } from "@/components/GameCard";
 import { useGame } from "./context";
 import {
-  groupSets, SET_SIZES, tileFill, valueOf, sumValue, label, fillOf, roleName, roleNames, roleInfo, shieldOf, nameOf, otherColor, completeSets,
+  groupSets, SET_SIZES, tileFill, valueOf, sumValue, label, fillOf, roleName, roleNames, roleInfo, shieldOf, nameOf, otherColor, completeSets, looseWilds, colorOnTable, RAINBOW,
   CARD_DEF_MAP, canTake, isComplete, RENT_TABLE, STACK_STEP,
 } from "./helpers";
 
@@ -59,7 +59,8 @@ function useAttacks(): Partial<Record<Attack, string>> {
 
 function SetLines({ p }: { p: PlayerState }) {
   const sets = groupSets(p.properties);
-  if (!sets.length) return <div className="none">No properties yet</div>;
+  const loose = looseWilds(p.properties);
+  if (!sets.length && !loose.length) return <div className="none">No properties yet</div>;
   const shield = shieldOf(p);
   return (
     <div className="hp-opp-sets">
@@ -89,6 +90,16 @@ function SetLines({ p }: { p: PlayerState }) {
           </div>
         );
       })}
+      {loose.length > 0 && (
+        <div className="hp-setline">
+          <span className="hp-dot" style={{ background: RAINBOW }} />
+          <span className="nm">No colour</span>
+          <span className="hp-tiles">
+            {loose.map(c => <i key={c.defId} className="hp-tile" style={{ background: RAINBOW }} title={`Any-colour wild on its own, worth ${valueOf(c)}M`}><b>{valueOf(c)}</b></i>)}
+          </span>
+          <span className="hp-muted" style={{ fontSize: 11 }}>no rent</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -206,6 +217,7 @@ function OpponentRow({ p }: { p: PlayerState }) {
   const turn = s.players[s.currentTurnIndex]?.visitorId === p.visitorId;
   const waited = s.waitingOn === p.visitorId && !turn;
   const sets = groupSets(p.properties);
+  const loose = looseWilds(p.properties);
   const shield = shieldOf(p);
   const coins = [...p.bank].sort((a, b) => valueOf(b) - valueOf(a));
   const target = st.names.length > 0;
@@ -264,7 +276,26 @@ function OpponentRow({ p }: { p: PlayerState }) {
                 </div>
               );
             })}
-            {!sets.length && <div className="hp-empty-set">No properties yet</div>}
+            {loose.length > 0 && (
+              <div className="hp-set">
+                <div className="hp-set-head"><span className="hp-dot" style={{ background: RAINBOW }} />No colour yet</div>
+                <div className="rent">No rent</div>
+                <div className="hp-stack" style={{ height: 134 + (loose.length - 1) * STACK_STEP }}>
+                  {loose.map((c, i) => {
+                    const style = { top: i * STACK_STEP, zIndex: i + 1 };
+                    const card = <GameCard defId={c.defId} size="md" label={`${nameOf(c.defId)}, no colour yet, worth ${valueOf(c)}M`} />;
+                    if (!st.usable(c.defId)) return <div key={c.defId} style={style}>{card}</div>;
+                    const sel = st.picked === c.defId;
+                    return (
+                      <button key={c.defId} style={style} className="hp-cardpick hp-useful" aria-pressed={sel} aria-label={`${nameOf(c.defId)}: choose a card to use on it`} onClick={() => st.pick(sel ? null : c.defId)}>
+                        {card}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {!sets.length && !loose.length && <div className="hp-empty-set">No properties yet</div>}
           </div>
           <StealBar st={st} target={p} />
         </div>
@@ -352,7 +383,7 @@ function StealBar({ st, target }: { st: Steal; target: PlayerState }) {
           <div className="hp-row">
             {me.properties.map(own => (
               <button key={own.defId} className="hp-cardpick" onClick={() => play("confundus_charm", picked, own.defId)} title={`Give ${nameOf(own.defId)}`}>
-                <GameCard defId={own.defId} size="sm" color={own.assignedColor} />
+                <GameCard defId={own.defId} size="sm" color={colorOnTable(own, me.properties)} />
               </button>
             ))}
           </div>
@@ -401,6 +432,24 @@ function StealableSets({ target, done }: { target: PlayerState; done: () => void
           {picked && cards.some(c => c.defId === picked) && <StealBar st={st} target={target} />}
         </div>
       ))}
+      {looseWilds(target.properties).length > 0 && (
+        <div style={{ display: "grid", gap: 6 }}>
+          <div className="hp-label">No colour yet · not in a set</div>
+          <div className="cards">
+            {looseWilds(target.properties).map(c => {
+              const card = <GameCard defId={c.defId} size="md" label={`${nameOf(c.defId)}, no colour yet, worth ${valueOf(c)}M`} />;
+              if (!usable(c.defId)) return <span key={c.defId}>{card}</span>;
+              const sel = picked === c.defId;
+              return (
+                <button key={c.defId} className="hp-cardpick hp-useful" aria-pressed={sel} onClick={() => pick(sel ? null : c.defId)}>
+                  {card}
+                </button>
+              );
+            })}
+          </div>
+          {picked && looseWilds(target.properties).some(c => c.defId === picked) && <StealBar st={st} target={target} />}
+        </div>
+      )}
     </>
   );
 }
