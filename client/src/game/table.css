@@ -29,6 +29,9 @@
 .hp-btn.big { padding: 12px 20px; font-size: 16px; }
 .hp-btn.opt { flex-direction: column; align-items: flex-start; gap: 0; padding: 6px 12px; text-align: left; }
 .hp-btn.opt small { font-weight: 500; font-size: 11.5px; opacity: .85; }
+.hp-btn.hp-rentopt { flex-direction: row; align-items: center; gap: 8px; padding-left: 6px; }
+.hp-rentopt .sq { width: 24px; height: 24px; border-radius: 6px; border: 2px solid #fff; box-shadow: 0 0 0 1px #0002; flex: none; }
+.hp-rentopt .txt { display: flex; flex-direction: column; align-items: flex-start; }
 .hp-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
 .hp-chip.gold { background: var(--gold-soft); color: var(--gold); border: 1px solid var(--gold-line); }
 .hp-chip.solid { background: var(--gold); color: #fff; }

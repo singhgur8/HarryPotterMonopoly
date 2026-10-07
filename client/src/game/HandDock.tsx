@@ -61,8 +61,11 @@ function CardMoves({ defId, done }: { defId: string; done: () => void }) {
           {colors.map(c => {
             const r = rentFor(me, c);
             return (
-              <button key={c} className={`hp-btn opt ${r ? "gold" : "ghost"}`} disabled={!r} onClick={() => play(c)}>
-                {label(c)} {r}M<small>{countOf(me, c) ? `${countOf(me, c)} card${countOf(me, c) > 1 ? "s" : ""}` : "no cards yet"}</small>
+              <button key={c} className={`hp-btn opt hp-rentopt ${r ? "gold" : "ghost"}`} disabled={!r} onClick={() => play(c)}>
+                <span className="sq" style={{ background: fillOf(c) }} aria-hidden="true" />
+                <span className="txt">
+                  {label(c)} {r}M<small>{countOf(me, c) ? `${countOf(me, c)} card${countOf(me, c) > 1 ? "s" : ""}` : "no cards yet"}</small>
+                </span>
               </button>
             );
           })}

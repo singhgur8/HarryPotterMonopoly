@@ -123,6 +123,15 @@
 .gc-face.t-back { background: var(--ink); border-color: var(--ink); outline-color: rgba(228,192,113,.4); grid-template-rows: 1fr; place-items: center; color: var(--gold-hi); }
 .gc-face.t-back .crest { width: 56cqw; aspect-ratio: 1; border: .8cqw solid currentColor; border-radius: 50%; display: grid; place-items: center; font: 700 30cqw/1 var(--f-display); }
 
+/* ---- card type strip: the footer names the type in a colour of its own,
+   so property, action, rent and money read differently at a glance ---- */
+.gc-face .foot .ftxt { font-weight: 800; letter-spacing: .12em; }
+.gc-face.t-property .foot { background: var(--set); color: var(--on); }
+.gc-face.t-property .foot .pips i { background: var(--on); box-shadow: none; }
+.gc-face.t-action .foot, .gc-face.t-rent .foot { background: var(--gold-hi); color: var(--ink); }
+.gc-face.t-action .chip-tag { border-color: var(--ink); }
+.gc-face.t-money .foot { background: rgba(255,255,255,.6); color: var(--on); opacity: 1; justify-content: center; }
+
 /* ---- density tiers: same markup, the card decides by its own width ---- */
 @container (max-width: 119px) {
   .gc-face .body .text, .gc-face .ladder, .gc-face.t-rent .rentmini, .gc-face.t-wild .half .mini { display: none; }
@@ -134,8 +143,9 @@
   .gc-face.t-wild .half .short { font-size: 10cqw; }
   .gc-face .coin { width: 24cqw; height: 24cqw; font-size: 12cqw; }
   .gc-face .body { padding: 0; }
-  .gc-face .foot { padding: 3cqw 6cqw 5cqw; font-size: 7cqw; }
-  .gc-face .foot .ftxt { display: none; }
+  .gc-face .foot { padding: 3cqw 6cqw 4cqw; font-size: 8.5cqw; }
+  /* Small cards keep just the type word (and a property's set size) */
+  .gc-face .foot > :not(.ftxt):not(.pips) { display: none; }
   .gc-face .pips i { width: 6cqw; height: 6cqw; }
   .gc-face .art svg { width: 64%; stroke-width: 2.4; }
   .gc-face { grid-template-rows: auto 1fr auto auto; }
