@@ -22,7 +22,7 @@ export function MyArea({ flipId, onFlip, onPaySilencio, pay }: {
   onPaySilencio: () => void;
   pay: PaySelection;
 }) {
-  const { me, s, isMyTurn } = useGame();
+  const { me, s, isMyTurn, send } = useGame();
   if (!me) return null;
   // Wilds only move on your own turn, and not while you're picking cards to pay
   const canFlip = isMyTurn && s.status === "playing" && !pay.active && !me.isSleeping;
@@ -73,9 +73,22 @@ export function MyArea({ flipId, onFlip, onPaySilencio, pay }: {
                         {...tappable(sel, `${nameOf(c.defId)}, now ${label(color)}. Flip it`, () => onFlip(sel ? null : c.defId))}
                       >
                         {card}
-                        <span className="hp-fliptag" style={{ background: other === "rainbow" ? RAINBOW : fillOf(other) }}>
+                        {/* The flip tag is its own button: a two-colour wild flips straight away; the any-colour wild opens the colour picker */}
+                        <button
+                          type="button"
+                          className="hp-fliptag"
+                          style={{ background: other === "rainbow" ? RAINBOW : fillOf(other) }}
+                          aria-label={other === "rainbow" ? `Move ${nameOf(c.defId)} to another colour` : `Flip ${nameOf(c.defId)} to ${label(other)}`}
+                          onClick={e => {
+                            e.stopPropagation();
+                            if (other === "rainbow") return onFlip(c.defId);
+                            onFlip(null);
+                            send("flip_wild", { cardDefId: c.defId, newColor: other });
+                          }}
+                          onKeyDown={e => e.stopPropagation()}
+                        >
                           ⇄ {other === "rainbow" ? "any" : label(other).split(" ")[0]}
-                        </span>
+                        </button>
                       </div>
                     );
                   })}

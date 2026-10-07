@@ -48,5 +48,3 @@ export const CARD_ART: Record<string, string> = {
   "Rewind": '<path d="M14 3h20M14 33h20M16 3c0 8 8 10 8 15s-8 7-8 15M32 3c0 8-8 10-8 15s8 7 8 15"/>',
   "Property Wild Card": '<path d="M20 4h8M21 4v8l-8 14a4 4 0 0 0 4 6h14a4 4 0 0 0 4-6l-8-14V4M16 22h16"/>',
 };
-
-export const RENT_ART = '<path d="M14 5h22a3 3 0 0 1 3 3v19M14 5a3 3 0 0 0-3 3v2h3M14 5v24a3 3 0 0 0 3 3h20a3 3 0 0 0 3-3v-2H20v2a3 3 0 0 1-3 3M19 11h14M19 16h14M19 21h9"/>';

@@ -92,6 +92,10 @@
 .gc-face .chip-tag { border: .5cqw solid currentColor; border-radius: 10cqw; padding: .8cqw 2.4cqw; }
 
 /* rent */
+.gc-face.t-rent .rentart { background: var(--ink); color: #fff; display: grid; place-content: center; justify-items: center; gap: 3cqw; }
+.gc-face.t-rent .rentword { font: 800 17cqw/1 var(--f-label); letter-spacing: .08em; text-transform: uppercase; color: var(--gold-hi); }
+.gc-face.t-rent .rentdots { display: flex; gap: 2.4cqw; }
+.gc-face.t-rent .rentdots i { width: 11cqw; height: 11cqw; border-radius: 50%; border: .8cqw solid #fff; }
 .gc-face.t-rent .rentmini { display: grid; gap: 1cqw; font-size: 5.6cqw; font-variant-numeric: tabular-nums; margin-top: 2.4cqw; }
 .gc-face.t-rent .rentmini div { display: flex; align-items: center; gap: 2cqw; }
 .gc-face.t-rent .rentmini b { width: 3.6cqw; height: 3.6cqw; border-radius: 50%; flex: none; }
@@ -149,6 +153,7 @@
   .gc-face.t-wild .half .coin { display: none; }
   .gc-face.t-wild .half.bot .coin { display: grid !important; transform: translate(-50%,-50%) rotate(180deg); left: 50%; top: 100%; }
   .gc-face.t-money .num { font-size: 60cqw; }
+  .gc-face.t-rent .rentart > * { display: none; }
   .gc-face.t-money .coin { display: none; }
 }
 
