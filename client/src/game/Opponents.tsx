@@ -26,10 +26,25 @@ function TimerAvatar({ p }: { p: PlayerState }) {
 const ATTACKS = { accio: "Sly Deal", confundus_charm: "Forced Deal", reducto: "Demolish", expelliarmus: "Deal Breaker" } as const;
 type Attack = keyof typeof ATTACKS;
 
-/** The attack cards I could play right now, by action type → one card of that kind in my hand. */
+const PICKS: Record<string, Attack> = {
+  choose_steal: "accio", choose_swap: "confundus_charm", choose_reducto: "reducto", choose_steal_set: "expelliarmus",
+};
+/** Marks an attack that's already played and waiting for its target. */
+const AIMING = "aiming";
+
+/**
+ * The attack cards I could use on someone's table right now, by action type:
+ * one card of that kind in my hand, or AIMING when I've already played it and
+ * am picking what to hit.
+ */
 function useAttacks(): Partial<Record<Attack, string>> {
   const { s, me, isMyTurn } = useGame();
-  if (!me || !isMyTurn || s.status !== "playing" || s.pendingAction || !s.drawnThisTurn || me.isSleeping) return {};
+  if (!me || !isMyTurn || s.status !== "playing" || !s.drawnThisTurn || me.isSleeping) return {};
+  const p = s.pendingAction;
+  if (p) {
+    const kind = PICKS[p.type];
+    return kind && p.sourcePlayerId === me.visitorId && p.targetPlayerId === me.visitorId ? { [kind]: AIMING } : {};
+  }
   const free = s.freePlayCardId;
   if (!free && s.actionsUsed >= s.maxActions) return {};
   const found: Partial<Record<Attack, string>> = {};
@@ -69,7 +84,7 @@ function SetLines({ p }: { p: PlayerState }) {
             </span>
             <span>{cards.length}/{size}</span>
             {cards.length >= size && <span className="hp-lock">Locked</span>}
-            {shield === color && <span className="hp-lock">Shield</span>}
+            {shield === color && <span className="hp-lock">🛡 Shield</span>}
             {wilds > 0 && cards.length < size && <span className="hp-muted" style={{ fontSize: 11 }}>{wilds} wild</span>}
           </div>
         );
@@ -97,6 +112,7 @@ export function OpponentSeat({ p, onOpen }: { p: PlayerState; onOpen: () => void
         <span className="nm">{p.animal.name}</span>
         {p.role && <span className={`hp-role ${p.isSilenced ? "off" : ""}`} title={`${roleInfo(p.role)?.power ?? ""}${p.isSilenced ? " (power off)" : ""}`}>{roleName(p.role).split(" ")[0]}</span>}
         {p.isSilenced && <span className="hp-chip late">Power off</span>}
+        {shieldOf(p) && <span className="hp-chip gold" title={`${label(shieldOf(p)!)} is shielded by Harry's charm`}>🛡 {label(shieldOf(p)!)}</span>}
         {turn && <span className="hp-chip solid">Turn</span>}
         {waited && <span className="hp-chip gold">Deciding</span>}
         {late && <span className="hp-chip late">Out of time</span>}
@@ -170,7 +186,8 @@ function StealableSets({ target, done }: { target: PlayerState; done: () => void
   if (!me) return null;
 
   const play = (kind: Attack, targetCardDefId: string, ownCardDefId?: string) => {
-    send("play_card", { cardDefId: attacks[kind], targetPlayerId: target.visitorId, targetCardDefId, ownCardDefId });
+    if (attacks[kind] === AIMING) send("choose_target", { targetPlayerId: target.visitorId, targetCardDefId, ownCardDefId });
+    else send("play_card", { cardDefId: attacks[kind], targetPlayerId: target.visitorId, targetCardDefId, ownCardDefId });
     done();
   };
   const cardKinds = (["accio", "confundus_charm", "reducto"] as const).filter(k => attacks[k]);
@@ -195,7 +212,7 @@ function StealableSets({ target, done }: { target: PlayerState; done: () => void
         return (
           <div key={color} style={{ display: "grid", gap: 6 }}>
             <div className="hp-row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
-              <div className="hp-label">{label(color)} · {cards.length}/{SET_SIZES[color]}</div>
+              <div className="hp-label">{label(color)} · {cards.length}/{SET_SIZES[color]}{shieldOf(target) === color ? " · 🛡 Shielded by Harry" : ""}</div>
               {setTakeable && <button className="hp-btn gold" onClick={() => play("expelliarmus", color)}>Take the set with Deal Breaker</button>}
             </div>
             <div className="cards">
