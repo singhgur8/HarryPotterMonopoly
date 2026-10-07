@@ -146,7 +146,7 @@ function TargetPicker() {
 
   return (
     <div className="hp-prompt alert" data-testid="target-prompt">
-      <div className="head"><p><b>{titles[p.type] ?? `Choose a target for ${card}`}</b></p></div>
+      <div className="head"><p><b>{titles[p.type] ?? `Choose a target for ${card}`}</b>{["choose_steal", "choose_swap", "choose_reducto", "choose_steal_set"].includes(p.type) ? " Or tap a player's seat to see their cards up close and pick there." : ""}</p></div>
 
       {p.type === "choose_swap" && !own && (
         <div className="hp-row">{me.properties.map(c => cardButton(me, c, true, () => setOwn(c.defId)))}</div>
