@@ -328,17 +328,22 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
         break;
       }
       case "protego_response": {
+        // Asked every time, card or not, so nobody can tell who holds one
         const orig = p.data?.originalAction;
         const attacking = orig?.sourcePlayerId === meId;
         const what = describeAction(s, orig);
+        const canBlock = hasProtego(me);
         prompt = (
-          <div className="hp-prompt alert">
+          <div className="hp-prompt alert" data-testid="protego-prompt">
             <div className="head">
               <p>{attacking
-                ? <><b>{playerName(s, orig.targetPlayerId)} blocked your {what} with Just Say No.</b> Say Just Say No back to push it through?</>
-                : <><b>{source} {what}.</b> Block it with Just Say No?</>}</p>
-              <button className="hp-btn ghost" onClick={() => send("decline_protego")}>{attacking ? "Let it go" : "Let it happen"}</button>
-              <button className="hp-btn gold" onClick={() => send("play_protego")}>🛡️ Just Say No</button>
+                ? <><b>{playerName(s, orig.targetPlayerId)} blocked your {what} with Just Say No.</b> Allow the block, or say Just Say No back to push it through?</>
+                : <><b>{source} {what}.</b> Allow it, or block it with Just Say No?</>}
+                {" "}<span className="hp-muted">{canBlock ? "" : "You have no Just Say No, but nobody else can see that. "}It's allowed if you don't answer in {Math.max(0, s.turnTimer)}s.</span></p>
+            </div>
+            <div className="hp-row">
+              <button className="hp-btn ghost" onClick={() => send("decline_protego")} data-testid="button-allow">Allow</button>
+              <button className="hp-btn gold" disabled={!canBlock} title={canBlock ? undefined : "You don't have a Just Say No"} onClick={() => send("play_protego")}>🛡️ Just Say No</button>
             </div>
           </div>
         );
