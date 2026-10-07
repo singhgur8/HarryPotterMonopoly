@@ -375,16 +375,46 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
         break;
       }
       case "cedric_draw_choice": {
-        const top = s.discardPile.slice(-2).reverse();
+        // Older saves have no data: that was always Cedric's deck-or-discard choice
+        const opts = p.data ?? { discard: true, opponent: false };
+        const top = opts.discard ? s.discardPile.slice(-2).reverse() : [];
+        const victims = opts.opponent ? s.players.filter(o => o.visitorId !== me.visitorId && o.hand.length > 0) : [];
+        const ways = [`draw ${drawCount(me)} from the deck`];
+        if (top.length) ways.push(`take the top ${top.length} of the discard pile`);
+        if (victims.length) ways.push("take one random card from another player's hand");
         prompt = (
           <div className="hp-prompt wait">
-            <div className="head"><p><b>Cedric's choice.</b> Draw {drawCount(me)} from the deck, or take the top {top.length} of the discard pile.</p></div>
-            <div className="hp-cardinfos">
-              {top.map((c, i) => <CardInfo key={c.defId} defId={c.defId} tag={i === 0 ? "Top" : undefined} />)}
-            </div>
+            <div className="head"><p><b>{opts.opponent && opts.discard ? "Cedric and Ganda's choice." : opts.opponent ? "Ganda's choice." : "Cedric's choice."}</b> Start your turn: {ways.slice(0, -1).join(", ")}{ways.length > 1 ? " or " : ""}{ways[ways.length - 1]}.</p></div>
+            {top.length > 0 && (
+              <div className="hp-cardinfos">
+                {top.map((c, i) => <CardInfo key={c.defId} defId={c.defId} tag={i === 0 ? "Top" : undefined} />)}
+              </div>
+            )}
             <div className="hp-row">
-              <button className="hp-btn ghost" onClick={() => send("cedric_choose_source", { source: "discard" })}>Take these {top.length}</button>
+              {top.length > 0 && <button className="hp-btn ghost" onClick={() => send("cedric_choose_source", { source: "discard" })}>Take these {top.length}</button>}
+              {victims.map(o => (
+                <button key={o.visitorId} className="hp-btn ghost" onClick={() => send("cedric_choose_source", { source: "opponent", targetPlayerId: o.visitorId })} data-testid={`ganda-take-${o.seatIndex}`}>
+                  {o.animal.emoji} Take 1 from {o.animal.name} ({o.hand.length} in hand)
+                </button>
+              ))}
               <button className="hp-btn gold" onClick={() => send("cedric_choose_source", { source: "deck" })}>Draw from the deck</button>
+            </div>
+          </div>
+        );
+        break;
+      }
+      case "lucha_choose": {
+        const others = s.players.filter(o => o.visitorId !== me.visitorId);
+        const blocked = others.length > 1 ? me.borrowedFrom : undefined;
+        prompt = (
+          <div className="hp-prompt wait">
+            <div className="head"><p><b>Lucha's choice.</b> Whose power do you copy for your next turn?{blocked ? ` You copied ${playerName(s, blocked)} last time, so pick someone else.` : ""}</p></div>
+            <div className="hp-row">
+              {others.map(o => (
+                <button key={o.visitorId} className="hp-btn ghost" disabled={o.visitorId === blocked} onClick={() => send("lucha_choose", { targetPlayerId: o.visitorId })} data-testid={`lucha-copy-${o.seatIndex}`}>
+                  {o.animal.emoji} {o.animal.name} · {o.roles.filter(r => r !== "lucha").map(r => roleName(r)).join(" + ") || "no power"}
+                </button>
+              ))}
             </div>
           </div>
         );

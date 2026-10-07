@@ -119,6 +119,8 @@ export interface PlayerState {
   isConnected: boolean;
   protectedColor?: PropertyColor;  // Harry's power
   isSilenced: boolean;             // Silencio debuff active
+  borrowedRoles?: RoleType[];      // Lucha: the powers copied at the end of the last turn
+  borrowedFrom?: string;           // Lucha: whose powers those are (can't pick them twice in a row)
 }
 
 // Animal profiles
@@ -178,7 +180,8 @@ export type PendingActionType =
   | "choose_goblin"      // Gringotts Goblin: attacker picks who owes 5M
   | "protego_response"   // Player can respond with Protego
   | "harry_protect"      // Harry chooses color to protect at end of turn
-  | "cedric_draw_choice" // Cedric chooses deck or discard
+  | "cedric_draw_choice" // Start-of-turn draw choice: deck, discard (Cedric) or an opponent's hand (Ganda)
+  | "lucha_choose"       // Lucha picks whose power to copy for next turn
   | "time_turner_play"   // Must play the Time-Turner drawn card immediately
   | "discard_excess";    // Must discard down to 7 cards
 
@@ -272,6 +275,7 @@ export type WSMessageType =
   | "choose_target"
   | "harry_protect_color"
   | "cedric_choose_source"
+  | "lucha_choose"
   | "discard_cards"
   | "pay_silencio"
   | "put_to_sleep"

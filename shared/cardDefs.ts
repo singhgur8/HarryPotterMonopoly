@@ -306,15 +306,14 @@ const roleCards: CardDef[] = [
     rolePower: "Draw 3 cards at start of turn instead of 2.",
   },
   // ----- GG roles -----
-  // Powers still to come. A role's power lives in worker/gameEngine.ts
-  // (search roleActive); until then these roles play with no power.
+  // Their powers live in worker/gameEngine.ts (search "ganda" and "lucha").
   {
     id: "role_ganda",
     type: "role",
     name: "Ganda",
     value: 0,
     roleType: "ganda",
-    text: "Power coming soon.",
+    text: "Start your turn by drawing from the deck, or by taking one random card from another player's hand.",
   },
   {
     id: "role_lucha",
@@ -322,7 +321,7 @@ const roleCards: CardDef[] = [
     name: "Lucha",
     value: 0,
     roleType: "lucha",
-    text: "Power coming soon.",
+    text: "At the end of each turn, copy another player's role power for your next turn. Pick someone new each time, unless it's one on one.",
   },
 ];
 
