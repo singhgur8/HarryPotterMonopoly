@@ -60,7 +60,7 @@ function CardMoves({ defId, done }: { defId: string; done: () => void }) {
       return (
         <>
           <strong>{def.name}</strong>
-          <span>Everyone else pays{(s.rentMultiplier ?? 1) > 1 ? ` (${s.rentMultiplier === 2 ? "doubled" : `${s.rentMultiplier}x`})` : ""}:</span>
+          <span>{def.rentColors === "rainbow" && s.rules?.wildRentOneTarget ? "Pick a colour, then who pays" : "Everyone else pays"}{(s.rentMultiplier ?? 1) > 1 ? ` (${s.rentMultiplier === 2 ? "doubled" : `${s.rentMultiplier}x`})` : ""}:</span>
           {colors.length === 0 && <span>you have no properties to charge rent for yet.</span>}
           {colors.map(c => {
             const r = rentFor(me, c) * (s.rentMultiplier ?? 1);
@@ -96,12 +96,13 @@ function CardMoves({ defId, done }: { defId: string; done: () => void }) {
 
 /** What a card does, for reading it when you can't play it right now. */
 function CardInfo({ defId, why, done }: { defId: string; why: string; done: () => void }) {
+  const { s } = useGame();
   const def = CARD_DEF_MAP[defId];
   if (!def) return null;
   let what = def.text ?? "";
   if (def.type === "money") what = `Bank it for ${def.value}M.`;
   else if (def.type === "property") what = `${label(def.color!)} property.`;
-  else if (def.type === "rent") what = def.rentColors === "rainbow" ? "Every other player pays you rent for any one colour you own." : `Every other player pays you rent for ${(def.rentColors as PropertyColor[]).map(label).join(" or ")}.`;
+  else if (def.type === "rent") what = def.rentColors === "rainbow" ? `${s.rules?.wildRentOneTarget ? "One player of your choice pays" : "Every other player pays"} you rent for any one colour you own.` : `Every other player pays you rent for ${(def.rentColors as PropertyColor[]).map(label).join(" or ")}.`;
   else if (def.type === "wild" && def.wildColors !== "rainbow") what = `Counts as ${(def.wildColors as PropertyColor[]).map(label).join(" or ")}.`;
   return (
     <>

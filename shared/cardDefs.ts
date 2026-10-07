@@ -349,6 +349,14 @@ export const CLASSIC_DECK: string[] = [
   ...moneyCards, ...propertyCards, ...wildCards, ...rentCards, ...actionCards,
 ].map((c) => c.id);
 
+// Real Monopoly Deal: the classic deck with Double the Rent in place of the
+// Harry Potter actions (Demolish, Power Outage, Rewind). Houses and hotels
+// aren't in this game.
+export const MONOPOLY_DEAL_DECK: string[] = [
+  ...CLASSIC_DECK.filter((id) => !["reducto", "silencio", "time_turner"].includes(CARD_DEF_MAP[id].actionType ?? "")),
+  ...extraActionCards.filter((c) => c.actionType === "double_rent").map((c) => c.id),
+];
+
 /** The role card for a role, e.g. role_harry. */
 export const roleDef = (role: RoleType): CardDef | undefined => CARD_DEF_MAP[`role_${role}`];
 

@@ -393,7 +393,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
       const s = createInitialGameState("TEST", players.slice(0, 2 + (g % 4)), 60, v.id);
       assert.equal(s.variation, v.id);
       assert.equal(countCards(s), v.deck.length);
-      assert.ok(s.players.every(p => p.roles.length === 1 && v.roles.includes(p.roles[0])), `${v.id} dealt a role from another version`);
+      assert.ok(s.players.every(p => v.roles.length === 0 ? p.roles.length === 0 : p.roles.length === 1 && v.roles.includes(p.roles[0])), `${v.id} dealt a role from another version`);
       s.players.forEach(p => { p.isSleeping = true; p.isBot = true; });
       let steps = 0;
       while (s.status === "playing" && steps < 5000) { assert.ok(botStep(s)); steps++; }
@@ -517,6 +517,49 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   a.isSilenced = true;
   assert.ok(!roleActive(a, "luna"));
   console.log("lucha: ok");
+}
+
+// ---------- Classic Monopoly Deal: no roles, real deck, Wild Rent hits one player ----------
+{
+  const players = Array.from({ length: 3 }, (_, i) => ({ visitorId: `p${i}`, seatIndex: i, animal: ANIMALS[i] }));
+  const s = createInitialGameState("TEST", players, 60, "deal");
+  const all = [...s.drawPile, ...s.players.flatMap(p => p.hand)].map(c => CARD_DEF_MAP[c.defId]);
+  assert.equal(all.length, 101, "106 real cards minus 3 houses and 2 hotels");
+  const count = (t: string) => all.filter(c => c.actionType === t).length;
+  assert.equal(count("double_rent"), 2);
+  assert.equal(count("confundus_charm"), 3);
+  for (const t of ["reducto", "silencio", "time_turner"]) assert.equal(count(t), 0);
+  assert.ok(s.players.every(p => p.roles.length === 0), "nobody has a role");
+
+  for (const p of s.players) { s.drawPile.push(...p.hand); p.hand = []; }
+  s.drawnThisTurn = true;
+  const [a, b, c] = s.players;
+  give(s, a, "properties", "prop_green_1");
+  give(s, a, "hand", "rent_rainbow_1");
+  give(s, a, "hand", "action_double_rent_1");
+  give(s, c, "bank", "money_10g_1");
+  assert.ok(playCard(s, "p0", "action_double_rent_1").success);
+  assert.ok(playCard(s, "p0", "rent_rainbow_1", false, "green").success);
+  assert.equal(s.pendingAction?.type, "choose_rent_target");
+  // Taking it back returns the card and keeps the double waiting
+  assert.ok(cancelChoice(s, "p0").success);
+  assert.equal(s.rentMultiplier, 2);
+  assert.equal(s.actionsUsed, 1);
+  assert.ok(playCard(s, "p0", "rent_rainbow_1", false, "green").success);
+  assert.ok(chooseTarget(s, "p0", "p2").success);
+  assert.equal(s.pendingAction?.type, "pay_rent");
+  assert.equal(s.pendingAction?.targetPlayerId, "p2");
+  assert.equal(s.pendingAction?.amount, 4, "green rent 2M doubled");
+  assert.ok(payWithCards(s, "p2", ["money_10g_1"]).success);
+  assert.equal(s.pendingAction, null, "only the chosen player pays");
+  assert.equal(b.bank.length, 0);
+  // Two-colour rent still charges everyone
+  give(s, a, "properties", "prop_brown_1");
+  give(s, a, "hand", "rent_brown_lb_1");
+  s.actionsUsed = 0;
+  assert.ok(playCard(s, "p0", "rent_brown_lb_1", false, "brown").success);
+  assert.equal(s.pendingAction?.data.allTargets.length, 2);
+  console.log("classic monopoly deal: ok");
 }
 
 // ---------- Double the Rent ----------
