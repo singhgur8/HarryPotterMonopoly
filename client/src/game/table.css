@@ -160,7 +160,10 @@
 .hp-mine.paying { outline: 2px dashed var(--gold-line); outline-offset: 6px; border-radius: 12px; }
 button.hp-cn { cursor: pointer; padding: 2px 9px; font-size: 13px; }
 button.hp-cn[aria-pressed="true"] { background: var(--gold); color: #fff; border-color: var(--gold); }
-.hp-fliptag { position: absolute; left: 4px; bottom: 6px; z-index: 4; font-size: 10px; font-weight: 800; color: #fff; text-shadow: 0 1px 1px #0008; border-radius: 4px; padding: 1px 5px; border: 1px solid #fff; pointer-events: none; }
+.hp-fliptag { position: absolute; right: 4px; top: 4px; z-index: 4; font-size: 11px; font-weight: 800; color: #fff; text-shadow: 0 1px 1px #0008; border-radius: 5px; padding: 3px 7px; border: 1px solid #fff; cursor: pointer; box-shadow: 0 1px 3px #0004; transition: transform .12s; }
+.hp-fliptag:hover { transform: scale(1.1); }
+.hp-fliptag:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+@media (pointer: coarse) { .hp-fliptag { padding: 6px 9px; font-size: 12px; } }
 .hp-bankbox { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: grid; gap: 8px; align-content: start; }
 .hp-bank-total { font: 800 26px var(--display); color: var(--gold); line-height: 1; }
 .hp-myrole { border-top: 1px solid var(--sunk); padding-top: 8px; font-size: 13px; color: var(--muted); display: grid; gap: 4px; }

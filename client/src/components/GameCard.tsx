@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import type { CardDef, PropertyColor } from "@shared/schema";
 import { SET_STYLE, SET_SIZES, RENT_TABLE } from "@shared/schema";
 import { CARD_DEF_MAP } from "@shared/cardDefs";
-import { CARD_ART, RENT_ART } from "@/lib/cardArt";
+import { CARD_ART } from "@/lib/cardArt";
 import "./game-card.css";
 
 // Pixel widths for each size. The card picks its level of detail from its own
@@ -129,7 +129,13 @@ function RentFace({ def }: { def: CardDef }) {
     <div className="gc-face t-rent" style={{ "--set": "var(--ink)", "--on": "#fff", "--tint": "var(--paper-2)", "--glyph": "var(--ink)" } as CSSProperties}>
       <Coin value={def.value} />
       <Band kicker="Rent" name={label} short={short} className={`gc-rainbow-text ${any ? "gc-rainbow" : ""}`} style={bandStyle} />
-      <Art svg={RENT_ART} />
+      {/* A dark panel with RENT written large, so rent never reads as a property of the same colour */}
+      <div className="art rentart">
+        <span className="rentword">Rent</span>
+        <span className="rentdots">
+          {pair ? pair.map(c => <i key={c} style={{ background: SET_STYLE[c].fill }} />) : <i className="gc-rainbow" />}
+        </span>
+      </div>
       <div className="body">
         <p className="text">
           {any ? "Every other player pays you rent for any one colour you own." : "Every other player pays you rent for one of these colours."}
