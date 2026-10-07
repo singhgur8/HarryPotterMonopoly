@@ -55,7 +55,16 @@ export function rentStep(p: PlayerState, c: PropertyColor): string {
   return `${label(c)} rent ${n ? RENT_TABLE[c][n - 1] : 0}M → ${RENT_TABLE[c][n]}M`;
 }
 
-export const roleActive = (p: PlayerState | undefined, role: string) => !!p && (p.roles ?? []).includes(role as RoleType) && !p.isSilenced;
+export const roleActive = (p: PlayerState | undefined, role: string) => !!p && !p.isSilenced &&
+  ((p.roles ?? []).includes(role as RoleType) || ((p.roles ?? []).includes("lucha") && !!p.borrowedRoles?.includes(role as RoleType)));
+
+/** What Lucha is copying right now, e.g. "Copying Fox: Harry Potter", or "" if nothing yet. */
+export function borrowedText(s: GameState, p: PlayerState): string {
+  if (!(p.roles ?? []).includes("lucha") || !p.borrowedFrom) return "";
+  const from = s.players.find(x => x.visitorId === p.borrowedFrom)?.animal.name ?? "a player";
+  const names = (p.borrowedRoles ?? []).map(roleName).join(" + ");
+  return names ? `Copying ${from}: ${names}` : `Copying ${from}, who has no power to copy`;
+}
 export const shieldOf = (p: PlayerState) => (roleActive(p, "harry") ? p.protectedColor : undefined);
 
 /** Mirrors the server's rule for Accio, Confundus and Reducto. */
@@ -105,6 +114,7 @@ export function waitingText(s: GameState, meId: string): string {
     case "protego_response": return `Waiting on ${who} to decide on Just Say No`;
     case "harry_protect": return `Waiting on ${who} to keep or move Harry's shield`;
     case "cedric_draw_choice": return `Waiting on ${who} to choose where to draw from`;
+    case "lucha_choose": return `Waiting on ${who} to pick whose power Lucha copies`;
     case "discard_excess": return `Waiting on ${who} to discard down to 7`;
     case "time_turner_play": return `Waiting on ${who} to pick a card with Rewind`;
     default: return `Waiting on ${who} to choose a target for ${card}`;
