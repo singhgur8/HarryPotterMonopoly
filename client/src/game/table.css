@@ -282,7 +282,7 @@ button.hp-cn[aria-pressed="true"] { background: var(--gold); color: #fff; border
 .hp-stripe { display: flex; height: 6px; border-radius: 999px; overflow: hidden; width: min(260px, 80%); justify-self: center; }
 .hp-stripe span { flex: 1; }
 .hp-home-page { align-items: center; background: radial-gradient(ellipse at 50% 0%, var(--gold-soft), transparent 60%); }
-.hp-hero { max-width: 440px; justify-items: stretch; padding: 30px 26px; box-shadow: 0 10px 40px rgba(20,16,40,.08); }
+.hp-hero { max-width: 440px; grid-template-columns: minmax(0, 1fr); justify-items: stretch; padding: 30px 26px; box-shadow: 0 10px 40px rgba(20,16,40,.08); }
 .hp-hero > .hp-crest, .hp-hero > .hp-how { justify-self: center; justify-content: center; }
 .hp-tag { margin: 0; text-align: center; color: var(--muted); text-wrap: balance; }
 .hp-or { display: flex; align-items: center; gap: 10px; color: var(--muted); font: 800 11px var(--body); letter-spacing: .12em; text-transform: uppercase; }
