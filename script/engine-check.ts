@@ -654,6 +654,10 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.ok(flipWild(s, "p0", "wild_rainbow_1", "green").success, "joins once green is there");
   assert.ok(playCard(s, "p0", "rent_rainbow_1", false, "green").success);
   assert.equal(s.pendingAction?.amount, 4, "green rent counts the wild once it has a real green");
+  s.pendingAction = null;
+  assert.ok(flipWild(s, "p0", "wild_rainbow_1", null).success, "it can leave its set and sit on its own");
+  assert.equal(a.properties.find(x => x.defId === "wild_rainbow_1")!.assignedColor, undefined);
+  assert.equal(flipWild(s, "p0", "prop_green_1" as any, null).success, false);
   // A rainbow set with no real card of its colour isn't a set
   const t = setup();
   const [c] = t.players;

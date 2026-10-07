@@ -704,7 +704,7 @@ function beginTurn(state: GameState) {
 
 // ========== FLIP WILD ==========
 
-export function flipWild(state: GameState, visitorId: string, cardDefId: string, newColor: PropertyColor): Result {
+export function flipWild(state: GameState, visitorId: string, cardDefId: string, newColor: PropertyColor | null): Result {
   // Flipping a wild is free, but only on your own turn
   if (state.status !== "playing") return fail("The game is over");
   const player = getPlayer(state, visitorId);
@@ -714,7 +714,14 @@ export function flipWild(state: GameState, visitorId: string, cardDefId: string,
   if (!card) return fail("Card not in your properties");
   const def = CARD_DEF_MAP[cardDefId];
   if (!def || def.type !== "wild") return fail("Not a wild card");
-  if (!PROPERTY_COLORS.includes(newColor)) return fail("Invalid colour");
+  // No colour: the any-colour wild leaves its set and sits on its own
+  if (newColor == null && def.wildColors === "rainbow") {
+    if (!card.assignedColor) return ok;
+    card.assignedColor = undefined;
+    log(state, player, `took ${def.name} out of their sets. It sits on its own with no colour`, def.id);
+    return ok;
+  }
+  if (!newColor || !PROPERTY_COLORS.includes(newColor)) return fail("Invalid colour");
   if (Array.isArray(def.wildColors) && !def.wildColors.includes(newColor)) {
     return fail(`This wild can only be ${def.wildColors.map(c => COLOR_LABEL[c]).join(" or ")}`);
   }

@@ -190,9 +190,9 @@ export function usefulToPlay(s: GameState, me: PlayerState, defId: string): bool
 export const movableWilds = (me: PlayerState) => me.properties.filter(c => {
   if (CARD_DEF_MAP[c.defId]?.type !== "wild") return false;
   if (!isAnyColourWild(c.defId)) return true;
-  // The any-colour wild needs another colour it could join
+  // The any-colour wild can leave its set, or join another colour
   const now = colorOnTable(c, me.properties);
-  return joinableColors(me).some(col => col !== now);
+  return !!now || joinableColors(me).some(col => col !== now);
 });
 
 /**
