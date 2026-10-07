@@ -4,7 +4,7 @@ import { useGame } from "./context";
 import { SET_STYLE } from "@shared/schema";
 import {
   groupSets, SET_SIZES, RENT_TABLE, label, fillOf, sumValue, valueOf, nameOf, otherColor, RAINBOW,
-  completeSets, roleInfo, shieldOf, STACK_STEP, type PaySelection,
+  completeSets, roleInfo, borrowedText, shieldOf, STACK_STEP, type PaySelection,
 } from "./helpers";
 import { TimerAvatar } from "./Opponents";
 
@@ -125,6 +125,7 @@ export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
                 <span>{role.power}</span>
               </div>
             ))}
+            {borrowedText(s, me) && <span className="hp-chip gold" style={{ justifySelf: "start", whiteSpace: "normal" }}>{borrowedText(s, me)}</span>}
             {me.isSilenced && (
               <>
                 <span className="hp-chip late" style={{ justifySelf: "start" }}>Power Outage · power off</span>

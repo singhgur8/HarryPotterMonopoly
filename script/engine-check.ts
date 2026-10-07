@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import {
   createInitialGameState, botStep, payWithCards, playProtego, declineProtego,
   chooseTarget, playCard, drawCards, paySilencio, getWaitingOn, flipWild,
-  harryProtectColor, endTurn, timeTurnerChoose, bankCard, cancelChoice, cedricChooseSource, wakeUp, forfeit, autoDraw,
+  harryProtectColor, endTurn, luchaChoose, roleActive, timeTurnerChoose, bankCard, cancelChoice, cedricChooseSource, wakeUp, forfeit, autoDraw,
   sleepForDisconnect,
 } from "../worker/gameEngine";
 import { ANIMALS, SET_SIZES, DRAW_SECONDS, inDrawStep, freshTurnTimer } from "../shared/schema";
@@ -398,6 +398,60 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.equal(u.rolesPerPlayer, 1);
   assert.equal(u.roleMode, "random");
   console.log("custom games: ok");
+}
+
+// ---------- Ganda: draw from the deck or take a random card from someone's hand ----------
+{
+  const s = setup(3);
+  const [a, b, c] = s.players;
+  a.roles = []; b.roles = ["ganda"]; c.roles = [];
+  give(s, a, "hand", "money_1g_1"); give(s, a, "hand", "money_2g_1");
+  give(s, b, "hand", "money_3g_1");
+  assert.ok(endTurn(s, "p0").success);
+  assert.equal(s.pendingAction?.type, "cedric_draw_choice");
+  assert.deepEqual(s.pendingAction?.data, { discard: false, opponent: true });
+  assert.equal(cedricChooseSource(s, "p1", "opponent", "p2").success, false, "p2 has no cards");
+  assert.equal(s.pendingAction?.type, "cedric_draw_choice", "a bad pick keeps the choice open");
+  assert.ok(cedricChooseSource(s, "p1", "opponent", "p0").success);
+  assert.equal(a.hand.length, 1);
+  assert.equal(b.hand.length, 2);
+  assert.ok(s.drawnThisTurn);
+  console.log("ganda: ok");
+}
+
+// ---------- Lucha: copies someone's power at the end of each turn ----------
+{
+  const s = setup(3);
+  const [a, b, c] = s.players;
+  a.roles = ["lucha"]; b.roles = ["hermione"]; c.roles = ["luna"];
+  give(s, a, "hand", "money_1g_1");
+  assert.ok(endTurn(s, "p0").success);
+  assert.equal(s.pendingAction?.type, "lucha_choose");
+  assert.ok(luchaChoose(s, "p0", "p1").success);
+  assert.deepEqual(a.borrowedRoles, ["hermione"]);
+  // Next time round, p1 can't be picked again
+  s.currentTurnIndex = 0; s.pendingAction = null; s.drawnThisTurn = true;
+  assert.ok(roleActive(a, "hermione"), "Lucha has Hermione's power now");
+  assert.ok(!roleActive(a, "luna"));
+  assert.ok(endTurn(s, "p0").success);
+  assert.equal(luchaChoose(s, "p0", "p1").success, false, "can't copy the same player twice in a row");
+  assert.ok(luchaChoose(s, "p0", "p2").success);
+  assert.ok(roleActive(a, "luna") && !roleActive(a, "hermione"));
+  // One on one: the same player every time is fine
+  const d = setup(2);
+  d.players[0].roles = ["lucha"]; d.players[1].roles = ["harry"];
+  for (let i = 0; i < 2; i++) {
+    d.currentTurnIndex = 0; d.pendingAction = null; d.drawnThisTurn = true;
+    assert.ok(endTurn(d, "p0").success);
+    assert.ok(luchaChoose(d, "p0", "p1").success);
+    // Copying Harry: Lucha gets the end-of-turn shield too
+    assert.equal(d.pendingAction?.type, "harry_protect");
+    assert.ok(harryProtectColor(d, "p0").success);
+  }
+  // Silenced Lucha has no copied power either
+  a.isSilenced = true;
+  assert.ok(!roleActive(a, "luna"));
+  console.log("lucha: ok");
 }
 
 // ---------- Double the Rent ----------

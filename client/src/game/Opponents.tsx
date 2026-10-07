@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { GameCard } from "@/components/GameCard";
 import { useGame } from "./context";
 import {
-  groupSets, SET_SIZES, tileFill, valueOf, sumValue, label, fillOf, roleName, roleNames, roleInfo, shieldOf, nameOf, otherColor, completeSets,
+  groupSets, SET_SIZES, tileFill, valueOf, sumValue, label, fillOf, roleName, roleNames, roleInfo, borrowedText, shieldOf, nameOf, otherColor, completeSets,
   CARD_DEF_MAP, canTake, isComplete, RENT_TABLE, STACK_STEP,
 } from "./helpers";
 
@@ -156,6 +156,7 @@ export function Opponents({ full }: { full: boolean }) {
                         <span>{roleInfo(r)?.power}</span>
                       </span>
                     ))}
+                    {borrowedText(s, shown) && <span>{borrowedText(s, shown)}.</span>}
                     {shown.isSilenced && <span>Their power is switched off right now.</span>}
                     {shieldOf(shown) && <span>Shield is on {label(shieldOf(shown)!)}.</span>}
                   </div>
@@ -283,6 +284,7 @@ function OpponentRow({ p }: { p: PlayerState }) {
                   <span>{roleInfo(r)?.power}</span>
                 </div>
               ))}
+              {borrowedText(s, p) && <span>{borrowedText(s, p)}.</span>}
               {p.isSilenced && <span>Their power is switched off right now.</span>}
             </div>
           )}

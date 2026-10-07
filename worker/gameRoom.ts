@@ -12,7 +12,7 @@ import { DEFAULT_VARIATION, DEFAULT_CUSTOM_RULES, isVariationId, updateCustomRul
 import {
   createInitialGameState, drawCards, playCard, bankCard, endTurn,
   flipWild, payWithCards, playProtego, declineProtego, chooseTarget,
-  harryProtectColor, cedricChooseSource, timeTurnerChoose, paySilencio,
+  harryProtectColor, cedricChooseSource, luchaChoose, timeTurnerChoose, paySilencio,
   discardCards, sanitizeStateForPlayer, putToSleep, wakeUp, botStep, getWaitingOn, autoDraw,
   cancelChoice, forfeit, sleepForDisconnect,
 } from "./gameEngine";
@@ -443,7 +443,7 @@ function handleHarryProtectColor(room: Room, client: RoomClient, payload: any) {
 function handleCedricChooseSource(room: Room, client: RoomClient, payload: any) {
   if (!room.gameState) return;
   const { source } = payload || {};
-  const result = cedricChooseSource(room.gameState, client.visitorId, source);
+  const result = cedricChooseSource(room.gameState, client.visitorId, source, payload?.targetPlayerId);
   if (!result.success) return sendError(room, client, result.error!);
   broadcastGameState(room);
 }
@@ -580,6 +580,7 @@ const GAME_ACTIONS = new Set([
   "draw_cards", "play_card", "bank_card", "end_turn", "flip_wild", "pay_with_cards",
   "play_protego", "decline_protego", "choose_target", "harry_protect_color",
   "cedric_choose_source", "time_turner_choose", "pay_silencio", "discard_cards", "cancel_action",
+  "lucha_choose",
 ]);
 
 // ========== MAIN ROUTER ==========
@@ -630,6 +631,12 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
     case "decline_protego": return handleDeclineProtego(room, client);
     case "choose_target": return handleChooseTarget(room, client, payload);
     case "harry_protect_color": return handleHarryProtectColor(room, client, payload);
+    case "lucha_choose": {
+      if (!room.gameState) return;
+      const result = luchaChoose(room.gameState, client.visitorId, payload?.targetPlayerId);
+      if (!result.success) return sendError(room, client, result.error!);
+      return broadcastGameState(room);
+    }
     case "cedric_choose_source": return handleCedricChooseSource(room, client, payload);
     case "time_turner_choose": return handleTimeTurnerChoose(room, client, payload);
     case "send_chat": return handleSendChat(room, client, payload);

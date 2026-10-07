@@ -76,7 +76,9 @@ function isCurrentTurn(state: GameState, visitorId: string): boolean {
 
 // A role power only works while the player isn't silenced
 export function roleActive(player: PlayerState | undefined, role: RoleType): boolean {
-  return !!player && player.roles.includes(role) && !player.isSilenced;
+  if (!player || player.isSilenced) return false;
+  // Lucha also has whichever powers he copied at the end of his last turn
+  return player.roles.includes(role) || (player.roles.includes("lucha") && !!player.borrowedRoles?.includes(role));
 }
 
 // Harry's shielded colour, only while his power is switched on
@@ -261,7 +263,16 @@ export function drawCards(state: GameState, visitorId: string): Result {
   return ok;
 }
 
-export function cedricChooseSource(state: GameState, visitorId: string, source: "deck" | "discard"): Result {
+/** The extra ways a player may draw at the start of their turn (besides the deck). */
+export function drawOptions(state: GameState, player: PlayerState): { discard: boolean; opponent: boolean } {
+  if (player.hand.length === 0) return { discard: false, opponent: false }; // empty hand: draw 5 from the deck
+  return {
+    discard: roleActive(player, "cedric") && state.discardPile.length > 0,
+    opponent: roleActive(player, "ganda") && state.players.some(p => p.visitorId !== player.visitorId && p.hand.length > 0),
+  };
+}
+
+export function cedricChooseSource(state: GameState, visitorId: string, source: "deck" | "discard" | "opponent", targetId?: string): Result {
   const pending = state.pendingAction;
   if (!pending || pending.type !== "cedric_draw_choice" || pending.targetPlayerId !== visitorId) {
     return fail("Nothing to choose right now");
@@ -279,6 +290,18 @@ export function cedricChooseSource(state: GameState, visitorId: string, source: 
     }
     state.drawnThisTurn = true;
     log(state, player, `used Cedric's power to take ${taken.join(" and ")} from the discard pile`);
+    return ok;
+  }
+  if (source === "opponent") {
+    const target = getPlayer(state, targetId ?? "");
+    if (!roleActive(player, "ganda") || !target || target === player || target.hand.length === 0) {
+      state.pendingAction = pending;
+      return fail("Pick a player who has cards in their hand");
+    }
+    const [card] = target.hand.splice(Math.floor(Math.random() * target.hand.length), 1);
+    player.hand.push(card);
+    state.drawnThisTurn = true;
+    log(state, player, `used Ganda's power to take a random card from ${target.animal.name}'s hand`);
     return ok;
   }
   return drawCards(state, visitorId);
@@ -579,11 +602,45 @@ export function endTurn(state: GameState, visitorId: string): Result {
   if (state.freePlayCardId) return fail("Play the card you took with Rewind first");
 
   const player = getPlayer(state, visitorId)!;
+  if (roleActive(player, "lucha") && luchaChoices(state, player).length > 0) {
+    state.pendingAction = { type: "lucha_choose", sourcePlayerId: visitorId, targetPlayerId: visitorId };
+    return ok;
+  }
+  return harryThenFinalize(state, visitorId);
+}
+
+function harryThenFinalize(state: GameState, visitorId: string): Result {
+  const player = getPlayer(state, visitorId)!;
   if (roleActive(player, "harry")) {
     state.pendingAction = { type: "harry_protect", sourcePlayerId: visitorId, targetPlayerId: visitorId };
     return ok;
   }
   return finalizeTurn(state, visitorId);
+}
+
+/** Players Lucha may copy: anyone else, but not the same player twice in a row unless it's one on one. */
+export function luchaChoices(state: GameState, lucha: PlayerState): PlayerState[] {
+  const others = state.players.filter(p => p.visitorId !== lucha.visitorId);
+  return others.length > 1 ? others.filter(p => p.visitorId !== lucha.borrowedFrom) : others;
+}
+
+export function luchaChoose(state: GameState, visitorId: string, targetId: string): Result {
+  const pending = state.pendingAction;
+  if (!pending || pending.type !== "lucha_choose" || pending.targetPlayerId !== visitorId) return fail("Nothing to copy right now");
+  const player = getPlayer(state, visitorId)!;
+  const target = luchaChoices(state, player).find(p => p.visitorId === targetId);
+  if (!target) return fail("Pick someone you didn't copy last time");
+
+  player.borrowedRoles = target.roles.filter(r => r !== "lucha");
+  player.borrowedFrom = target.visitorId;
+  // A shield only lasts while Lucha has Harry's power
+  if (!roleActive(player, "harry")) player.protectedColor = undefined;
+  const names = player.borrowedRoles.map(r => CARD_DEF_MAP[`role_${r}`]?.name ?? r).join(" and ");
+  log(state, player, names
+    ? `copied ${target.animal.name}'s power (${names}) for their next turn`
+    : `copied ${target.animal.name}, who has no power to copy, for their next turn`);
+  state.pendingAction = null;
+  return harryThenFinalize(state, visitorId);
 }
 
 function finalizeTurn(state: GameState, visitorId: string): Result {
@@ -621,8 +678,9 @@ function beginTurn(state: GameState) {
   state.maxActions = maxActionsFor(next);
   log(state, next, "starts their turn");
 
-  if (roleActive(next, "cedric") && state.discardPile.length > 0 && next.hand.length > 0) {
-    state.pendingAction = { type: "cedric_draw_choice", sourcePlayerId: next.visitorId, targetPlayerId: next.visitorId };
+  const options = drawOptions(state, next);
+  if (options.discard || options.opponent) {
+    state.pendingAction = { type: "cedric_draw_choice", sourcePlayerId: next.visitorId, targetPlayerId: next.visitorId, data: options };
   }
   state.turnTimer = freshTurnTimer(state);
 }
@@ -1188,6 +1246,11 @@ export function botStep(state: GameState): boolean {
       }
       case "cedric_draw_choice":
         return cedricChooseSource(state, id, "deck").success;
+      case "lucha_choose": {
+        // Copy whoever has the most powers
+        const pick = [...luchaChoices(state, bot)].sort((a, b) => b.roles.length - a.roles.length)[0];
+        return luchaChoose(state, id, pick.visitorId).success;
+      }
       case "discard_excess": {
         const n = pending.data?.mustDiscard ?? 0;
         // Keep properties; throw away the lowest-value cards first
