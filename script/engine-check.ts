@@ -11,9 +11,9 @@ import {
   sleepForDisconnect,
 } from "../worker/gameEngine";
 import { ANIMALS, SET_SIZES, DRAW_SECONDS, inDrawStep, freshTurnTimer } from "../shared/schema";
-import type { GameState, PlayerState } from "../shared/schema";
+import type { GameState, PlayerState, RoleType } from "../shared/schema";
 import { CARD_DEF_MAP, countCompleteSets, roleDef } from "../shared/cardDefs";
-import { VARIATIONS } from "../shared/variations";
+import { VARIATIONS, ACTION_CHOICES, NON_CLASSIC_ACTIONS, DEFAULT_CUSTOM_RULES, ALL_ROLES, updateCustomRules } from "../shared/variations";
 
 function newGame(n: number): GameState {
   const players = Array.from({ length: n }, (_, i) => ({ visitorId: `p${i}`, seatIndex: i, animal: ANIMALS[i] }));
@@ -71,7 +71,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
 {
   const s = setup();
   const [a, b, c] = s.players;
-  a.role = "luna"; b.role = "hermione"; c.role = "draco";
+  a.roles = ["luna"]; b.roles = ["hermione"]; c.roles = ["draco"];
   give(s, a, "properties", "prop_red_1"); give(s, a, "properties", "prop_red_2");
   give(s, a, "hand", "rent_red_yellow_1");
   give(s, b, "bank", "money_1g_1"); give(s, b, "properties", "prop_brown_1");
@@ -112,7 +112,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
 {
   const s = setup();
   const [a, b] = s.players;
-  a.role = "luna"; b.role = "hermione";
+  a.roles = ["luna"]; b.roles = ["hermione"];
   give(s, a, "hand", "action_accio_1");
   give(s, b, "properties", "prop_green_1"); give(s, b, "hand", "action_protego_1");
   assert.ok(playCard(s, "p0", "action_accio_1").success);
@@ -127,7 +127,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
 {
   const s = setup();
   const [a, b] = s.players;
-  a.role = "draco"; b.role = "luna";
+  a.roles = ["draco"]; b.roles = ["luna"];
   give(s, b, "properties", "prop_brown_1"); give(s, b, "properties", "prop_brown_2");
   give(s, a, "hand", "action_accio_1");
   give(s, a, "bank", "money_10g_1");
@@ -146,7 +146,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
 {
   const s = setup();
   const [a, b] = s.players;
-  a.role = "luna"; b.role = "harry";
+  a.roles = ["luna"]; b.roles = ["harry"];
   b.isSilenced = false; b.protectedColor = "red";
   give(s, b, "properties", "prop_red_1");
   give(s, a, "properties", "prop_red_2");
@@ -164,7 +164,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
 {
   const s = setup();
   const [a, b] = s.players;
-  a.role = "luna"; b.role = "harry"; b.protectedColor = "green";
+  a.roles = ["luna"]; b.roles = ["harry"]; b.protectedColor = "green";
   give(s, b, "properties", "prop_green_1");
   give(s, a, "properties", "prop_pink_1");
   give(s, a, "hand", "rent_pink_orange_1");
@@ -177,7 +177,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
 {
   const s = setup();
   const [a] = s.players;
-  a.role = "luna";
+  a.roles = ["luna"];
   give(s, a, "hand", "action_time_turner_1");
   s.discardPile.push(take(s, "money_3g_1"));
   s.actionsUsed = 2;
@@ -206,7 +206,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
 {
   const s = setup(2);
   const [a] = s.players;
-  a.role = "harry";
+  a.roles = ["harry"];
   give(s, a, "properties", "prop_red_1");
   assert.ok(endTurn(s, "p0").success);
   assert.equal(s.pendingAction?.type, "harry_protect");
@@ -215,7 +215,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.equal(s.currentTurnIndex, 1);
   // The shield stays through his next turn and is kept unless he moves it
   give(s, a, "properties", "prop_darkblue_1");
-  s.players[1].role = "luna"; s.drawnThisTurn = true;
+  s.players[1].roles = ["luna"]; s.drawnThisTurn = true;
   assert.ok(endTurn(s, "p1").success);
   assert.equal(s.currentTurnIndex, 0);
   assert.equal(a.protectedColor, "red", "shield survives into his next turn");
@@ -256,7 +256,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
 {
   const s = setup();
   const [a, b] = s.players;
-  a.role = "luna"; b.role = "cedric"; // a fixed role so Harry's end-of-turn shield never gets in the way
+  a.roles = ["luna"]; b.roles = ["cedric"]; // a fixed role so Harry's end-of-turn shield never gets in the way
   give(s, b, "hand", "money_1g_1");
   s.discardPile.push(take(s, "prop_red_1"), take(s, "action_accio_1"), take(s, "money_5g_1"));
   assert.ok(endTurn(s, "p0").success);
@@ -274,7 +274,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
 {
   const s = setup();
   const [a, b] = s.players;
-  a.role = "luna"; b.role = "hermione";
+  a.roles = ["luna"]; b.roles = ["hermione"];
   give(s, a, "hand", "action_reducto_1");
   give(s, b, "bank", "money_5g_1");
   assert.equal(playCard(s, "p0", "action_reducto_1").success, false, "money alone isn't a Reducto target");
@@ -328,7 +328,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
       const s = createInitialGameState("TEST", players.slice(0, 2 + (g % 4)), 60, v.id);
       assert.equal(s.variation, v.id);
       assert.equal(countCards(s), v.deck.length);
-      assert.ok(s.players.every(p => p.role && v.roles.includes(p.role)), `${v.id} dealt a role from another version`);
+      assert.ok(s.players.every(p => p.roles.length === 1 && v.roles.includes(p.roles[0])), `${v.id} dealt a role from another version`);
       s.players.forEach(p => { p.isSleeping = true; p.isBot = true; });
       let steps = 0;
       while (s.status === "playing" && steps < 5000) { assert.ok(botStep(s)); steps++; }
@@ -339,6 +339,98 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   // No version given (older saves) means classic
   assert.equal(newGame(2).variation, "classic");
   console.log("game versions: ok");
+}
+
+// ---------- Custom games: chosen cards, chosen roles, several roles each ----------
+{
+  const players = Array.from({ length: 4 }, (_, i) => ({ visitorId: `p${i}`, seatIndex: i, animal: ANIMALS[i] }));
+  const all = ACTION_CHOICES.map(a => a.type);
+
+  // Default custom deck: classic actions only, no Demolish / Power Outage / Rewind / Double the Rent
+  const d = createInitialGameState("TEST", players, 60, "custom");
+  const cards = [...d.drawPile, ...d.players.flatMap(p => p.hand)].map(c => CARD_DEF_MAP[c.defId]);
+  for (const t of NON_CLASSIC_ACTIONS) assert.ok(!cards.some(c => c.actionType === t), `${t} is off by default`);
+  assert.ok(cards.some(c => c.actionType === "accio"));
+
+  // Random, 3 roles each, all different within a player
+  const r = createInitialGameState("TEST", players, 60, "custom", { ...DEFAULT_CUSTOM_RULES, roles: ["harry", "luna", "ganda", "lucha"], rolesPerPlayer: 3 });
+  for (const p of r.players) {
+    assert.equal(p.roles.length, 3);
+    assert.equal(new Set(p.roles).size, 3);
+    assert.ok(p.roles.every(x => ["harry", "luna", "ganda", "lucha"].includes(x)));
+  }
+
+  // Players choose: any number, only from roles in play; bots get one
+  const picks = [["harry", "luna", "draco"], [], ["cedric", "hermione"]] as RoleType[][];
+  const c = createInitialGameState("TEST",
+    [...players.slice(0, 3).map((p, i) => ({ ...p, pickedRoles: picks[i] })), { ...players[3], isBot: true }],
+    60, "custom", { ...DEFAULT_CUSTOM_RULES, roles: ["harry", "luna", "cedric", "hermione"], roleMode: "choose" });
+  assert.deepEqual(c.players[0].roles, ["harry", "luna"], "draco isn't in play");
+  assert.deepEqual(c.players[1].roles, []);
+  assert.deepEqual([...c.players[2].roles].sort(), ["cedric", "hermione"]);
+  assert.equal(c.players[3].roles.length, 1);
+
+  // Two roles at once: Luna draws 3 and Hermione gets 4 plays
+  const both = c.players[2];
+  c.currentTurnIndex = 2;
+  c.drawnThisTurn = false;
+  c.pendingAction = null;
+  const before = both.hand.length;
+  assert.ok(drawCards(c, "p2").success || cedricChooseSource(c, "p2", "deck").success);
+  assert.ok(both.hand.length > before);
+
+  // Bots play every action card in a full custom game
+  let wins = 0;
+  for (let g = 0; g < 40; g++) {
+    const s = createInitialGameState("TEST", players.slice(0, 2 + (g % 3)), 60, "custom", { ...DEFAULT_CUSTOM_RULES, actions: all, roles: ALL_ROLES, rolesPerPlayer: 2 });
+    const total = countCards(s);
+    s.players.forEach(p => { p.isSleeping = true; p.isBot = true; });
+    let steps = 0;
+    while (s.status === "playing" && steps < 5000) { assert.ok(botStep(s)); assert.equal(countCards(s), total); steps++; }
+    if (s.status === "finished") wins++;
+  }
+  assert.ok(wins > 5, "custom bot games should reach a winner");
+
+  // Host settings are cleaned up
+  const u = updateCustomRules(DEFAULT_CUSTOM_RULES, { roles: ["luna", "nobody"], actions: ["double_rent", "x"], rolesPerPlayer: 9, roleMode: "bad" });
+  assert.deepEqual(u.roles, ["luna"]);
+  assert.deepEqual(u.actions, ["double_rent"]);
+  assert.equal(u.rolesPerPlayer, 1);
+  assert.equal(u.roleMode, "random");
+  console.log("custom games: ok");
+}
+
+// ---------- Double the Rent ----------
+{
+  const s = createInitialGameState("TEST", Array.from({ length: 3 }, (_, i) => ({ visitorId: `p${i}`, seatIndex: i, animal: ANIMALS[i] })),
+    60, "custom", { ...DEFAULT_CUSTOM_RULES, actions: ["double_rent"] });
+  for (const p of s.players) { s.drawPile.push(...p.hand); p.hand = []; p.roles = []; }
+  s.drawnThisTurn = true;
+  s.maxActions = 3;
+  const [a, b, c] = s.players;
+  give(s, a, "hand", "action_double_rent_1");
+  assert.equal(playCard(s, "p0", "action_double_rent_1").success, false, "needs a rent card");
+  give(s, a, "hand", "rent_red_yellow_1");
+  assert.equal(playCard(s, "p0", "action_double_rent_1").success, false, "needs a property to charge for");
+  give(s, a, "properties", "prop_red_1");
+  s.actionsUsed = 2;
+  assert.equal(playCard(s, "p0", "action_double_rent_1").success, false, "needs a play left for the rent");
+  s.actionsUsed = 0;
+  give(s, a, "hand", "action_double_rent_2");
+  assert.ok(playCard(s, "p0", "action_double_rent_1").success);
+  assert.equal(s.rentMultiplier, 2);
+  assert.ok(playCard(s, "p0", "rent_red_yellow_1", false, "red").success);
+  assert.equal(s.pendingAction?.amount, 4, "red rent 2M doubled");
+  assert.equal(s.rentMultiplier, undefined);
+  assert.equal(s.actionsUsed, 2);
+  for (const p of [b, c]) assert.ok(payWithCards(s, p.visitorId, []).success);
+  // An unused double is gone next turn
+  give(s, a, "hand", "rent_red_yellow_2");
+  assert.equal(playCard(s, "p0", "action_double_rent_2").success, false, "only 1 play left");
+  s.rentMultiplier = 2;
+  assert.ok(endTurn(s, "p0").success);
+  assert.equal(s.rentMultiplier, undefined);
+  console.log("double the rent: ok");
 }
 
 // ---------- Forfeit: cards go back into the draw pile and the player leaves ----------
@@ -376,7 +468,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   // Quitting while you owe rent moves on to the next payer; their part is gone from the tracker
   const s = setup(3);
   const [a, b, c] = s.players;
-  a.role = "luna"; b.role = "hermione"; c.role = "draco";
+  a.roles = ["luna"]; b.roles = ["hermione"]; c.roles = ["draco"];
   give(s, a, "properties", "prop_red_1"); give(s, a, "hand", "rent_red_yellow_1");
   give(s, c, "bank", "money_5g_1");
   assert.ok(playCard(s, "p0", "rent_red_yellow_1", false, "red").success);
@@ -424,7 +516,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
 // ---------- Draw timer: a turn starts with a short draw step, then the full turn length ----------
 {
   const s = newGame(3);
-  s.players.forEach(p => { p.role = undefined; }); // plain players: draw 2, no end-of-turn questions
+  s.players.forEach(p => { p.roles = []; }); // plain players: draw 2, no end-of-turn questions
   assert.ok(inDrawStep(s));
   assert.equal(s.turnTimer, DRAW_SECONDS);
   const p0 = s.players[0];
@@ -440,8 +532,8 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.equal(s.turnTimer, DRAW_SECONDS);
   // Cedric choosing deck or discard pile has a real choice: no draw timer
   const c = newGame(2);
-  c.players.forEach(p => { p.role = undefined; });
-  c.players[1].role = "cedric";
+  c.players.forEach(p => { p.roles = []; });
+  c.players[1].roles = ["cedric"];
   c.discardPile.push(c.drawPile.pop()!);
   while (c.players[0].hand.length > 7) c.players[0].hand.pop();
   assert.ok(autoDraw(c).success);

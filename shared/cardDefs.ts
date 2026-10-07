@@ -238,6 +238,21 @@ const actionCards: CardDef[] = [
   })),
 ];
 
+// ========== EXTRA ACTION CARDS ==========
+// Not in the Classic deck; a Custom game can add them.
+const extraActionCards: CardDef[] = [
+  // 2x Double the Rent
+  ...Array.from({ length: 2 }, (_, i) => ({
+    id: `action_double_rent_${i + 1}`,
+    type: "action" as const,
+    name: "Double the Rent",
+    value: 1,
+    actionType: "double_rent" as const,
+    text: "Play before a rent card to double that rent. Uses one of your plays.",
+    target: "self" as const,
+  })),
+];
+
 // ========== ROLE CARDS (5) ==========
 const roleCards: CardDef[] = [
   {
@@ -318,6 +333,7 @@ export const ALL_CARD_DEFS: CardDef[] = [
   ...wildCards,
   ...rentCards,
   ...actionCards,
+  ...extraActionCards,
   ...roleCards,
 ];
 
@@ -327,8 +343,9 @@ for (const def of ALL_CARD_DEFS) {
   CARD_DEF_MAP[def.id] = def;
 }
 
-// The Classic Harry Potter play deck: every card above except roles (roles
-// are dealt separately). Variations in shared/variations.ts build on it.
+// The Classic Harry Potter play deck: every card above except the extra
+// action cards and roles (roles are dealt separately). Variations in
+// shared/variations.ts build on it.
 export const CLASSIC_DECK: string[] = [
   ...moneyCards, ...propertyCards, ...wildCards, ...rentCards, ...actionCards,
 ].map((c) => c.id);

@@ -19,7 +19,7 @@ function Swatch({ color, onClick, children }: { color: PropertyColor; onClick: (
 
 /** The moves a selected hand card allows, shown under the hand. */
 function CardMoves({ defId, done }: { defId: string; done: () => void }) {
-  const { me, send } = useGame();
+  const { me, s, send } = useGame();
   const def = CARD_DEF_MAP[defId];
   if (!me || !def) return null;
   const play = (targetColor?: PropertyColor) => { send("play_card", { cardDefId: defId, targetColor }); done(); };
@@ -56,10 +56,10 @@ function CardMoves({ defId, done }: { defId: string; done: () => void }) {
       return (
         <>
           <strong>{def.name}</strong>
-          <span>Everyone else pays:</span>
+          <span>Everyone else pays{(s.rentMultiplier ?? 1) > 1 ? ` (${s.rentMultiplier === 2 ? "doubled" : `${s.rentMultiplier}x`})` : ""}:</span>
           {colors.length === 0 && <span>you have no properties to charge rent for yet.</span>}
           {colors.map(c => {
-            const r = rentFor(me, c);
+            const r = rentFor(me, c) * (s.rentMultiplier ?? 1);
             return (
               <button key={c} className={`hp-btn opt hp-rentopt ${r ? "gold" : "ghost"}`} disabled={!r} onClick={() => play(c)}>
                 <span className="sq" style={{ background: fillOf(c) }} aria-hidden="true" />

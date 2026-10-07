@@ -44,7 +44,15 @@ export const RENT_TABLE: Record<PropertyColor, number[]> = {
 };
 
 // Versions of the game the host can pick in the lobby (see shared/variations.ts)
-export type VariationId = "classic" | "gg";
+export type VariationId = "classic" | "gg" | "custom";
+
+// What the host sets up for a Custom game
+export interface CustomRules {
+  roles: RoleType[];               // roles in play
+  actions: ActionType[];           // action cards in the deck (all copies of each)
+  roleMode: "random" | "choose";   // deal roles at random, or each player picks theirs
+  rolesPerPlayer: number;          // how many roles each player is dealt in random mode
+}
 
 // Card types
 export type CardType = "money" | "property" | "wild" | "rent" | "action" | "role";
@@ -52,7 +60,7 @@ export type CardType = "money" | "property" | "wild" | "rent" | "action" | "role
 export type ActionType = 
   | "felix_felicis" | "accio" | "confundus_charm" | "expelliarmus" 
   | "protego" | "gringotts_goblin" | "yule_ball"
-  | "reducto" | "silencio" | "time_turner";
+  | "reducto" | "silencio" | "time_turner" | "double_rent";
 
 export type RoleType =
   // Classic Harry Potter
@@ -101,7 +109,7 @@ export interface PlayerState {
   visitorId: string;
   seatIndex: number;     // 0-4
   animal: AnimalProfile;
-  role?: RoleType;
+  roles: RoleType[];     // A player can hold several roles in a Custom game
   hand: GameCard[];
   properties: GameCard[];  // Played on board
   bank: GameCard[];        // Money/action cards banked
@@ -232,6 +240,7 @@ export interface GameState {
   variation?: VariationId;     // Which version of the game this is (missing on older saves = classic)
   roleCards: RoleType[];       // Available role cards (for assignment)
   freePlayCardId?: string | null; // Card taken with the Time-Turner, played next for free
+  rentMultiplier?: number;     // Double the Rent played this turn: the next rent is multiplied by this
   // Sent to clients only
   drawPileCount?: number;
   waitingOn?: string | null;   // Player the game needs input from next
@@ -246,6 +255,8 @@ export type WSMessageType =
   | "toggle_ready"
   | "set_game_speed"
   | "set_variation"
+  | "set_custom_rules"
+  | "pick_roles"
   | "start_game"
   | "add_bot"
   | "remove_bot"

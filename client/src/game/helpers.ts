@@ -17,6 +17,9 @@ export function roleInfo(role?: string): { name: string; power: string } | undef
   return def && { name: def.name, power: def.text ?? def.rolePower ?? "" };
 }
 export const roleName = (r?: string) => (r ? roleInfo(r)?.name ?? r : "");
+/** A player's roles joined for a label, e.g. "Harry Potter + Luna Lovegood". */
+export const roleNames = (p: PlayerState, short = false) =>
+  (p.roles ?? []).map(r => short ? roleName(r).split(" ")[0] : roleName(r)).join(" + ");
 
 /** Properties grouped by the colour they currently count as, in board order. */
 export function groupSets(properties: GameCard[]): { color: PropertyColor; cards: GameCard[] }[] {
@@ -46,7 +49,7 @@ export function rentStep(p: PlayerState, c: PropertyColor): string {
   return `${label(c)} rent ${n ? RENT_TABLE[c][n - 1] : 0}M → ${RENT_TABLE[c][n]}M`;
 }
 
-export const roleActive = (p: PlayerState | undefined, role: string) => !!p && p.role === role && !p.isSilenced;
+export const roleActive = (p: PlayerState | undefined, role: string) => !!p && (p.roles ?? []).includes(role as RoleType) && !p.isSilenced;
 export const shieldOf = (p: PlayerState) => (roleActive(p, "harry") ? p.protectedColor : undefined);
 
 /** Mirrors the server's rule for Accio, Confundus and Reducto. */
@@ -157,6 +160,10 @@ export function usefulToPlay(s: GameState, me: PlayerState, defId: string): bool
         case "silencio": return others.some(o => !o.isSilenced);
         case "time_turner": return s.discardPile.some(c => CARD_DEF_MAP[c.defId]?.actionType !== "time_turner");
         case "protego": return false; // only blocks attacks; on your turn it can just be banked
+        case "double_rent": return s.actionsUsed + 2 <= s.maxActions && me.hand.some(c => {
+          const d = CARD_DEF_MAP[c.defId];
+          return d?.type === "rent" && (d.rentColors === "rainbow" ? COLORS : (d.rentColors ?? []) as PropertyColor[]).some(col => rentFor(me, col) > 0);
+        });
         default: return true;
       }
     default: return false;

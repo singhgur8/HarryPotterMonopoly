@@ -1,6 +1,8 @@
 import { useRoom } from "./context";
 import { roleInfo } from "./helpers";
-import { VARIATIONS, VARIATION_IDS, variationOf } from "@shared/variations";
+import { VARIATIONS, VARIATION_IDS, variationOf, DEFAULT_CUSTOM_RULES } from "@shared/variations";
+import type { CustomRules } from "@shared/schema";
+import { CustomSetup, PickRoles } from "./CustomSetup";
 import { Crest, HomeButton } from "./Brand";
 
 const SPEEDS = [
@@ -36,6 +38,9 @@ export function Lobby() {
 
   const seats: any[] = gameState.seats || [];
   const variation = variationOf(gameState.variation);
+  const custom: CustomRules = gameState.custom ?? DEFAULT_CUSTOM_RULES;
+  const isCustom = variation.id === "custom";
+  const choosing = isCustom && custom.roleMode === "choose";
   const isHost = gameState.hostVisitorId === myVisitorId;
   const mySeat = seats.findIndex(s => s?.visitorId === myVisitorId);
   const seated = seats.filter(Boolean);
@@ -97,6 +102,11 @@ export function Lobby() {
                       ? <span className="hp-chip zz">🤖 Bot</span>
                       : <span className={`hp-chip ${s.isReady ? "ok" : "wait"}`}>{s.isReady ? "Ready" : "Not ready"}</span>}
                   </span>
+                  {choosing && !s.isBot && (
+                    <span className="hp-muted" style={{ fontSize: 12 }}>
+                      {s.pickedRoles?.length ? s.pickedRoles.map((r: string) => roleInfo(r)?.name.split(" ")[0]).join(" + ") : "No roles picked"}
+                    </span>
+                  )}
                   {s.isBot && isHost && (
                     <button className="hp-linkbtn" style={{ fontSize: 12 }} onClick={() => send("remove_bot", { visitorId: s.visitorId })}>Remove</button>
                   )}
@@ -118,14 +128,21 @@ export function Lobby() {
           <span className="hp-muted" style={{ fontSize: 13 }}>{variation.description}</span>
         </div>
 
-        <div style={{ display: "grid", gap: 8 }}>
-          <div className="hp-label">Roles · dealt at random when the game starts</div>
-          <div className="hp-roles">
-            {variation.roles.map(id => roleInfo(id)).map(r => r && (
-              <div key={r.name} className="hp-rolec"><b>{r.name}</b>{r.power}</div>
-            ))}
+        {isCustom ? (
+          <>
+            <CustomSetup rules={custom} isHost={isHost} send={send} />
+            {choosing && mySeat >= 0 && <PickRoles rules={custom} picked={seats[mySeat]?.pickedRoles ?? []} send={send} />}
+          </>
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            <div className="hp-label">Roles · dealt at random when the game starts</div>
+            <div className="hp-roles">
+              {variation.roles.map(id => roleInfo(id)).map(r => r && (
+                <div key={r.name} className="hp-rolec"><b>{r.name}</b>{r.power}</div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         <div style={{ display: "grid", gap: 8 }}>
           <div className="hp-label">Turn speed{isHost ? "" : " · set by the host"}</div>

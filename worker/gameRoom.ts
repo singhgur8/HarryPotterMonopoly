@@ -6,9 +6,9 @@
  */
 import { DurableObject } from "cloudflare:workers";
 import { v4 as uuidv4 } from "uuid";
-import type { GameState, WSMessage, AnimalProfile, VariationId } from "../shared/schema";
+import type { GameState, WSMessage, AnimalProfile, VariationId, CustomRules, RoleType, PlayerState } from "../shared/schema";
 import { ANIMALS, freshTurnTimer, inDrawStep } from "../shared/schema";
-import { DEFAULT_VARIATION, isVariationId } from "../shared/variations";
+import { DEFAULT_VARIATION, DEFAULT_CUSTOM_RULES, isVariationId, updateCustomRules } from "../shared/variations";
 import {
   createInitialGameState, drawCards, playCard, bankCard, endTurn,
   flipWild, payWithCards, playProtego, declineProtego, chooseTarget,
@@ -48,6 +48,7 @@ interface RoomClient {
   animal: AnimalProfile;
   seatIndex: number | null; // null = spectator
   isReady: boolean;
+  pickedRoles?: RoleType[]; // roles this player chose, when a Custom game lets players choose
 }
 
 interface Room {
@@ -55,6 +56,7 @@ interface Room {
   hostVisitorId: string;
   gameSpeed: number;
   variation: VariationId;
+  custom: CustomRules; // the host's settings for a Custom game
   clients: Map<string, RoomClient>;
   gameState: GameState | null;
   usedAnimals: number[];
@@ -74,6 +76,15 @@ interface Room {
 type StoredRoom = Omit<Room, "clients" | "sockets"> & { clients: RoomClient[] };
 
 // ========== HELPERS ==========
+
+// Games saved before players could hold several roles have one `role` each.
+function withRoleLists(state: GameState): GameState {
+  for (const p of state.players as (PlayerState & { role?: RoleType })[]) {
+    if (!Array.isArray(p.roles)) p.roles = p.role ? [p.role] : [];
+    delete p.role;
+  }
+  return state;
+}
 
 function getRandomAnimal(room: Room): AnimalProfile {
   const available = ANIMALS.map((_, i) => i).filter(i => !room.usedAnimals.includes(i));
@@ -142,6 +153,7 @@ function getLobbyState(room: Room): any {
         isReady: client.isReady,
         isHost: vid === room.hostVisitorId,
         isBot: isBotId(vid),
+        pickedRoles: client.pickedRoles ?? [],
       };
     } else {
       spectators.push(client.animal);
@@ -153,6 +165,7 @@ function getLobbyState(room: Room): any {
     hostVisitorId: room.hostVisitorId,
     gameSpeed: room.gameSpeed,
     variation: room.variation,
+    custom: room.custom,
     seats,
     spectators,
     status: room.gameState ? "playing" : "lobby",
@@ -270,6 +283,27 @@ function handleSetVariation(room: Room, client: RoomClient, payload: any) {
   broadcastLobbyState(room);
 }
 
+function handleSetCustomRules(room: Room, client: RoomClient, payload: any) {
+  if (client.visitorId !== room.hostVisitorId) return sendError(room, client, "Only the host can change the game");
+  if (room.gameState) return sendError(room, client, "Game in progress");
+
+  room.custom = updateCustomRules(room.custom, payload ?? {});
+  // Drop picks for roles that are no longer in play
+  for (const c of room.clients.values()) {
+    if (c.pickedRoles) c.pickedRoles = c.pickedRoles.filter(r => room.custom.roles.includes(r));
+  }
+  broadcastLobbyState(room);
+}
+
+function handlePickRoles(room: Room, client: RoomClient, payload: any) {
+  if (room.gameState) return sendError(room, client, "Game in progress");
+  if (client.seatIndex === null) return sendError(room, client, "Take a seat to pick roles");
+  const roles = payload?.roles;
+  if (!Array.isArray(roles)) return sendError(room, client, "Invalid roles");
+  client.pickedRoles = room.custom.roles.filter(r => roles.includes(r));
+  broadcastLobbyState(room);
+}
+
 // ----- Practice bots: seats with no person behind them, played by botStep -----
 
 const BOT_PREFIX = "bot_";
@@ -300,10 +334,10 @@ function handleStartGame(room: Room, client: RoomClient) {
   if (room.gameState) return sendError(room, client, "Game already started");
 
   // Collect seated & ready players
-  const seatedPlayers: { visitorId: string; seatIndex: number; animal: AnimalProfile; isBot: boolean }[] = [];
+  const seatedPlayers: { visitorId: string; seatIndex: number; animal: AnimalProfile; isBot: boolean; pickedRoles?: RoleType[] }[] = [];
   for (const [vid, c] of room.clients) {
     if (c.seatIndex !== null && c.isReady) {
-      seatedPlayers.push({ visitorId: vid, seatIndex: c.seatIndex, animal: c.animal, isBot: isBotId(vid) });
+      seatedPlayers.push({ visitorId: vid, seatIndex: c.seatIndex, animal: c.animal, isBot: isBotId(vid), pickedRoles: c.pickedRoles });
     }
   }
 
@@ -313,7 +347,7 @@ function handleStartGame(room: Room, client: RoomClient) {
   // Sort by seat index
   seatedPlayers.sort((a, b) => a.seatIndex - b.seatIndex);
 
-  room.gameState = createInitialGameState(room.code, seatedPlayers, room.gameSpeed, room.variation);
+  room.gameState = createInitialGameState(room.code, seatedPlayers, room.gameSpeed, room.variation, room.custom);
   room.timerSetAt = Date.now();
   broadcastGameState(room);
 }
@@ -581,6 +615,8 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
     case "toggle_ready": return handleToggleReady(room, client);
     case "set_game_speed": return handleSetGameSpeed(room, client, payload);
     case "set_variation": return handleSetVariation(room, client, payload);
+    case "set_custom_rules": return handleSetCustomRules(room, client, payload);
+    case "pick_roles": return handlePickRoles(room, client, payload);
     case "start_game": return handleStartGame(room, client);
     case "add_bot": return handleAddBot(room, client);
     case "remove_bot": return handleRemoveBot(room, client, payload);
@@ -645,6 +681,8 @@ export class GameRoom extends DurableObject<Env> {
       botDueAt: stored.botDueAt ?? null,
       moveBonuses: stored.moveBonuses ?? 0,
       variation: isVariationId(stored.variation) ? stored.variation : DEFAULT_VARIATION,
+      custom: stored.custom ? updateCustomRules(DEFAULT_CUSTOM_RULES, stored.custom as any) : DEFAULT_CUSTOM_RULES,
+      gameState: stored.gameState && withRoleLists(stored.gameState),
       finishedAt: stored.finishedAt ?? null,
       dropDeadlines: stored.dropDeadlines ?? {},
       heartbeatDueAt: stored.heartbeatDueAt ?? null,
@@ -661,6 +699,7 @@ export class GameRoom extends DurableObject<Env> {
       hostVisitorId,
       gameSpeed: 60,
       variation: DEFAULT_VARIATION,
+      custom: DEFAULT_CUSTOM_RULES,
       clients: [],
       gameState: null,
       usedAnimals: [],
