@@ -121,16 +121,17 @@ function FlipMoves({ defId, done }: { defId: string; done: () => void }) {
   if (!me || !card || !def) return null;
   const now = colorOnTable(card, me.properties);
   const options = (def.wildColors === "rainbow" ? joinableColors(me) : (def.wildColors as PropertyColor[])).filter(c => c !== now);
-  const flip = (c: PropertyColor) => { send("flip_wild", { cardDefId: defId, newColor: c }); done(); };
+  const flip = (c: PropertyColor | null) => { send("flip_wild", { cardDefId: defId, newColor: c }); done(); };
   return (
     <>
       <strong>{def.name}</strong>
-      <span>{now ? `Now in ${label(now)}.` : "On its own, with no colour."} {options.length ? "Moving it is free on your turn." : "Play a property first, then it can join that colour."}</span>
+      <span>{now ? `Now in ${label(now)}.` : "On its own, with no colour."} {options.length || now ? "Moving it is free on your turn." : "Play a property first, then it can join that colour."}</span>
       {options.map(c => (
         <Swatch key={c} color={c} onClick={() => flip(c)}>
           Move to {label(c)}<small className="hp-muted" style={{ fontWeight: 500 }}>&nbsp;{rentStep(me, c).replace(`${label(c)} `, "")}</small>
         </Swatch>
       ))}
+      {def.wildColors === "rainbow" && now && <button className="hp-btn ghost" onClick={() => flip(null)}>Take it out, on its own</button>}
       <button className="hp-btn ghost" onClick={done}>Cancel</button>
     </>
   );
