@@ -223,7 +223,7 @@ const actionCards: CardDef[] = [
     name: "Power Outage",
     value: 5,
     actionType: "silencio" as const,
-    text: "Switch off a player's role power until they pay 10M.",
+    text: "Switch off a player's role power. On their turn, after drawing, they can pay 10M to switch it back on (not a play).",
     target: "one" as const,
   })),
   // 2x Rewind (was Time-Turner)

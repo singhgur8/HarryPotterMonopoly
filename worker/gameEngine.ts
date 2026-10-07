@@ -1043,6 +1043,10 @@ export function timeTurnerChoose(state: GameState, visitorId: string, cardDefId:
 export function paySilencio(state: GameState, visitorId: string, cardDefIds: string[]): Result {
   const player = getPlayer(state, visitorId);
   if (!player || !player.isSilenced) return fail("Your power isn't off");
+  // Only on your own turn, after drawing. Paying doesn't use up a play.
+  if (!isCurrentTurn(state, visitorId)) return fail("You can end the Power Outage on your own turn");
+  if (!state.drawnThisTurn) return fail("Draw first, then you can end the Power Outage");
+  if (state.pendingAction) return fail("Finish what's happening first");
   const ids = Array.from(new Set(cardDefIds || []));
   const chosen: GameCard[] = [];
   for (const id of ids) {
@@ -1308,6 +1312,12 @@ export function botStep(state: GameState): boolean {
     if (def?.type === "wild") return playCard(state, id, card, false, botWildColor(bot, card)).success;
     if (bankCard(state, id, card).success) return true;
     state.freePlayCardId = null;
+    return true;
+  }
+
+  // A practice bot ends its Power Outage when its bank alone covers the 10M
+  if (bot.isBot && bot.isSilenced && totalValue(bot.bank) >= 10 &&
+      paySilencio(state, id, botPayment(state, { ...bot, properties: [] }, 10)).success) {
     return true;
   }
 

@@ -8,7 +8,7 @@ import { ActionPanel } from "./ActionPanel";
 import { MyArea } from "./MyArea";
 import { HandDock } from "./HandDock";
 import { usePhone, useTableView } from "./useMedia";
-import { isPayment } from "./helpers";
+import { isPayment, canEndOutage } from "./helpers";
 import { useGameSounds } from "./sounds";
 import { HomeButton } from "./Brand";
 import {
@@ -164,7 +164,8 @@ export function GameTable() {
 
   const discardActive = s.pendingAction?.type === "discard_excess" && s.pendingAction.targetPlayerId === me?.visitorId;
   useEffect(() => { if (!discardActive) setPicked([]); }, [discardActive]);
-  useEffect(() => { if (!me?.isSilenced) setSilencioOpen(false); }, [me?.isSilenced]);
+  const outageOpen = !!me && canEndOutage(s, me);
+  useEffect(() => { if (!outageOpen) setSilencioOpen(false); }, [outageOpen]);
 
   // Paying: the picker in the panel and the cards on my table share one selection
   const pend = s.pendingAction;

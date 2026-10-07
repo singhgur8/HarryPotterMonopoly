@@ -165,6 +165,47 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   console.log("silencio and draco: ok");
 }
 
+// ---------- 5b. Power Outage is paid off only on your own turn, after drawing, and isn't a play ----------
+{
+  const s = setup();
+  const [a, b] = s.players;
+  a.roles = ["luna"]; b.roles = ["hermione"];
+  b.isSilenced = true;
+  give(s, b, "bank", "money_10g_1");
+  assert.equal(paySilencio(s, "p1", ["money_10g_1"]).success, false, "can't pay on someone else's turn");
+  assert.ok(endTurn(s, "p0").success);
+  assert.equal(s.currentTurnIndex, 1);
+  assert.equal(s.maxActions, 3, "a powered-out Hermione starts with 3 plays");
+  assert.equal(paySilencio(s, "p1", ["money_10g_1"]).success, false, "can't pay before drawing");
+  assert.ok(drawCards(s, "p1").success);
+  assert.ok(paySilencio(s, "p1", ["money_10g_1"]).success);
+  assert.equal(b.isSilenced, false);
+  assert.equal(s.actionsUsed, 0, "paying isn't one of the plays");
+  assert.equal(s.maxActions, 4, "Hermione's extra play comes back straight away");
+
+  // A powered-out Cedric draws from the deck with no discard choice, even if he pays later that turn
+  const c = setup();
+  const [, ced] = c.players;
+  c.players[0].roles = ["luna"]; ced.roles = ["cedric"]; ced.isSilenced = true;
+  c.discardPile.push(take(c, "prop_red_1"));
+  assert.ok(endTurn(c, "p0").success);
+  assert.notEqual(c.pendingAction?.type, "cedric_draw_choice");
+
+  // A practice bot pays it off with bank money after drawing; a sleeping person's bot never does
+  for (const isBot of [true, false]) {
+    const t = setup();
+    const [, y] = t.players;
+    t.players[0].roles = ["luna"]; y.roles = ["luna"];
+    y.isSilenced = true; y.isSleeping = true; y.isBot = isBot;
+    give(t, y, "bank", "money_10g_1");
+    assert.ok(endTurn(t, "p0").success);
+    assert.ok(botStep(t), "bot draws");
+    botStep(t);
+    assert.equal(y.isSilenced, !isBot, isBot ? "practice bot pays" : "sleeping player keeps their money");
+  }
+  console.log("power outage timing: ok");
+}
+
 // ---------- 6. Silenced Hermione gets 3 actions; Harry's shield stops working ----------
 {
   const s = setup();
