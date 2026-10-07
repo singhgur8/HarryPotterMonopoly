@@ -1,5 +1,5 @@
-import type { CSSProperties, ReactNode } from "react";
-import type { CardDef, PropertyColor } from "@shared/schema";
+import { createContext, useContext, type CSSProperties, type ReactNode } from "react";
+import type { CardDef, GameRules, PropertyColor } from "@shared/schema";
 import { SET_STYLE, SET_SIZES, RENT_TABLE } from "@shared/schema";
 import { CARD_DEF_MAP } from "@shared/cardDefs";
 import { CARD_ART } from "@/lib/cardArt";
@@ -119,8 +119,12 @@ function WildFace({ def, color }: { def: CardDef; color?: PropertyColor }) {
   );
 }
 
+/** The rule switches of the game being shown, so card text matches how the cards play. */
+export const RulesContext = createContext<GameRules>({});
+
 function RentFace({ def }: { def: CardDef }) {
   const any = def.rentColors === "rainbow";
+  const one = any && !!useContext(RulesContext).wildRentOneTarget;
   const pair = any ? null : (def.rentColors as [PropertyColor, PropertyColor]);
   const label = pair ? `${SET_STYLE[pair[0]].label} / ${SET_STYLE[pair[1]].label}` : "Any colour";
   const short = pair ? `${firstWord(pair[0])} / ${firstWord(pair[1])}` : "Any";
@@ -138,7 +142,7 @@ function RentFace({ def }: { def: CardDef }) {
       </div>
       <div className="body">
         <p className="text">
-          {any ? "Every other player pays you rent for any one colour you own." : "Every other player pays you rent for one of these colours."}
+          {one ? "One player of your choice pays you rent for any one colour you own." : any ? "Every other player pays you rent for any one colour you own." : "Every other player pays you rent for one of these colours."}
         </p>
         {pair && (
           <div className="rentmini">
@@ -146,7 +150,7 @@ function RentFace({ def }: { def: CardDef }) {
           </div>
         )}
       </div>
-      <footer className="foot"><span className="ftxt">Rent</span><span>All players</span></footer>
+      <footer className="foot"><span className="ftxt">Rent</span><span>{one ? "One player" : "All players"}</span></footer>
     </div>
   );
 }

@@ -14,8 +14,8 @@
  *
  * To add a variation: add its id to VariationId in schema.ts and an entry here.
  */
-import type { ActionType, CustomRules, RoleType, VariationId } from "./schema";
-import { ALL_CARD_DEFS, CARD_DEF_MAP, CLASSIC_DECK } from "./cardDefs";
+import type { ActionType, CustomRules, GameRules, RoleType, VariationId } from "./schema";
+import { ALL_CARD_DEFS, CARD_DEF_MAP, CLASSIC_DECK, MONOPOLY_DEAL_DECK } from "./cardDefs";
 
 export interface Variation {
   id: VariationId;
@@ -23,6 +23,7 @@ export interface Variation {
   description: string; // one line, shown in the lobby
   roles: RoleType[];   // dealt at random; repeats when there are more players than roles
   deck: string[];      // card ids in the draw pile
+  rules?: GameRules;   // rule switches; none means the Harry Potter rules
 }
 
 // ---------- Custom games ----------
@@ -73,6 +74,14 @@ export function updateCustomRules(current: CustomRules, change: Record<string, u
 // ---------- The variations ----------
 
 export const VARIATIONS: Record<VariationId, Variation> = {
+  deal: {
+    id: "deal",
+    name: "Classic Monopoly Deal",
+    description: "The real card game: no roles, Double the Rent, and Wild Rent charges one player.",
+    roles: [],
+    deck: MONOPOLY_DEAL_DECK,
+    rules: { wildRentOneTarget: true },
+  },
   classic: {
     id: "classic",
     name: "Classic Harry Potter",
@@ -113,12 +122,13 @@ export interface GameSetup {
   roles: RoleType[];
   roleMode: "random" | "choose";
   rolesPerPlayer: number;
+  rules: GameRules;
 }
 
 export function gameSetup(id?: VariationId, custom: CustomRules = DEFAULT_CUSTOM_RULES): GameSetup {
   const v = variationOf(id);
   if (v.id === "custom") {
-    return { variation: "custom", deck: customDeck(custom), roles: custom.roles, roleMode: custom.roleMode, rolesPerPlayer: custom.rolesPerPlayer };
+    return { variation: "custom", deck: customDeck(custom), roles: custom.roles, roleMode: custom.roleMode, rolesPerPlayer: custom.rolesPerPlayer, rules: {} };
   }
-  return { variation: v.id, deck: v.deck, roles: v.roles, roleMode: "random", rolesPerPlayer: 1 };
+  return { variation: v.id, deck: v.deck, roles: v.roles, roleMode: "random", rolesPerPlayer: 1, rules: v.rules ?? {} };
 }

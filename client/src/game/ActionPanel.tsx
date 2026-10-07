@@ -143,6 +143,7 @@ function TargetPicker() {
     choose_reducto: "Demolish: pick a property to destroy. Bank cards are safe.",
     choose_silencio: "Power Outage: pick who loses their role power.",
     choose_goblin: "Debt Collector: pick who owes you 5M.",
+    choose_rent_target: `Wild Rent: pick who pays you ${p.amount ?? 0}M rent.`,
   };
 
   return (
@@ -166,6 +167,8 @@ function TargetPicker() {
           )) : <span className="hp-muted">No complete sets you can take</span>;
         } else if (p.type === "choose_silencio") {
           body = <button className="hp-btn gold" disabled={o.isSilenced} onClick={() => pick(o.visitorId)}>{o.isSilenced ? "Power already off" : `Cut ${o.animal.name}'s power`}</button>;
+        } else if (p.type === "choose_rent_target") {
+          body = <button className="hp-btn gold" onClick={() => pick(o.visitorId)}>Charge {o.animal.name} {p.amount}M (bank {sumValue(o.bank)}M)</button>;
         } else if (p.type === "choose_goblin") {
           body = <button className="hp-btn gold" onClick={() => pick(o.visitorId)}>Send to {o.animal.name} (bank {sumValue(o.bank)}M)</button>;
         }

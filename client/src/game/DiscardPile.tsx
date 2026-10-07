@@ -1,17 +1,18 @@
-import { useState } from "react";
-import { GameCard } from "@/components/GameCard";
+import { useContext, useState } from "react";
+import { GameCard, RulesContext } from "@/components/GameCard";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useGame } from "./context";
 import { cardBlurb, nameOf, roleActive } from "./helpers";
 
 /** A card with its name and what it does, for cards you can see but don't hold. */
 export function CardInfo({ defId, tag }: { defId: string; tag?: string }) {
+  const rules = useContext(RulesContext);
   return (
     <div className="hp-cardinfo">
       <GameCard defId={defId} size="sm" label={nameOf(defId)} />
       <div>
         <span className="nm"><strong>{nameOf(defId)}</strong>{tag && <span className="hp-chip gold">{tag}</span>}</span>
-        <span>{cardBlurb(defId)}</span>
+        <span>{cardBlurb(defId, rules)}</span>
       </div>
     </div>
   );

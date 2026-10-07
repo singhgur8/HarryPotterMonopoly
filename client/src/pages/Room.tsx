@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useGameSocket } from "@/lib/useWebSocket";
 import { useToast } from "@/hooks/use-toast";
 import { RoomContext } from "@/game/context";
+import { RulesContext } from "@/components/GameCard";
 import { Lobby } from "@/game/Lobby";
 import { GameTable } from "@/game/GameTable";
 import { Crest, forgetRoom, rememberRoom } from "@/game/Brand";
@@ -57,7 +58,9 @@ export default function Room({ roomCode }: { roomCode: string }) {
   const inGame = !!socket.gameState?.players && !!socket.myVisitorId;
   return (
     <RoomContext.Provider value={socket}>
-      <div className="hp">{inGame ? <GameTable /> : <Lobby />}</div>
+      <RulesContext.Provider value={socket.gameState?.rules ?? {}}>
+        <div className="hp">{inGame ? <GameTable /> : <Lobby />}</div>
+      </RulesContext.Provider>
     </RoomContext.Provider>
   );
 }

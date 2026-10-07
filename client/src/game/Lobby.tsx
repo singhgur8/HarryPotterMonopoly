@@ -152,6 +152,11 @@ export function Lobby() {
             <CustomSetup rules={custom} isHost={isHost} send={send} />
             {choosing && mySeat >= 0 && <PickRoles rules={custom} picked={seats[mySeat]?.pickedRoles ?? []} send={send} />}
           </>
+        ) : variation.roles.length === 0 ? (
+          <div style={{ display: "grid", gap: 8 }}>
+            <div className="hp-label">Roles</div>
+            <span className="hp-muted" style={{ fontSize: 13 }}>No roles in this game. Every player is equal.</span>
+          </div>
         ) : (
           <div style={{ display: "grid", gap: 8 }}>
             <div className="hp-label">Roles · dealt at random when the game starts</div>

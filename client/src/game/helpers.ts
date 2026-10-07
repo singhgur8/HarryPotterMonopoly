@@ -1,4 +1,4 @@
-import type { GameCard, GameState, PlayerState, PropertyColor, PendingAction, RoleType } from "@shared/schema";
+import type { GameCard, GameRules, GameState, PlayerState, PropertyColor, PendingAction, RoleType } from "@shared/schema";
 import { SET_SIZES, RENT_TABLE, SET_STYLE, PROPERTY_COLORS } from "@shared/schema";
 import { CARD_DEF_MAP, getEffectiveColor, colorOnTable, isAnyColourWild, roleDef } from "@shared/cardDefs";
 
@@ -141,7 +141,7 @@ export { SET_SIZES, RENT_TABLE, CARD_DEF_MAP, getEffectiveColor, colorOnTable, i
 export const STACK_STEP = 30;
 
 /** One line on what a card does, for cards seen outside your hand (discard pile, Cedric, Time-Turner). */
-export function cardBlurb(defId: string): string {
+export function cardBlurb(defId: string, rules: GameRules = {}): string {
   const def = CARD_DEF_MAP[defId];
   if (!def) return "";
   const both = (cs: PropertyColor[]) => cs.map(label).join(" or ");
@@ -149,7 +149,7 @@ export function cardBlurb(defId: string): string {
     case "money": return `Money. Bank it for ${def.value}M.`;
     case "property": return `${label(def.color!)} property. ${SET_SIZES[def.color!]} make a full set.`;
     case "wild": return def.wildColors === "rainbow" ? "Wild property. Joins a colour you already have. Alone it has no colour and earns no rent." : `Wild property. Counts as ${both(def.wildColors as PropertyColor[])}.`;
-    case "rent": return def.rentColors === "rainbow" ? "Rent. Charge everyone for any one of your sets." : `Rent. Charge everyone for ${both(def.rentColors as PropertyColor[])}.`;
+    case "rent": return def.rentColors === "rainbow" ? `Rent. Charge ${rules.wildRentOneTarget ? "one player" : "everyone"} for any one of your sets.` : `Rent. Charge everyone for ${both(def.rentColors as PropertyColor[])}.`;
     default: return def.text ?? "";
   }
 }

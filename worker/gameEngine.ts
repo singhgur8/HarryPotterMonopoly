@@ -201,6 +201,7 @@ export function createInitialGameState(
     chatMessages: [],
     winnerId: null,
     variation: setup.variation,
+    rules: setup.rules,
     roleCards: setup.roles,
     freePlayCardId: null,
   };
@@ -445,6 +446,17 @@ function playRentCard(state: GameState, player: PlayerState, cardDefId: string, 
   state.actionsUsed++;
   state.rentMultiplier = undefined;
   const doubled = multiplier > 1 ? ` (${multiplier === 2 ? "doubled" : `${multiplier}x`})` : "";
+
+  // Monopoly Deal rules: Wild Rent charges one player of your choice
+  if (def.rentColors === "rainbow" && state.rules?.wildRentOneTarget) {
+    state.pendingAction = {
+      type: "choose_rent_target", sourcePlayerId: player.visitorId, targetPlayerId: player.visitorId, cardDefId,
+      amount: rentAmount,
+      data: { rentColor, multiplier, free: state.freePlayCardId === cardDefId },
+    };
+    log(state, player, `played Wild Rent for ${rentAmount}M ${colorTag(rentColor)}${doubled} and is choosing who pays`, def.id);
+    return ok;
+  }
   log(state, player, `charged everyone ${rentAmount}M ${colorTag(rentColor)} rent${doubled}`, def.id);
 
   // Every other player pays, one at a time
@@ -992,6 +1004,12 @@ export function chooseTarget(state: GameState, visitorId: string, targetPlayerId
       offerProtego(state, action("choose_silencio", {}));
       return ok;
     }
+    case "choose_rent_target": {
+      const amount = pending.amount ?? 0;
+      log(state, attacker, `charged ${target.animal.name} ${amount}M ${colorTag(pending.data.rentColor)} rent`);
+      startPayments(state, "pay_rent", visitorId, [targetPlayerId], amount, pending.cardDefId!, pending.data.rentColor);
+      return ok;
+    }
     case "choose_goblin": {
       log(state, attacker, `played Debt Collector on ${target.animal.name}, who owes 5M`);
       startPayments(state, "pay_debt", visitorId, [targetPlayerId], 5, pending.cardDefId!);
@@ -1069,6 +1087,7 @@ export function paySilencio(state: GameState, visitorId: string, cardDefIds: str
 
 const CANCELLABLE: PendingAction["type"][] = [
   "choose_steal", "choose_swap", "choose_steal_set", "choose_reducto", "choose_silencio", "choose_goblin", "time_turner_play",
+  "choose_rent_target",
 ];
 
 /** Take back an action card while still picking its target. The card and the action come back. */
@@ -1084,6 +1103,7 @@ export function cancelChoice(state: GameState, visitorId: string): Result {
   player.hand.push({ defId: cardDefId });
   if (pending.data?.free) state.freePlayCardId = cardDefId;
   else state.actionsUsed = Math.max(0, state.actionsUsed - 1);
+  if ((pending.data?.multiplier ?? 1) > 1) state.rentMultiplier = pending.data.multiplier; // Double the Rent waits for the next rent
   state.pendingAction = null;
   log(state, player, `took back ${CARD_DEF_MAP[cardDefId]?.name ?? "a card"}`, cardDefId);
   return ok;
@@ -1259,7 +1279,7 @@ export function botStep(state: GameState): boolean {
       return true;
     }
     switch (pending.type) {
-      case "choose_goblin":
+      case "choose_goblin": case "choose_rent_target":
         if (bot.isBot) {
           const richest = state.players.filter(p => p.visitorId !== id)
             .sort((a, b) => worth(b) - worth(a))[0];

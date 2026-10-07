@@ -44,7 +44,12 @@ export const RENT_TABLE: Record<PropertyColor, number[]> = {
 };
 
 // Versions of the game the host can pick in the lobby (see shared/variations.ts)
-export type VariationId = "classic" | "gg" | "custom";
+export type VariationId = "deal" | "classic" | "gg" | "custom";
+
+// Rule switches that differ between versions of the game
+export interface GameRules {
+  wildRentOneTarget?: boolean; // Wild Rent charges one player you pick, not everyone (real Monopoly Deal)
+}
 
 // What the host sets up for a Custom game
 export interface CustomRules {
@@ -178,6 +183,7 @@ export type PendingActionType =
   | "choose_reducto"     // Reducto: attacker picks card to discard
   | "choose_silencio"    // Silencio: attacker picks player to silence
   | "choose_goblin"      // Gringotts Goblin: attacker picks who owes 5M
+  | "choose_rent_target" // Wild Rent (Monopoly Deal rules): attacker picks who pays
   | "protego_response"   // Player can respond with Protego
   | "harry_protect"      // Harry chooses color to protect at end of turn
   | "cedric_draw_choice" // Start-of-turn draw choice: deck, discard (Cedric) or an opponent's hand (Ganda)
@@ -243,6 +249,7 @@ export interface GameState {
   variation?: VariationId;     // Which version of the game this is (missing on older saves = classic)
   roleCards: RoleType[];       // Available role cards (for assignment)
   freePlayCardId?: string | null; // Card taken with the Time-Turner, played next for free
+  rules?: GameRules;           // Rule switches for this version (missing = Harry Potter rules)
   rentMultiplier?: number;     // Double the Rent played this turn: the next rent is multiplied by this
   // Sent to clients only
   drawPileCount?: number;
