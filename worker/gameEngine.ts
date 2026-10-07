@@ -466,14 +466,15 @@ function playRentCard(state: GameState, player: PlayerState, cardDefId: string, 
 }
 
 // Set up a queue of payers. Skips anyone Harry's shield protects from this rent.
-function startPayments(state: GameState, type: "pay_rent" | "pay_debt" | "pay_birthday", sourceId: string, targets: string[], amount: number, cardDefId: string, rentColor?: PropertyColor) {
+// `resume` is a payment queue this one interrupted (Chargeback, Reverse); it carries on afterwards.
+function startPayments(state: GameState, type: "pay_rent" | "pay_debt" | "pay_birthday", sourceId: string, targets: string[], amount: number, cardDefId: string, rentColor?: PropertyColor, resume?: PendingAction) {
   const payment: PendingAction = {
     type,
     sourcePlayerId: sourceId,
     targetPlayerId: "",
     amount,
     cardDefId,
-    data: { rentColor, remainingTargets: [...targets], allTargets: [...targets], results: [] as PaymentResult[] },
+    data: { rentColor, remainingTargets: [...targets], allTargets: [...targets], results: [] as PaymentResult[], resume },
   };
   nextPayer(state, payment);
 }
@@ -493,6 +494,7 @@ function nextPayer(state: GameState, payment: PendingAction) {
     return;
   }
   state.pendingAction = null;
+  if (data.resume) nextPayer(state, data.resume);
 }
 
 function playActionCard(state: GameState, player: PlayerState, cardDefId: string): Result {
@@ -588,12 +590,40 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
       return ok;
     }
 
-    case "protego":
-      // Protego is played in response to an attack; on your own turn it can only be banked
+    case "hand_seven": {
+      if (player.hand.length - 1 >= 7) return fail("You already have 7 cards in your hand");
+      discardIt();
+      let drawn = 0;
+      while (player.hand.length < 7) {
+        const card = drawFromPile(state);
+        if (!card) break;
+        player.hand.push(card);
+        drawn++;
+      }
+      log(state, player, `played Hand 7 and drew ${drawn} card${drawn === 1 ? "" : "s"}`, def.id);
+      return ok;
+    }
+
+    case "hand_steal":
+      if (!others.some(o => o.hand.length > 0)) return fail("No one has cards in their hand");
+      return choose("choose_hand_steal", "played Hand Steal and is choosing whose hand to take from");
+
+    case "destroy":
+      if (!others.some(o => o.properties.some(c => canTakeProperty(player, o, c.defId, true).success))) {
+        return fail("No one has a property you can destroy");
+      }
+      return choose("choose_destroy", "played Destroy and is choosing a property to discard");
+
+    case "bank_robber":
+      if (!others.some(o => o.bank.length > 0)) return fail("No one has money in their bank");
+      return choose("choose_bank_robber", "played Bank Robber and is choosing whose bank to rob");
+
+    case "protego": case "chargeback": case "reverse":
+      // These answer an attack; on your own turn they can only be banked
       removeCard(player.hand, cardDefId);
       player.bank.push({ defId: cardDefId });
       state.actionsUsed++;
-      log(state, player, `banked Just Say No (${def.value}M)`, def.id);
+      log(state, player, `banked ${def.name} (${def.value}M)`, def.id);
       return ok;
 
     default:
@@ -818,6 +848,11 @@ function offerProtego(state: GameState, original: PendingAction) {
 }
 
 export function playProtego(state: GameState, visitorId: string): Result {
+  return blockWith(state, visitorId, "protego");
+}
+
+// Block with a Just Say No, or with a Reverse that can't be played back
+function blockWith(state: GameState, visitorId: string, actionType: "protego" | "reverse"): Result {
   const pending = state.pendingAction;
   if (!pending) return fail("Nothing to block right now");
   if (pending.targetPlayerId !== visitorId) return fail("That action isn't aimed at you");
@@ -835,11 +870,13 @@ export function playProtego(state: GameState, visitorId: string): Result {
   }
 
   const player = getPlayer(state, visitorId)!;
-  const idx = player.hand.findIndex(c => CARD_DEF_MAP[c.defId]?.actionType === "protego");
-  if (idx === -1) return fail("You don't have a Just Say No");
-  state.discardPile.push(player.hand.splice(idx, 1)[0]);
+  const idx = player.hand.findIndex(c => CARD_DEF_MAP[c.defId]?.actionType === actionType);
+  if (idx === -1) return fail(actionType === "protego" ? "You don't have a Just Say No" : "You don't have a Reverse");
+  const card = player.hand.splice(idx, 1)[0];
+  state.discardPile.push(card);
   blocks++;
-  log(state, player, blocks % 2 === 1 ? "said Just Say No to block it" : "said Just Say No back to push it through", "action_protego_1");
+  const said = actionType === "protego" ? "said Just Say No" : "played Reverse as a Just Say No";
+  log(state, player, blocks % 2 === 1 ? `${said} to block it` : `${said} back to push it through`, card.defId);
 
   // The other side may answer with their own Protego
   const nextResponder = blocks % 2 === 1 ? original.sourcePlayerId : original.targetPlayerId;
@@ -854,6 +891,97 @@ export function declineProtego(state: GameState, visitorId: string): Result {
   if (pending.targetPlayerId !== visitorId) return fail("Not your decision");
   resolveProtego(state, pending.data.originalAction, pending.data.blocks ?? 0);
   return ok;
+}
+
+// ========== CHARGEBACK AND REVERSE (Prime) ==========
+
+/** The attack aimed at this player that they can answer right now, if any. */
+function attackOn(state: GameState, visitorId: string): PendingAction | null {
+  const p = state.pendingAction;
+  if (!p || p.targetPlayerId !== visitorId) return null;
+  if (PAYMENT_TYPES.includes(p.type)) return p;
+  if (p.type === "protego_response" && p.data.originalAction.targetPlayerId === visitorId) return p.data.originalAction;
+  return null;
+}
+
+function discardFromHand(state: GameState, player: PlayerState, actionType: string): GameCard | undefined {
+  const idx = player.hand.findIndex(c => CARD_DEF_MAP[c.defId]?.actionType === actionType);
+  if (idx === -1) return undefined;
+  const card = player.hand.splice(idx, 1)[0];
+  state.discardPile.push(card);
+  return card;
+}
+
+/** Chargeback: cancel your part of a charge, then charge any other player the same amount. */
+export function playChargeback(state: GameState, visitorId: string): Result {
+  const original = attackOn(state, visitorId);
+  if (!original || !PAYMENT_TYPES.includes(original.type)) return fail("Chargeback answers a charge against you");
+  const player = getPlayer(state, visitorId)!;
+  const card = discardFromHand(state, player, "chargeback");
+  if (!card) return fail("You don't have a Chargeback");
+  const amount = original.amount ?? 0;
+  original.data.results = [...(original.data.results ?? []), { playerId: visitorId, outcome: "blocked", amount: 0 }];
+  log(state, player, `played Chargeback to cancel the ${amount}M charge and is choosing who pays it instead`, card.defId);
+  state.pendingAction = {
+    type: "choose_chargeback", sourcePlayerId: visitorId, targetPlayerId: visitorId, cardDefId: card.defId,
+    amount, data: { resume: original },
+  };
+  return ok;
+}
+
+/**
+ * Reverse: stop an action played on you and play it back on whoever played it.
+ * Charges become the same charge on them; steals and Destroy let you pick from
+ * their table; the rest go straight at them. If it can't be played back it
+ * works as a Just Say No.
+ */
+export function playReverse(state: GameState, visitorId: string): Result {
+  const original = attackOn(state, visitorId);
+  if (!original) return fail("Reverse answers an action played on you");
+  const player = getPlayer(state, visitorId)!;
+  if (!player.hand.some(c => CARD_DEF_MAP[c.defId]?.actionType === "reverse")) return fail("You don't have a Reverse");
+  const attacker = getPlayer(state, original.sourcePlayerId);
+  const plan = attacker && reversePlan(state, original, player, attacker);
+  if (!plan) return blockWith(state, visitorId, "reverse");
+
+  const card = discardFromHand(state, player, "reverse")!;
+  log(state, player, `played Reverse to turn ${CARD_DEF_MAP[original.cardDefId ?? ""]?.name ?? "it"} back on ${attacker!.animal.name}`, card.defId);
+  plan(card.defId);
+  return ok;
+}
+
+function reversePlan(state: GameState, original: PendingAction, me: PlayerState, attacker: PlayerState): ((cardDefId: string) => void) | null {
+  const pick = (type: PendingAction["type"]) => (cardDefId: string) => {
+    state.pendingAction = {
+      type, sourcePlayerId: me.visitorId, targetPlayerId: me.visitorId, cardDefId,
+      data: { onlyTarget: attacker.visitorId, reversed: true },
+    };
+  };
+  const direct = (type: PendingAction["type"]) => (cardDefId: string) => {
+    log(state, me, `aims ${CARD_DEF_MAP[original.cardDefId ?? ""]?.name ?? "it"} at ${attacker.animal.name}`);
+    offerProtego(state, { type, sourcePlayerId: me.visitorId, targetPlayerId: attacker.visitorId, cardDefId, data: {} });
+  };
+  const takeable = (allowComplete = false) => attacker.properties.some(c => canTakeProperty(me, attacker, c.defId, allowComplete).success);
+
+  if (PAYMENT_TYPES.includes(original.type)) {
+    const amount = original.amount ?? 0;
+    if (amount <= 0) return null;
+    return cardDefId => {
+      original.data.results = [...(original.data.results ?? []), { playerId: me.visitorId, outcome: "blocked", amount: 0 }];
+      startPayments(state, "pay_debt", me.visitorId, [attacker.visitorId], amount, cardDefId, undefined, original);
+    };
+  }
+  switch (original.type) {
+    case "choose_steal": case "choose_reducto": return takeable() ? pick(original.type) : null;
+    case "choose_destroy": return takeable(true) ? pick(original.type) : null;
+    case "choose_swap": return me.properties.length > 0 && takeable() ? pick(original.type) : null;
+    case "choose_steal_set":
+      return PROPERTY_COLORS.some(c => isSetComplete(attacker, c) && shieldOf(attacker) !== c) ? pick(original.type) : null;
+    case "choose_hand_steal": return attacker.hand.length > 0 ? direct(original.type) : null;
+    case "choose_bank_robber": return attacker.bank.length > 0 ? direct(original.type) : null;
+    case "choose_silencio": return !attacker.isSilenced ? direct(original.type) : null;
+    default: return null;
+  }
 }
 
 function resolveProtego(state: GameState, original: PendingAction, blocks: number) {
@@ -926,6 +1054,27 @@ function executeAction(state: GameState, action: PendingAction) {
       log(state, attacker, `used Demolish to destroy ${target.animal.name}'s ${cardTag(card)}`, card.defId);
       return;
     }
+    case "choose_destroy": {
+      const id = d.targetCardDefId as string;
+      if (!canTakeProperty(attacker, target, id, true).success) { log(state, attacker, "'s Destroy fizzled"); return; }
+      const card = removeCard(target.properties, id)!;
+      state.discardPile.push({ defId: card.defId });
+      log(state, attacker, `used Destroy to discard ${target.animal.name}'s ${cardTag(card)}`, card.defId);
+      return;
+    }
+    case "choose_hand_steal": {
+      if (target.hand.length === 0) { log(state, attacker, "'s Hand Steal fizzled: their hand is empty"); return; }
+      const card = target.hand.splice(Math.floor(Math.random() * target.hand.length), 1)[0];
+      attacker.hand.push(card);
+      log(state, attacker, `used Hand Steal to take a random card from ${target.animal.name}'s hand`);
+      return;
+    }
+    case "choose_bank_robber": {
+      const cash = target.bank.splice(0);
+      attacker.bank.push(...cash);
+      log(state, attacker, `used Bank Robber to take ${target.animal.name}'s whole bank (${totalValue(cash)}M)`);
+      return;
+    }
     case "choose_silencio": {
       target.isSilenced = true;
       log(state, attacker, `cut ${target.animal.name}'s power. Their role power is off until they pay 10M`);
@@ -938,12 +1087,13 @@ function executeAction(state: GameState, action: PendingAction) {
 
 // ========== TARGET SELECTION ==========
 
-function canTakeProperty(attacker: PlayerState, target: PlayerState, cardDefId: string): Result {
+// `allowComplete`: Destroy can hit a complete set
+function canTakeProperty(attacker: PlayerState, target: PlayerState, cardDefId: string, allowComplete = false): Result {
   const card = target.properties.find(c => c.defId === cardDefId);
   if (!card) return fail("That property isn't there any more");
   const color = colorOnTable(card, target.properties);
   if (color && shieldOf(target) === color) return fail("That colour is shielded by Harry's charm");
-  if (color && isSetComplete(target, color) && !roleActive(attacker, "draco")) {
+  if (color && !allowComplete && isSetComplete(target, color) && !roleActive(attacker, "draco")) {
     return fail("You can't take from a complete set");
   }
   return ok;
@@ -958,6 +1108,7 @@ export function chooseTarget(state: GameState, visitorId: string, targetPlayerId
   const target = getPlayer(state, targetPlayerId);
   if (!target) return fail("Choose another player");
   if (target.visitorId === visitorId) return fail("Choose another player, not yourself");
+  if (pending.data?.onlyTarget && targetPlayerId !== pending.data.onlyTarget) return fail("Reverse turns it back on the player who played it");
 
   const action = (type: PendingAction["type"], data: any): PendingAction => ({
     type, sourcePlayerId: visitorId, targetPlayerId, cardDefId: pending.cardDefId, data,
@@ -996,6 +1147,32 @@ export function chooseTarget(state: GameState, visitorId: string, targetPlayerId
       if (!check.success) return check;
       log(state, attacker, `aims Demolish at ${target.animal.name}'s ${ownedTag(target, targetCardDefId)}`);
       offerProtego(state, action("choose_reducto", { targetCardDefId }));
+      return ok;
+    }
+    case "choose_destroy": {
+      if (!targetCardDefId) return fail("Choose a property to discard");
+      const check = canTakeProperty(attacker, target, targetCardDefId, true);
+      if (!check.success) return check;
+      log(state, attacker, `aims Destroy at ${target.animal.name}'s ${ownedTag(target, targetCardDefId)}`);
+      offerProtego(state, action("choose_destroy", { targetCardDefId }));
+      return ok;
+    }
+    case "choose_hand_steal": {
+      if (target.hand.length === 0) return fail("Their hand is empty");
+      log(state, attacker, `aims Hand Steal at ${target.animal.name}`);
+      offerProtego(state, action("choose_hand_steal", {}));
+      return ok;
+    }
+    case "choose_bank_robber": {
+      if (target.bank.length === 0) return fail("Their bank is empty");
+      log(state, attacker, `aims Bank Robber at ${target.animal.name}`);
+      offerProtego(state, action("choose_bank_robber", {}));
+      return ok;
+    }
+    case "choose_chargeback": {
+      const amount = pending.amount ?? 0;
+      log(state, attacker, `used Chargeback to charge ${target.animal.name} ${amount}M`);
+      startPayments(state, "pay_debt", visitorId, [targetPlayerId], amount, pending.cardDefId!, undefined, pending.data?.resume);
       return ok;
     }
     case "choose_silencio": {
@@ -1087,7 +1264,7 @@ export function paySilencio(state: GameState, visitorId: string, cardDefIds: str
 
 const CANCELLABLE: PendingAction["type"][] = [
   "choose_steal", "choose_swap", "choose_steal_set", "choose_reducto", "choose_silencio", "choose_goblin", "time_turner_play",
-  "choose_rent_target",
+  "choose_rent_target", "choose_hand_steal", "choose_destroy", "choose_bank_robber",
 ];
 
 /** Take back an action card while still picking its target. The card and the action come back. */
@@ -1095,6 +1272,7 @@ export function cancelChoice(state: GameState, visitorId: string): Result {
   const pending = state.pendingAction;
   if (!pending || !CANCELLABLE.includes(pending.type)) return fail("Nothing to take back");
   if (pending.sourcePlayerId !== visitorId) return fail("Not your action");
+  if (pending.data?.reversed) return fail("A Reverse can't be taken back");
   const player = getPlayer(state, visitorId)!;
   const cardDefId = pending.cardDefId!;
   const idx = state.discardPile.map(c => c.defId).lastIndexOf(cardDefId);
@@ -1208,6 +1386,12 @@ function dropFromPending(state: GameState, visitorId: string) {
   const original: PendingAction = pending.type === "protego_response" ? pending.data.originalAction : pending;
   if (original.sourcePlayerId === visitorId) {
     state.pendingAction = null;
+    // A Chargeback or Reverse charge interrupted another payment queue: carry on with it
+    const resume: PendingAction | undefined = original.data?.resume;
+    if (resume) {
+      state.pendingAction = resume;
+      dropFromPending(state, visitorId);
+    }
     return;
   }
   if (PAYMENT_TYPES.includes(original.type)) {
@@ -1279,6 +1463,14 @@ export function botStep(state: GameState): boolean {
       return true;
     }
     switch (pending.type) {
+      case "choose_chargeback": {
+        // Others are still waiting to pay after this, so even a sleeping player picks someone
+        const richest = state.players.filter(p => p.visitorId !== id).sort((a, b) => worth(b) - worth(a))[0];
+        if (richest && chooseTarget(state, id, richest.visitorId).success) return true;
+        state.pendingAction = null;
+        if (pending.data?.resume) nextPayer(state, pending.data.resume);
+        return true;
+      }
       case "choose_goblin": case "choose_rent_target":
         if (bot.isBot) {
           const richest = state.players.filter(p => p.visitorId !== id)
@@ -1370,7 +1562,7 @@ function botAttack(state: GameState, bot: PlayerState): boolean {
       const best = [...colors].sort((a, b) => calculateRent(bot, b) - calculateRent(bot, a))[0];
       if (best && calculateRent(bot, best) > 0 && playCard(state, id, card.defId, false, best).success) return true;
     }
-    if (def?.type === "action" && ["yule_ball", "gringotts_goblin", "felix_felicis", "double_rent"].includes(def.actionType!)) {
+    if (def?.type === "action" && ["yule_ball", "gringotts_goblin", "felix_felicis", "double_rent", "hand_seven"].includes(def.actionType!)) {
       if (playCard(state, id, card.defId).success) return true;
     }
   }

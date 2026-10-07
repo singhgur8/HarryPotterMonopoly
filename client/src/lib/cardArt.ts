@@ -47,5 +47,11 @@ export const CARD_ART: Record<string, string> = {
   "Power Outage": '<path d="M8 6h32v18H22l-8 7v-7H8zM18 11l12 8M30 11l-12 8"/>',
   "Double the Rent": '<path d="M8 10h18v22H8zM22 10V4h18v22h-14M12 17h10M12 22h10M12 27h6M34 14V8M31 11l3-3 3 3"/>',
   "Rewind": '<path d="M14 3h20M14 33h20M16 3c0 8 8 10 8 15s-8 7-8 15M32 3c0 8-8 10-8 15s8 7 8 15"/>',
+  "Hand 7": '<path d="M9 29l5-21 9 2-5 21zM19 8h10v22H19M29 10l9-2 5 21-9 2M39 1v4M37 3h4"/>',
+  "Hand Steal": '<path d="M30 6h10v15H30zM28 14H9M15 8l-6 6 6 6M14 30h16M14 26h16"/>',
+  "Chargeback": '<circle cx="24" cy="18" r="6"/><path d="M38 18a14 14 0 0 1-24 10M10 18a14 14 0 0 1 24-10M34 3v5h-5M14 33v-5h5"/>',
+  "Reverse": '<path d="M8 11h28M30 5l6 6-6 6M40 25H12M18 19l-6 6 6 6"/>',
+  "Destroy": '<circle cx="21" cy="22" r="10"/><path d="M28 15l4-4M32 11c2-2 4-2 6 0M38 4l1-2M42 8l2-1M41 12h2"/>',
+  "Bank Robber": '<path d="M18 7h12l-3 5c7 3 11 9 11 14 0 4-3 6-14 6s-14-2-14-6c0-5 4-11 11-14zM21 12h6M24 17v12M27 19c-2-2-6-1-6 1 0 4 6 2 6 6 0 2-4 3-6 1"/>',
   "Property Wild Card": '<path d="M20 4h8M21 4v8l-8 14a4 4 0 0 0 4 6h14a4 4 0 0 0 4-6l-8-14V4M16 22h16"/>',
 };

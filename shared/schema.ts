@@ -44,7 +44,7 @@ export const RENT_TABLE: Record<PropertyColor, number[]> = {
 };
 
 // Versions of the game the host can pick in the lobby (see shared/variations.ts)
-export type VariationId = "deal" | "classic" | "gg" | "custom";
+export type VariationId = "deal" | "prime" | "classic" | "gg" | "custom";
 
 // Rule switches that differ between versions of the game
 export interface GameRules {
@@ -65,7 +65,9 @@ export type CardType = "money" | "property" | "wild" | "rent" | "action" | "role
 export type ActionType = 
   | "felix_felicis" | "accio" | "confundus_charm" | "expelliarmus" 
   | "protego" | "gringotts_goblin" | "yule_ball"
-  | "reducto" | "silencio" | "time_turner" | "double_rent";
+  | "reducto" | "silencio" | "time_turner" | "double_rent"
+  // Prime edition
+  | "hand_seven" | "hand_steal" | "chargeback" | "reverse" | "destroy" | "bank_robber";
 
 export type RoleType =
   // Classic Harry Potter
@@ -184,6 +186,10 @@ export type PendingActionType =
   | "choose_silencio"    // Silencio: attacker picks player to silence
   | "choose_goblin"      // Gringotts Goblin: attacker picks who owes 5M
   | "choose_rent_target" // Wild Rent (Monopoly Deal rules): attacker picks who pays
+  | "choose_hand_steal"  // Hand Steal: attacker picks whose hand to take a random card from
+  | "choose_destroy"     // Destroy: attacker picks a property to discard (complete sets too)
+  | "choose_bank_robber" // Bank Robber: attacker picks whose whole bank to take
+  | "choose_chargeback"  // Chargeback: the player who cancelled a charge picks who pays it instead
   | "protego_response"   // Player can respond with Protego
   | "harry_protect"      // Harry chooses color to protect at end of turn
   | "cedric_draw_choice" // Start-of-turn draw choice: deck, discard (Cedric) or an opponent's hand (Ganda)
@@ -279,6 +285,8 @@ export type WSMessageType =
   | "assign_rainbow"
   | "pay_with_cards"
   | "play_protego"
+  | "play_chargeback"
+  | "play_reverse"
   | "decline_protego"
   | "choose_target"
   | "harry_protect_color"

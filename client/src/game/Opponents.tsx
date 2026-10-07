@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { PlayerState, PropertyColor } from "@shared/schema";
+import type { GameCard as Card, PlayerState, PropertyColor } from "@shared/schema";
 import { inDrawStep, freshTurnTimer } from "@shared/schema";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { GameCard } from "@/components/GameCard";
@@ -23,11 +23,14 @@ export function TimerAvatar({ p }: { p: PlayerState }) {
   );
 }
 
-const ATTACKS = { accio: "Sly Deal", confundus_charm: "Forced Deal", reducto: "Demolish", expelliarmus: "Deal Breaker" } as const;
+const ATTACKS = { accio: "Sly Deal", confundus_charm: "Forced Deal", reducto: "Demolish", destroy: "Destroy", expelliarmus: "Deal Breaker" } as const;
 type Attack = keyof typeof ATTACKS;
+const CARD_ATTACKS = ["accio", "confundus_charm", "reducto", "destroy"] as const;
+/** Destroy can hit a complete set; the others can't (unless you're Draco). */
+const hits = (kind: Attack, me: PlayerState, target: PlayerState, c: Card) => canTake(me, target, c, kind === "destroy");
 
 const PICKS: Record<string, Attack> = {
-  choose_steal: "accio", choose_swap: "confundus_charm", choose_reducto: "reducto", choose_steal_set: "expelliarmus",
+  choose_steal: "accio", choose_swap: "confundus_charm", choose_reducto: "reducto", choose_destroy: "destroy", choose_steal_set: "expelliarmus",
 };
 /** Marks an attack that's already played and waiting for its target. */
 const AIMING = "aiming";
@@ -109,7 +112,7 @@ export function OpponentSeat({ p, onOpen }: { p: PlayerState; onOpen: () => void
   const attacks = useAttacks();
   // Something here my attack cards could hit: say so, since tapping opens their table
   const target = !!me && !!(
-    ((attacks.accio || attacks.confundus_charm || attacks.reducto) && p.properties.some(c => canTake(me, p, c))) ||
+    CARD_ATTACKS.some(k => attacks[k] && p.properties.some(c => hits(k, me, p, c))) ||
     (attacks.expelliarmus && groupSets(p.properties).some(({ color }) => isComplete(p, color) && shieldOf(p) !== color))
   );
   const turn = s.players[s.currentTurnIndex]?.visitorId === p.visitorId;
@@ -337,10 +340,10 @@ function useSteal(target: PlayerState, done?: () => void) {
   const [picked, setPicked] = useState<string | null>(null);
   const [swapping, setSwapping] = useState(false);
 
-  const cardKinds = (["accio", "confundus_charm", "reducto"] as const).filter(k => attacks[k]);
-  const usable = (defId: string) => {
+  const cardKinds = CARD_ATTACKS.filter(k => attacks[k]);
+  const usable = (defId: string, kind?: Attack) => {
     const c = target.properties.find(x => x.defId === defId);
-    return !!me && !!c && cardKinds.length > 0 && canTake(me, target, c);
+    return !!me && !!c && (kind ? [kind] : cardKinds).some(k => attacks[k] && hits(k, me, target, c));
   };
   const takeableSet = (color: PropertyColor) => !!me && !!attacks.expelliarmus && isComplete(target, color) && shieldOf(target) !== color;
   // The pick goes stale when the card moves or I can no longer use anything on it
@@ -357,7 +360,7 @@ function useSteal(target: PlayerState, done?: () => void) {
   const sets = groupSets(target.properties);
   // Only name the cards that have something to hit here
   const names = !me ? [] : [
-    ...(target.properties.some(c => canTake(me, target, c)) ? cardKinds : []),
+    ...cardKinds.filter(k => target.properties.some(c => hits(k, me, target, c))),
     ...(sets.some(({ color }) => takeableSet(color)) ? ["expelliarmus" as const] : []),
   ].map(k => ATTACKS[k]);
   const hint = names.length > 1 ? `${names.slice(0, -1).join(", ")} or ${names.at(-1)}` : names[0];
@@ -367,16 +370,17 @@ function useSteal(target: PlayerState, done?: () => void) {
 
 /** The choices for the property I picked: which attack card to use on it. */
 function StealBar({ st, target }: { st: Steal; target: PlayerState }) {
-  const { me, attacks, picked, swapping, setSwapping, play, pick } = st;
+  const { me, picked, swapping, setSwapping, play, pick, usable } = st;
   if (!me || !picked) return null;
   return (
     <div className="hp-steal">
       {!swapping ? (
         <>
           <b>{nameOf(picked)}</b>
-          {attacks.accio && <button className="hp-btn gold" onClick={() => play("accio", picked)}>Take it with Sly Deal</button>}
-          {attacks.confundus_charm && <button className="hp-btn gold" onClick={() => setSwapping(true)}>Swap for it with Forced Deal</button>}
-          {attacks.reducto && <button className="hp-btn gold" onClick={() => play("reducto", picked)}>Destroy it with Demolish</button>}
+          {usable(picked, "accio") && <button className="hp-btn gold" onClick={() => play("accio", picked)}>Take it with Sly Deal</button>}
+          {usable(picked, "confundus_charm") && <button className="hp-btn gold" onClick={() => setSwapping(true)}>Swap for it with Forced Deal</button>}
+          {usable(picked, "reducto") && <button className="hp-btn gold" onClick={() => play("reducto", picked)}>Destroy it with Demolish</button>}
+          {usable(picked, "destroy") && <button className="hp-btn gold" onClick={() => play("destroy", picked)}>Discard it with Destroy</button>}
           <button className="hp-btn ghost" onClick={() => pick(null)}>Cancel</button>
         </>
       ) : (

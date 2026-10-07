@@ -8,7 +8,7 @@ import {
   createInitialGameState, botStep, payWithCards, playProtego, declineProtego,
   chooseTarget, playCard, drawCards, paySilencio, getWaitingOn, flipWild,
   harryProtectColor, endTurn, luchaChoose, roleActive, timeTurnerChoose, bankCard, cancelChoice, cedricChooseSource, wakeUp, forfeit, autoDraw,
-  sleepForDisconnect, settleWilds,
+  sleepForDisconnect, settleWilds, playChargeback, playReverse,
 } from "../worker/gameEngine";
 import { ANIMALS, SET_SIZES, DRAW_SECONDS, inDrawStep, freshTurnTimer } from "../shared/schema";
 import type { GameState, PlayerState, RoleType } from "../shared/schema";
@@ -760,6 +760,170 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.ok(flipWild(t, "p0", "wild_rainbow_1", "brown").success, "a two-colour wild is a card of that colour");
   assert.equal(countCompleteSets(c.properties, SET_SIZES), 1);
   console.log("any-colour wild: ok");
+}
+
+// ---------- Prime: 120 cards, no roles, the new cards work and can be blocked ----------
+{
+  const prime = VARIATIONS.prime;
+  assert.equal(prime.deck.length, 120, "Monopoly Deal's 101 plus 19 Prime cards");
+  assert.equal(prime.roles.length, 0);
+  const count = (t: string) => prime.deck.filter(id => CARD_DEF_MAP[id].actionType === t).length;
+  assert.equal(count("bank_robber"), 1, "exactly one Bank Robber");
+  assert.equal(count("protego"), 4, "four Just Say No");
+  assert.ok(!ACTION_CHOICES.find(a => a.type === "protego" && a.copies !== 3), "Custom keeps 3 Just Say No");
+  for (const t of ["hand_seven", "hand_steal", "chargeback", "reverse", "destroy", "bank_robber"] as const) {
+    assert.ok(NON_CLASSIC_ACTIONS.includes(t), `${t} is off by default in Custom`);
+  }
+
+  const primeSetup = (n = 3) => {
+    const players = Array.from({ length: n }, (_, i) => ({ visitorId: `p${i}`, seatIndex: i, animal: ANIMALS[i] }));
+    const s = createInitialGameState("TEST", players, 60, "prime");
+    for (const p of s.players) { s.drawPile.push(...p.hand); p.hand = []; }
+    s.drawnThisTurn = true;
+    return s;
+  };
+
+  // Hand 7 draws up to 7
+  {
+    const s = primeSetup();
+    const a = s.players[0];
+    give(s, a, "hand", "action_hand_seven_1"); give(s, a, "hand", "money_1g_1");
+    assert.ok(playCard(s, "p0", "action_hand_seven_1").success);
+    assert.equal(a.hand.length, 7);
+  }
+  // Hand Steal takes a random card; the target is asked first
+  {
+    const s = primeSetup();
+    const [a, b] = s.players;
+    give(s, a, "hand", "action_hand_steal_1"); give(s, b, "hand", "money_5g_1");
+    assert.ok(playCard(s, "p0", "action_hand_steal_1").success);
+    assert.ok(chooseTarget(s, "p0", "p1").success);
+    assert.equal(s.pendingAction?.type, "protego_response");
+    assert.ok(declineProtego(s, "p1").success);
+    assert.ok(a.hand.some(c => c.defId === "money_5g_1") && b.hand.length === 0);
+  }
+  // Destroy hits a complete set; Just Say No stops it
+  {
+    const s = primeSetup();
+    const [a, b] = s.players;
+    give(s, a, "hand", "action_destroy_1");
+    give(s, b, "properties", "prop_brown_1"); give(s, b, "properties", "prop_brown_2");
+    assert.ok(playCard(s, "p0", "action_destroy_1").success);
+    assert.ok(chooseTarget(s, "p0", "p1", "prop_brown_1").success, "complete sets are fair game");
+    assert.ok(declineProtego(s, "p1").success);
+    assert.equal(b.properties.length, 1);
+    assert.ok(s.discardPile.some(c => c.defId === "prop_brown_1"));
+  }
+  {
+    const s = primeSetup();
+    const [a, b] = s.players;
+    give(s, a, "hand", "action_bank_robber_1");
+    give(s, b, "bank", "money_5g_1"); give(s, b, "bank", "money_3g_1"); give(s, b, "hand", "action_protego_1");
+    assert.ok(playCard(s, "p0", "action_bank_robber_1").success);
+    assert.ok(chooseTarget(s, "p0", "p1").success);
+    assert.ok(playProtego(s, "p1").success);
+    assert.ok(declineProtego(s, "p0").success);
+    assert.equal(b.bank.length, 2, "Just Say No saved the bank");
+    // ...and without one the whole bank goes
+    give(s, a, "hand", "action_bank_robber_1");
+    assert.ok(playCard(s, "p0", "action_bank_robber_1").success);
+    assert.ok(chooseTarget(s, "p0", "p1").success);
+    assert.ok(declineProtego(s, "p1").success);
+    assert.equal(b.bank.length, 0);
+    assert.equal(a.bank.length, 2);
+  }
+  // Chargeback: cancel your part of a birthday, charge someone else, then the queue carries on
+  {
+    const s = primeSetup();
+    const [a, b, c] = s.players;
+    give(s, a, "hand", "action_yule_1");
+    give(s, b, "hand", "action_chargeback_1");
+    give(s, a, "bank", "money_2g_1"); give(s, c, "bank", "money_2g_2");
+    assert.ok(playCard(s, "p0", "action_yule_1").success);
+    assert.equal(s.pendingAction?.targetPlayerId, "p1");
+    assert.ok(playChargeback(s, "p1").success);
+    assert.equal(s.pendingAction?.type, "choose_chargeback");
+    assert.equal(getWaitingOn(s), "p1");
+    assert.ok(chooseTarget(s, "p1", "p0").success);
+    assert.equal(s.pendingAction?.type, "pay_debt");
+    assert.equal(s.pendingAction?.targetPlayerId, "p0");
+    assert.ok(payWithCards(s, "p0", ["money_2g_1"]).success);
+    assert.ok(b.bank.some(x => x.defId === "money_2g_1"), "the birthday player paid instead");
+    assert.equal(s.pendingAction?.type, "pay_birthday", "back to the birthday queue");
+    assert.equal(s.pendingAction?.targetPlayerId, "p2");
+    assert.ok(payWithCards(s, "p2", ["money_2g_2"]).success);
+    assert.equal(s.pendingAction, null);
+  }
+  // Leaving mid-Chargeback hands the birthday on to the next payer
+  {
+    const s = primeSetup(4);
+    const [a, b] = s.players;
+    give(s, a, "hand", "action_yule_1"); give(s, b, "hand", "action_chargeback_1");
+    assert.ok(playCard(s, "p0", "action_yule_1").success);
+    assert.ok(playChargeback(s, "p1").success);
+    assert.ok(forfeit(s, "p1").success);
+    assert.equal(s.pendingAction?.type, "pay_birthday");
+    assert.equal(s.pendingAction?.targetPlayerId, "p2");
+  }
+  // Reverse on a charge: the attacker pays the same amount
+  {
+    const s = primeSetup(2);
+    const [a, b] = s.players;
+    give(s, a, "hand", "action_goblin_1"); give(s, b, "hand", "action_reverse_1");
+    give(s, a, "bank", "money_5g_1");
+    assert.ok(playCard(s, "p0", "action_goblin_1").success);
+    assert.ok(chooseTarget(s, "p0", "p1").success);
+    assert.ok(playReverse(s, "p1").success);
+    assert.equal(s.pendingAction?.targetPlayerId, "p0");
+    assert.equal(s.pendingAction?.amount, 5);
+    assert.ok(payWithCards(s, "p0", ["money_5g_1"]).success);
+    assert.equal(s.pendingAction, null);
+    assert.equal(b.bank.length, 1);
+  }
+  // Reverse on Sly Deal: the target takes one of the attacker's properties instead, and can't take it back
+  {
+    const s = primeSetup(3);
+    const [a, b] = s.players;
+    give(s, a, "hand", "action_accio_1"); give(s, b, "hand", "action_reverse_1");
+    give(s, a, "properties", "prop_green_1"); give(s, b, "properties", "prop_brown_1");
+    assert.ok(playCard(s, "p0", "action_accio_1").success);
+    assert.ok(chooseTarget(s, "p0", "p1", "prop_brown_1").success);
+    assert.ok(playReverse(s, "p1").success);
+    assert.equal(s.pendingAction?.type, "choose_steal");
+    assert.equal(getWaitingOn(s), "p1");
+    assert.equal(cancelChoice(s, "p1").success, false);
+    assert.equal(chooseTarget(s, "p1", "p2").success, false, "only the attacker");
+    assert.ok(chooseTarget(s, "p1", "p0", "prop_green_1").success);
+    assert.equal(s.pendingAction?.type, "protego_response");
+    assert.equal(s.pendingAction?.targetPlayerId, "p0", "the attacker can Just Say No to it");
+    assert.ok(declineProtego(s, "p0").success);
+    assert.ok(b.properties.some(x => x.defId === "prop_green_1") && b.properties.some(x => x.defId === "prop_brown_1"));
+  }
+  // Reverse with nothing to turn back works as a Just Say No
+  {
+    const s = primeSetup(2);
+    const [a, b] = s.players;
+    give(s, a, "hand", "action_accio_1"); give(s, b, "hand", "action_reverse_1");
+    give(s, b, "properties", "prop_brown_1");
+    assert.ok(playCard(s, "p0", "action_accio_1").success);
+    assert.ok(chooseTarget(s, "p0", "p1", "prop_brown_1").success);
+    assert.ok(playReverse(s, "p1").success);
+    assert.equal(s.pendingAction?.type, "protego_response");
+    assert.ok(declineProtego(s, "p0").success);
+    assert.ok(b.properties.some(x => x.defId === "prop_brown_1"), "blocked");
+  }
+  // Prime games played by bots keep their cards
+  for (let g = 0; g < 40; g++) {
+    const players = Array.from({ length: 2 + (g % 3) }, (_, i) => ({ visitorId: `p${i}`, seatIndex: i, animal: ANIMALS[i], isBot: true }));
+    const s = createInitialGameState("TEST", players, 60, "prime");
+    s.players.forEach(p => { p.isSleeping = true; p.isBot = true; });
+    const total = countCards(s);
+    for (let i = 0; i < 3000 && s.status === "playing"; i++) {
+      assert.ok(botStep(s));
+      assert.equal(countCards(s), total);
+    }
+  }
+  console.log("prime: ok");
 }
 
 console.log("all engine checks passed");

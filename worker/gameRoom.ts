@@ -11,7 +11,7 @@ import { ANIMALS, freshTurnTimer, inDrawStep } from "../shared/schema";
 import { DEFAULT_VARIATION, DEFAULT_CUSTOM_RULES, isVariationId, updateCustomRules } from "../shared/variations";
 import {
   createInitialGameState, drawCards, playCard, bankCard, endTurn,
-  flipWild, payWithCards, playProtego, declineProtego, chooseTarget,
+  flipWild, payWithCards, playProtego, playChargeback, playReverse, declineProtego, chooseTarget,
   harryProtectColor, cedricChooseSource, luchaChoose, timeTurnerChoose, paySilencio,
   discardCards, sanitizeStateForPlayer, putToSleep, wakeUp, botStep, getWaitingOn, autoDraw,
   cancelChoice, forfeit, sleepForDisconnect, settleWilds,
@@ -601,7 +601,7 @@ const GAME_ACTIONS = new Set([
   "draw_cards", "play_card", "bank_card", "end_turn", "flip_wild", "pay_with_cards",
   "play_protego", "decline_protego", "choose_target", "harry_protect_color",
   "cedric_choose_source", "time_turner_choose", "pay_silencio", "discard_cards", "cancel_action",
-  "lucha_choose",
+  "lucha_choose", "play_chargeback", "play_reverse",
 ]);
 
 // ========== MAIN ROUTER ==========
@@ -650,6 +650,13 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
     case "flip_wild": return handleFlipWild(room, client, payload);
     case "pay_with_cards": return handlePayWithCards(room, client, payload);
     case "play_protego": return handlePlayProtego(room, client);
+    case "play_chargeback": case "play_reverse": {
+      if (!room.gameState) return;
+      const play = type === "play_chargeback" ? playChargeback : playReverse;
+      const result = play(room.gameState, client.visitorId);
+      if (!result.success) return sendError(room, client, result.error!);
+      return broadcastGameState(room);
+    }
     case "decline_protego": return handleDeclineProtego(room, client);
     case "choose_target": return handleChooseTarget(room, client, payload);
     case "harry_protect_color": return handleHarryProtectColor(room, client, payload);
