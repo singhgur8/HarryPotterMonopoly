@@ -179,7 +179,9 @@
 .hp-mine.paying { outline: 2px dashed var(--gold-line); outline-offset: 6px; border-radius: 12px; }
 button.hp-cn { cursor: pointer; padding: 2px 9px; font-size: 13px; }
 button.hp-cn[aria-pressed="true"] { background: var(--gold); color: #fff; border-color: var(--gold); }
-.hp-fliptag { position: absolute; right: 4px; top: 4px; z-index: 4; font-size: 11px; font-weight: 800; color: #fff; text-shadow: 0 1px 1px #0008; border-radius: 5px; padding: 3px 7px; border: 1px solid #fff; cursor: pointer; box-shadow: 0 1px 3px #0004; transition: transform .12s; }
+.hp-fliptag { position: absolute; right: 4px; top: 4px; z-index: 4; font-size: 11px; font-weight: 800; color: #fff; text-shadow: 0 1px 1px #0008; border-radius: 5px; padding: 3px 7px; border: 2px solid #fff; cursor: pointer; box-shadow: 0 1px 3px #0004; transition: transform .12s; }
+/* Text in a two-colour wild's top colour on its other colour; a thin halo keeps close pairs (pink on orange) readable */
+.hp-fliptag[style*="--halo"] { text-shadow: none; -webkit-text-stroke: 3px var(--halo); paint-order: stroke fill; }
 .hp-fliptag:hover { transform: scale(1.1); }
 .hp-fliptag:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 @media (pointer: coarse) { .hp-fliptag { padding: 6px 9px; font-size: 12px; } }

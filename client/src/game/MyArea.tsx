@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { GameCard } from "@/components/GameCard";
 import { useGame } from "./context";
+import { SET_STYLE } from "@shared/schema";
 import {
   groupSets, SET_SIZES, RENT_TABLE, label, fillOf, sumValue, valueOf, nameOf, otherColor, RAINBOW,
   completeSets, roleInfo, borrowedText, shieldOf, STACK_STEP, type PaySelection,
@@ -77,7 +78,11 @@ export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
                         <button
                           type="button"
                           className="hp-fliptag"
-                          style={{ background: other === "rainbow" ? RAINBOW : fillOf(other) }}
+                          // Two-colour wilds invert the card: the button is the other colour, the text the one on top now
+                          style={other === "rainbow" ? { background: RAINBOW } : {
+                            background: fillOf(other), color: fillOf(color), borderColor: fillOf(color),
+                            ["--halo" as string]: SET_STYLE[color].on,
+                          }}
                           aria-label={other === "rainbow" ? `Move ${nameOf(c.defId)} to another colour` : `Flip ${nameOf(c.defId)} to ${label(other)}`}
                           onClick={e => {
                             e.stopPropagation();

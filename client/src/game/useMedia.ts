@@ -20,10 +20,10 @@ export const useTall = () => useMedia("(min-height: 1000px)");
 export type TableView = "compact" | "full";
 const VIEW_KEY = "hp-table-view";
 
-/** Compact or full opponent view, remembered per browser. Compact is the default. */
+/** Compact or full opponent view, remembered per browser. Full is the default; phones always get compact. */
 export function useTableView(): [TableView, (v: TableView) => void] {
   const [view, setView] = useState<TableView>(() => {
-    try { return localStorage.getItem(VIEW_KEY) === "full" ? "full" : "compact"; } catch { return "compact"; }
+    try { return localStorage.getItem(VIEW_KEY) === "compact" ? "compact" : "full"; } catch { return "full"; }
   });
   const save = (v: TableView) => {
     setView(v);
