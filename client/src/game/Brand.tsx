@@ -11,7 +11,7 @@ const FAN: PropertyColor[] = ["red", "dark_blue", "green"];
 /** Code-drawn mark: three fanned property cards behind a gold M coin, in the deck's own colours. */
 export function Logo({ size = 48 }: { size?: number }) {
   return (
-    <svg className="hp-logo" width={size} height={size} viewBox="0 0 64 64" role="img" aria-label="Monopoly Deal">
+    <svg className="hp-logo" width={size} height={size} viewBox="0 0 64 64" role="img" aria-label="Monopoly Deal With a Twist">
       {FAN.map((c, i) => (
         <g key={c} transform={`rotate(${(i - 1) * 18} 32 60)`}>
           <rect x="20" y="6" width="24" height="34" rx="3.5" fill="#f6f1e4" stroke="#23202f" strokeOpacity=".3" strokeWidth="1" />
@@ -42,11 +42,11 @@ export function SetStripe() {
 
 export function Crest({ big = false }: { big?: boolean }) {
   return (
-    <div className={`hp-crest ${big ? "big" : ""}`}>
+    <div className={`hp-crest ${big ? "big" : ""}`} aria-label="Monopoly Deal With a Twist">
       <Logo size={big ? 84 : 52} />
       <div>
         <h1>Monopoly Deal</h1>
-        <p>WIZARDING WORLD EDITION</p>
+        <p>WITH A TWIST</p>
       </div>
     </div>
   );
