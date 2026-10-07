@@ -544,6 +544,9 @@ function handleForfeit(room: Room, client: RoomClient) {
 // the turn length the host picked), and a sleeping player's moves are made by the bot, one step at a time.
 
 const BOT_STEP_MS = 900;
+// A bot answers a Just Say No question after a random pause, so how fast it
+// answers doesn't give away whether it holds one
+const botAnswerMs = () => 1500 + Math.floor(Math.random() * 3000);
 
 function afterGameChange(room: Room) {
   const state = room.gameState;
@@ -565,7 +568,7 @@ function afterGameChange(room: Room) {
   // The bot step itself runs from the Durable Object alarm (see GameRoom.alarm)
   const waiting = state.players.find(p => p.visitorId === waitingOn);
   if (waiting?.isSleeping) {
-    room.botDueAt ??= Date.now() + BOT_STEP_MS;
+    room.botDueAt ??= Date.now() + (state.pendingAction?.type === "protego_response" ? botAnswerMs() : BOT_STEP_MS);
   } else {
     room.botDueAt = null;
   }
@@ -960,6 +963,11 @@ export class GameRoom extends DurableObject<Env> {
     } else if (room.gameState && inDrawStep(room.gameState) && room.gameState.turnTimer <= 0) {
       // Draw timer ran out: draw for them so the turn gets going
       if (autoDraw(room.gameState).success) broadcastGameState(room);
+      afterGameChange(room);
+    } else if (timerDue !== null && now >= timerDue && room.gameState?.pendingAction?.type === "protego_response") {
+      // Nobody answered the Just Say No question in time: the action goes ahead
+      const waitingOn = getWaitingOn(room.gameState);
+      if (waitingOn && declineProtego(room.gameState, waitingOn).success) broadcastGameState(room);
       afterGameChange(room);
     } else if (timerDue !== null && now >= timerDue) {
       // Turn timer ran out — show everyone the expired timer

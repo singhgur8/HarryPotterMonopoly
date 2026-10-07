@@ -101,11 +101,32 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.equal(getWaitingOn(s), "p0");                   // a may push back
   assert.ok(playProtego(s, "p0").success);              // a counters
   assert.equal(getWaitingOn(s), "p1");
-  assert.ok(playProtego(s, "p1").success);              // b blocks again, a has none left
+  assert.ok(playProtego(s, "p1").success);              // b blocks again
+  assert.equal(getWaitingOn(s), "p0", "a is still asked, though it has no Just Say No left");
+  assert.equal(playProtego(s, "p0").success, false, "a can't block without the card");
+  assert.ok(declineProtego(s, "p0").success);           // a lets it go
   assert.equal(getWaitingOn(s), "p2", "after b is protected, c still owes rent");
   assert.ok(payWithCards(s, "p2", ["money_2g_1"]).success);
   assert.equal(s.pendingAction, null);
   console.log("protego chain on rent: ok");
+}
+
+// ---------- 3b. The target is asked even without a Just Say No ----------
+{
+  const s = setup();
+  const [a, b] = s.players;
+  a.roles = ["luna"]; b.roles = ["hermione"];
+  give(s, a, "hand", "action_accio_1");
+  give(s, b, "properties", "prop_green_1");
+  assert.ok(playCard(s, "p0", "action_accio_1").success);
+  assert.ok(chooseTarget(s, "p0", "p1", "prop_green_1").success);
+  assert.equal(s.pendingAction?.type, "protego_response", "the steal waits for the target's answer");
+  assert.equal(getWaitingOn(s), "p1");
+  assert.ok(!a.properties.some(c => c.defId === "prop_green_1"), "nothing is taken before they answer");
+  assert.equal(playProtego(s, "p1").success, false, "no Just Say No, no block");
+  assert.ok(declineProtego(s, "p1").success);
+  assert.ok(a.properties.some(c => c.defId === "prop_green_1"), "allowing lets the steal happen");
+  console.log("target always asked: ok");
 }
 
 // ---------- 4. Defender declining Protego lets Accio through ----------
@@ -139,6 +160,8 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.ok(paySilencio(s, "p0", ["money_10g_1"]).success);
   assert.ok(playCard(s, "p0", "action_accio_1").success);
   assert.ok(chooseTarget(s, "p0", "p1", "prop_brown_1").success, "Draco takes from a complete set");
+  assert.ok(declineProtego(s, "p1").success);
+  assert.ok(a.properties.some(c => c.defId === "prop_brown_1"));
   console.log("silencio and draco: ok");
 }
 
@@ -154,6 +177,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   give(s, a, "hand", "action_silencio_1");
   assert.ok(playCard(s, "p0", "action_silencio_1").success);
   assert.ok(chooseTarget(s, "p0", "p1").success);
+  assert.ok(declineProtego(s, "p1").success);
   assert.ok(b.isSilenced);
   assert.ok(playCard(s, "p0", "rent_red_yellow_1", false, "red").success);
   assert.equal(getWaitingOn(s), "p1", "a silenced Harry's shield doesn't protect him");
@@ -282,7 +306,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.ok(playCard(s, "p0", "action_reducto_1").success);
   assert.equal(chooseTarget(s, "p0", "p1", "money_5g_1").success, false, "bank cards are safe");
   assert.ok(chooseTarget(s, "p0", "p1", "prop_green_1").success);
-  assert.ok(declineProtego(s, "p1").success || s.pendingAction === null);
+  assert.ok(declineProtego(s, "p1").success);
   assert.ok(!b.properties.some(c => c.defId === "prop_green_1"), "the property is destroyed");
   assert.ok(b.bank.some(c => c.defId === "money_5g_1"), "the bank is untouched");
   console.log("reducto: ok");
