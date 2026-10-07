@@ -4,7 +4,7 @@ import { GameCard } from "@/components/GameCard";
 import { useGame } from "./context";
 import { usePhone, useTall } from "./useMedia";
 import {
-  CARD_DEF_MAP, COLORS, label, fillOf, rentFor, rentStep, countOf, valueOf, nameOf, groupSets, getEffectiveColor,
+  CARD_DEF_MAP, label, fillOf, rentFor, rentStep, countOf, valueOf, nameOf, groupSets, colorOnTable, joinableColors,
   hasProtego, usefulToPlay, movableWilds,
 } from "./helpers";
 
@@ -38,16 +38,20 @@ function CardMoves({ defId, done }: { defId: string; done: () => void }) {
         </>
       );
     case "wild": {
-      const colors = def.wildColors === "rainbow" ? [...COLORS] : (def.wildColors as PropertyColor[]);
+      const any = def.wildColors === "rainbow";
+      const colors = any ? joinableColors(me) : (def.wildColors as PropertyColor[]);
       return (
         <>
           <strong>{def.name}</strong>
-          <span>{def.wildColors === "rainbow" ? "Pick the colour it joins. You can move it later on your turn." : "Pick a side. You can flip it later on your turn."}</span>
+          <span>{!any ? "Pick a side. You can flip it later on your turn."
+            : colors.length ? "Pick a colour you have for it to join. You can move it later on your turn."
+            : "You have no properties for it to join yet. It can sit on its own with no colour until you do."}</span>
           {colors.map(c => (
             <Swatch key={c} color={c} onClick={() => play(c)}>
               {label(c)}<small className="hp-muted" style={{ fontWeight: 500 }}>&nbsp;{rentStep(me, c).replace(`${label(c)} `, "")}</small>
             </Swatch>
           ))}
+          {any && <button className={`hp-btn ${colors.length ? "ghost" : "gold"}`} onClick={() => play()}>Play it on its own</button>}
         </>
       );
     }
@@ -115,13 +119,13 @@ function FlipMoves({ defId, done }: { defId: string; done: () => void }) {
   const card = me?.properties.find(c => c.defId === defId);
   const def = CARD_DEF_MAP[defId];
   if (!me || !card || !def) return null;
-  const now = getEffectiveColor(card)!;
-  const options = def.wildColors === "rainbow" ? COLORS.filter(c => c !== now) : (def.wildColors as PropertyColor[]).filter(c => c !== now);
+  const now = colorOnTable(card, me.properties);
+  const options = (def.wildColors === "rainbow" ? joinableColors(me) : (def.wildColors as PropertyColor[])).filter(c => c !== now);
   const flip = (c: PropertyColor) => { send("flip_wild", { cardDefId: defId, newColor: c }); done(); };
   return (
     <>
       <strong>{def.name}</strong>
-      <span>Now in {label(now)}. Flipping is free on your turn.</span>
+      <span>{now ? `Now in ${label(now)}.` : "On its own, with no colour."} {options.length ? "Moving it is free on your turn." : "Play a property first, then it can join that colour."}</span>
       {options.map(c => (
         <Swatch key={c} color={c} onClick={() => flip(c)}>
           Move to {label(c)}<small className="hp-muted" style={{ fontWeight: 500 }}>&nbsp;{rentStep(me, c).replace(`${label(c)} `, "")}</small>

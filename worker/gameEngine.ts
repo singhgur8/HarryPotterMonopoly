@@ -8,7 +8,7 @@ import type {
   PropertyColor, RoleType, AnimalProfile, VariationId, CustomRules,
 } from "../shared/schema";
 import { SET_SIZES, RENT_TABLE, PROPERTY_COLORS, freshTurnTimer } from "../shared/schema";
-import { CARD_DEF_MAP, getEffectiveColor, countCompleteSets } from "../shared/cardDefs";
+import { CARD_DEF_MAP, getEffectiveColor, countCompleteSets, colorOnTable, isAnyColourWild } from "../shared/cardDefs";
 import { gameSetup, type GameSetup } from "../shared/variations";
 
 type Result = { success: boolean; error?: string };
@@ -91,7 +91,25 @@ function maxActionsFor(player: PlayerState): number {
 }
 
 function getPropertiesOfColor(player: PlayerState, color: PropertyColor): GameCard[] {
-  return player.properties.filter(card => getEffectiveColor(card) === color);
+  return player.properties.filter(card => colorOnTable(card, player.properties) === color);
+}
+
+/** Colours this player has a card of, which an any-colour wild can join. */
+function ownedColors(player: PlayerState): PropertyColor[] {
+  return PROPERTY_COLORS.filter(c => getPropertiesOfColor(player, c).length > 0);
+}
+
+/**
+ * An any-colour wild left without a card of its colour (that card was stolen,
+ * paid away or flipped elsewhere) goes back to having no colour, so it doesn't
+ * quietly rejoin that colour later. Its owner can move it again on their turn.
+ */
+export function settleWilds(state: GameState) {
+  for (const p of state.players) {
+    for (const card of p.properties) {
+      if (card.assignedColor && isAnyColourWild(card.defId) && !colorOnTable(card, p.properties)) card.assignedColor = undefined;
+    }
+  }
 }
 
 function isSetComplete(player: PlayerState, color: PropertyColor): boolean {
@@ -137,7 +155,7 @@ function drawFromPile(state: GameState): GameCard | null {
 // excluded: he may pay with it, but can't be forced to.
 function payableCards(player: PlayerState): GameCard[] {
   const shield = shieldOf(player);
-  return [...player.bank, ...player.properties.filter(c => !shield || getEffectiveColor(c) !== shield)];
+  return [...player.bank, ...player.properties.filter(c => !shield || colorOnTable(c, player.properties) !== shield)];
 }
 
 // ========== CREATE GAME ==========
@@ -384,16 +402,19 @@ function playWildCard(state: GameState, player: PlayerState, cardDefId: string, 
   const def = CARD_DEF_MAP[cardDefId];
   let color: PropertyColor | undefined;
   if (def.wildColors === "rainbow") {
-    if (!targetColor || !PROPERTY_COLORS.includes(targetColor)) return fail("Choose a colour for the wild card");
+    // It can only join a colour you already have; with no colour picked it sits on its own
+    if (targetColor && !ownedColors(player).includes(targetColor)) {
+      return fail(`You have no ${COLOR_LABEL[targetColor] ?? "such"} cards for the wild to join`);
+    }
     color = targetColor;
   } else if (Array.isArray(def.wildColors)) {
     color = targetColor && def.wildColors.includes(targetColor) ? targetColor : def.wildColors[0];
+    if (!color) return fail("Invalid colour");
   }
-  if (!color) return fail("Invalid colour");
   removeCard(player.hand, cardDefId);
   player.properties.push({ defId: cardDefId, assignedColor: color });
   state.actionsUsed++;
-  log(state, player, `played ${def.name} as ${colorTag(color)}`, def.id);
+  log(state, player, color ? `played ${def.name} as ${colorTag(color)}` : `played ${def.name} on its own, with no colour yet`, def.id);
   checkWinCondition(state, player.visitorId);
   return ok;
 }
@@ -702,7 +723,11 @@ export function flipWild(state: GameState, visitorId: string, cardDefId: string,
     return fail(`This wild can only be ${def.wildColors.map(c => COLOR_LABEL[c]).join(" or ")}`);
   }
   if (card.assignedColor === newColor) return ok;
+  if (def.wildColors === "rainbow" && !ownedColors(player).includes(newColor)) {
+    return fail(`You have no ${COLOR_LABEL[newColor]} cards for the wild to join`);
+  }
   card.assignedColor = newColor;
+  settleWilds(state);
   log(state, player, `moved ${def.name} to ${colorTag(newColor)}`, def.id);
   checkWinCondition(state, visitorId);
   return ok;
@@ -877,8 +902,8 @@ function executeAction(state: GameState, action: PendingAction) {
     case "choose_steal_set": {
       const color = d.color as PropertyColor;
       if (!isSetComplete(target, color) || shieldOf(target) === color) { log(state, attacker, "'s Deal Breaker fizzled"); return; }
-      const stolen = target.properties.filter(c => getEffectiveColor(c) === color);
-      target.properties = target.properties.filter(c => getEffectiveColor(c) !== color);
+      const stolen = getPropertiesOfColor(target, color);
+      target.properties = target.properties.filter(c => !stolen.includes(c));
       attacker.properties.push(...stolen);
       log(state, attacker, `used Deal Breaker to take ${target.animal.name}'s ${colorTag(color)} set`);
       checkWinCondition(state, attacker.visitorId);
@@ -907,7 +932,7 @@ function executeAction(state: GameState, action: PendingAction) {
 function canTakeProperty(attacker: PlayerState, target: PlayerState, cardDefId: string): Result {
   const card = target.properties.find(c => c.defId === cardDefId);
   if (!card) return fail("That property isn't there any more");
-  const color = getEffectiveColor(card);
+  const color = colorOnTable(card, target.properties);
   if (color && shieldOf(target) === color) return fail("That colour is shielded by Harry's charm");
   if (color && isSetComplete(target, color) && !roleActive(attacker, "draco")) {
     return fail("You can't take from a complete set");
@@ -1182,9 +1207,9 @@ function botPayment(state: GameState, player: PlayerState, amount: number): stri
   const shield = shieldOf(player);
   const bank = [...player.bank].sort((a, b) => cardValue(a) - cardValue(b));
   const props = player.properties
-    .filter(c => !shield || getEffectiveColor(c) !== shield)
+    .filter(c => !shield || colorOnTable(c, player.properties) !== shield)
     .sort((a, b) => {
-      const ca = getEffectiveColor(a), cb = getEffectiveColor(b);
+      const ca = colorOnTable(a, player.properties), cb = colorOnTable(b, player.properties);
       const fa = ca && isSetComplete(player, ca) ? 1 : 0, fb = cb && isSetComplete(player, cb) ? 1 : 0;
       return fa - fb || cardValue(a) - cardValue(b);
     });
@@ -1203,6 +1228,14 @@ function botPayment(state: GameState, player: PlayerState, amount: number): stri
 
 function bestColorFor(player: PlayerState, colors: PropertyColor[]): PropertyColor {
   return [...colors].sort((a, b) => getPropertiesOfColor(player, b).length - getPropertiesOfColor(player, a).length)[0];
+}
+
+/** Where a bot plays a wild: its biggest matching set. An any-colour wild with nothing to join sits alone. */
+function botWildColor(player: PlayerState, defId: string): PropertyColor | undefined {
+  const def = CARD_DEF_MAP[defId];
+  if (def.wildColors !== "rainbow") return bestColorFor(player, def.wildColors as PropertyColor[]);
+  const owned = ownedColors(player);
+  return owned.length ? bestColorFor(player, owned) : undefined;
 }
 
 /**
@@ -1275,10 +1308,7 @@ export function botStep(state: GameState): boolean {
     const def = CARD_DEF_MAP[state.freePlayCardId];
     const card = state.freePlayCardId;
     if (def?.type === "property") return playCard(state, id, card).success;
-    if (def?.type === "wild") {
-      const colors = def.wildColors === "rainbow" ? [...PROPERTY_COLORS] : def.wildColors as PropertyColor[];
-      return playCard(state, id, card, false, bestColorFor(bot, colors)).success;
-    }
+    if (def?.type === "wild") return playCard(state, id, card, false, botWildColor(bot, card)).success;
     if (bankCard(state, id, card).success) return true;
     state.freePlayCardId = null;
     return true;
@@ -1288,11 +1318,7 @@ export function botStep(state: GameState): boolean {
     const prop = bot.hand.find(c => CARD_DEF_MAP[c.defId]?.type === "property");
     if (prop) return playCard(state, id, prop.defId).success;
     const wild = bot.hand.find(c => CARD_DEF_MAP[c.defId]?.type === "wild");
-    if (wild) {
-      const def = CARD_DEF_MAP[wild.defId];
-      const colors = def.wildColors === "rainbow" ? [...PROPERTY_COLORS] : def.wildColors as PropertyColor[];
-      return playCard(state, id, wild.defId, false, bestColorFor(bot, colors)).success;
-    }
+    if (wild) return playCard(state, id, wild.defId, false, botWildColor(bot, wild.defId)).success;
     if (bot.isBot && botAttack(state, bot)) return true;
     const money = bot.hand.find(c => CARD_DEF_MAP[c.defId]?.type === "money");
     if (money) return playCard(state, id, money.defId).success;

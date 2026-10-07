@@ -4,7 +4,7 @@ import { useGame } from "./context";
 import { SET_STYLE } from "@shared/schema";
 import {
   groupSets, SET_SIZES, RENT_TABLE, label, fillOf, sumValue, valueOf, nameOf, otherColor, RAINBOW,
-  completeSets, roleInfo, borrowedText, shieldOf, STACK_STEP, type PaySelection,
+  completeSets, roleInfo, borrowedText, shieldOf, STACK_STEP, looseWilds, movableWilds, type PaySelection,
 } from "./helpers";
 import { TimerAvatar } from "./Opponents";
 
@@ -28,6 +28,8 @@ export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
   // Wilds only move on your own turn, and not while you're picking cards to pay
   const canFlip = isMyTurn && s.status === "playing" && !pay.active && !me.isSleeping;
   const sets = groupSets(me.properties);
+  const loose = looseWilds(me.properties);
+  const movable = movableWilds(me);
   const coins = [...me.bank].sort((a, b) => valueOf(b) - valueOf(a));
   const roles = (me.roles ?? []).map(r => roleInfo(r)!).filter(Boolean);
   const shield = shieldOf(me);
@@ -64,7 +66,7 @@ export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
                         </div>
                       );
                     }
-                    if (!other || !canFlip) return <div key={c.defId} style={style}>{card}</div>;
+                    if (!other || !canFlip || !movable.includes(c)) return <div key={c.defId} style={style}>{card}</div>;
                     const sel = flipId === c.defId;
                     return (
                       <div
@@ -101,8 +103,47 @@ export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
               </div>
             );
           })}
+          {loose.length > 0 && (
+            <div className="hp-set">
+              <div className="hp-set-head"><span className="hp-dot" style={{ background: RAINBOW }} />No colour yet</div>
+              <div className="rent">No rent</div>
+              <div className="worth">{movable.some(c => loose.includes(c)) ? "Tap to add it to a set" : "Joins a colour once you have one"}</div>
+              <div className="hp-stack" style={{ height: 134 + (loose.length - 1) * STACK_STEP }}>
+                {loose.map((c, i) => {
+                  const style: CSSProperties = { top: i * STACK_STEP, zIndex: i + 1 };
+                  const card = <GameCard defId={c.defId} size="md" label={`${nameOf(c.defId)}, no colour yet, worth ${valueOf(c)}M`} />;
+                  if (pay.active) {
+                    const on = pay.picked.includes(c.defId);
+                    return (
+                      <div key={c.defId} style={style} className={`tap ${on ? "picked" : ""}`} {...tappable(on, `Pay with ${nameOf(c.defId)}, ${valueOf(c)}M`, () => pay.toggle(c.defId))}>
+                        {card}
+                        {on && <span className="hp-paytag" aria-hidden="true">✓</span>}
+                      </div>
+                    );
+                  }
+                  if (!canFlip || !movable.includes(c)) return <div key={c.defId} style={style}>{card}</div>;
+                  const sel = flipId === c.defId;
+                  return (
+                    <div key={c.defId} style={style} className={`tap ${sel ? "sel" : ""}`} {...tappable(sel, `${nameOf(c.defId)}, no colour yet. Add it to a set`, () => onFlip(sel ? null : c.defId))}>
+                      {card}
+                      <button
+                        type="button"
+                        className="hp-fliptag"
+                        style={{ background: RAINBOW }}
+                        aria-label={`Add ${nameOf(c.defId)} to a set`}
+                        onClick={e => { e.stopPropagation(); onFlip(c.defId); }}
+                        onKeyDown={e => e.stopPropagation()}
+                      >
+                        ⇄ join
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <div className="hp-set">
-            <div className="hp-set-head hp-muted">{sets.length ? "New set" : "No sets yet"}</div>
+            <div className="hp-set-head hp-muted">{sets.length || loose.length ? "New set" : "No sets yet"}</div>
             <div className="hp-empty-set">Play a property to start a set</div>
           </div>
         </div>

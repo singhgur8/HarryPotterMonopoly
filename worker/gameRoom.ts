@@ -14,7 +14,7 @@ import {
   flipWild, payWithCards, playProtego, declineProtego, chooseTarget,
   harryProtectColor, cedricChooseSource, luchaChoose, timeTurnerChoose, paySilencio,
   discardCards, sanitizeStateForPlayer, putToSleep, wakeUp, botStep, getWaitingOn, autoDraw,
-  cancelChoice, forfeit, sleepForDisconnect,
+  cancelChoice, forfeit, sleepForDisconnect, settleWilds,
 } from "./gameEngine";
 import { parseMessage, MessageRateLimiter, MAX_SOCKETS_PER_ROOM, MAX_SOCKETS_PER_VISITOR } from "./security";
 
@@ -135,6 +135,8 @@ function gameViewFor(room: Room, visitorId: string, spectators = spectatorsOf(ro
 
 function broadcastGameState(room: Room) {
   if (!room.gameState) return;
+  // Any-colour wilds that lost their set's last real card go back to no colour
+  settleWilds(room.gameState);
   const spectators = spectatorsOf(room);
   for (const { ws, visitorId } of room.sockets()) {
     send(ws, JSON.stringify({ type: "game_state", payload: gameViewFor(room, visitorId, spectators) }));

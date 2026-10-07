@@ -7,7 +7,7 @@ import { useGame } from "./context";
 import { CardInfo, DiscardLink, DiscardPile } from "./DiscardPile";
 import {
   CARD_DEF_MAP, COLORS, label, fillOf, valueOf, sumValue, nameOf, groupSets, canTake, isComplete, shieldOf, roleName, roleNames,
-  payableCards, playerName, waitingText, isPayment, hasProtego, drawCount, tileFill, getEffectiveColor, cardBlurb, outOfMoves,
+  payableCards, playerName, waitingText, isPayment, hasProtego, drawCount, tileFill, colorOnTable, looseWilds, cardBlurb, outOfMoves,
   type PaySelection,
 } from "./helpers";
 
@@ -17,7 +17,8 @@ function cheapestPick(p: PlayerState, amount: number): string[] {
   const payable = payableCards(p).filter(c => valueOf(c) > 0);
   const bank = payable.filter(c => p.bank.includes(c)).sort((a, b) => valueOf(a) - valueOf(b));
   const props = payable.filter(c => !p.bank.includes(c)).sort((a, b) => {
-    const fa = isComplete(p, getEffectiveColor(a)!) ? 1 : 0, fb = isComplete(p, getEffectiveColor(b)!) ? 1 : 0;
+    const ca = colorOnTable(a, p.properties), cb = colorOnTable(b, p.properties);
+    const fa = ca && isComplete(p, ca) ? 1 : 0, fb = cb && isComplete(p, cb) ? 1 : 0;
     return fa - fb || valueOf(a) - valueOf(b);
   });
   const out: string[] = [];
@@ -66,7 +67,7 @@ function PaymentPicker({ pay, amount, title, payLabel, onPay, onProtego, onCance
       <div className="head"><p>{title}</p></div>
       <div className="hp-row"><span className="hp-label lab">Bank</span>{me.bank.length ? [...me.bank].sort((a, b) => valueOf(a) - valueOf(b)).map(c => chip(c)) : <span className="hp-muted">Empty</span>}</div>
       <div className="hp-row"><span className="hp-label lab">Property</span>
-        {me.properties.length ? groupSets(me.properties).flatMap(g => g.cards.map(c => chip(c, g.color))) : <span className="hp-muted">None</span>}
+        {me.properties.length ? [...groupSets(me.properties).flatMap(g => g.cards.map(c => chip(c, g.color))), ...looseWilds(me.properties).map(c => chip(c))] : <span className="hp-muted">None</span>}
       </div>
       <div className="hp-row">
         <b style={{ fontVariantNumeric: "tabular-nums" }}>Selected {total}M of {amount}M</b>
@@ -131,7 +132,7 @@ function TargetPicker() {
 
   const cardButton = (o: PlayerState, c: Card, enabled: boolean, onClick: () => void) => (
     <button key={c.defId} className="hp-cardpick" aria-disabled={!enabled} disabled={!enabled} onClick={onClick} title={`${nameOf(c.defId)}, worth ${valueOf(c)}M`}>
-      <GameCard defId={c.defId} size="sm" color={getEffectiveColor(c)} />
+      <GameCard defId={c.defId} size="sm" color={colorOnTable(c, o.properties)} />
     </button>
   );
 

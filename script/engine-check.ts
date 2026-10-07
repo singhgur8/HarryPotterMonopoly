@@ -8,7 +8,7 @@ import {
   createInitialGameState, botStep, payWithCards, playProtego, declineProtego,
   chooseTarget, playCard, drawCards, paySilencio, getWaitingOn, flipWild,
   harryProtectColor, endTurn, luchaChoose, roleActive, timeTurnerChoose, bankCard, cancelChoice, cedricChooseSource, wakeUp, forfeit, autoDraw,
-  sleepForDisconnect,
+  sleepForDisconnect, settleWilds,
 } from "../worker/gameEngine";
 import { ANIMALS, SET_SIZES, DRAW_SECONDS, inDrawStep, freshTurnTimer } from "../shared/schema";
 import type { GameState, PlayerState, RoleType } from "../shared/schema";
@@ -612,6 +612,42 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.ok(wakeUp(s, "p1").success);
   assert.ok(!p1.isSleeping);
   console.log("disconnect takeover: ok");
+}
+
+// ---------- Any-colour wild: joins only a colour you have, alone it has no colour ----------
+{
+  const s = setup();
+  const [a, b] = s.players;
+  a.roles = ["luna"]; b.roles = ["luna"];
+  give(s, a, "hand", "wild_rainbow_1");
+  give(s, a, "hand", "rent_rainbow_1");
+  assert.equal(playCard(s, "p0", "wild_rainbow_1", false, "green").success, false, "can't join a colour you don't have");
+  assert.ok(playCard(s, "p0", "wild_rainbow_1").success, "it can sit on its own");
+  assert.equal(a.properties[0].assignedColor, undefined);
+  assert.equal(playCard(s, "p0", "rent_rainbow_1", false, "green").success, false, "no rent from a lone wild");
+  assert.equal(flipWild(s, "p0", "wild_rainbow_1", "green").success, false, "still no green to join");
+  give(s, a, "properties", "prop_green_1");
+  assert.ok(flipWild(s, "p0", "wild_rainbow_1", "green").success, "joins once green is there");
+  assert.ok(playCard(s, "p0", "rent_rainbow_1", false, "green").success);
+  assert.equal(s.pendingAction?.amount, 4, "green rent counts the wild once it has a real green");
+  // A rainbow set with no real card of its colour isn't a set
+  const t = setup();
+  const [c] = t.players;
+  give(t, c, "properties", "wild_rainbow_1", "brown");
+  give(t, c, "properties", "wild_rainbow_2", "brown");
+  assert.equal(countCompleteSets(c.properties, SET_SIZES), 0, "two wilds alone don't make brown");
+  // Losing the real card sends the wild back to no colour
+  give(t, c, "properties", "prop_brown_1");
+  assert.equal(countCompleteSets(c.properties, SET_SIZES), 1);
+  t.drawPile.push(take(t, "prop_brown_1"));
+  settleWilds(t);
+  assert.ok(c.properties.every(x => x.assignedColor === undefined));
+  // Two-colour wilds still count on their own
+  give(t, c, "properties", "wild_lb_brown_1", "brown");
+  assert.equal(countCompleteSets(c.properties, SET_SIZES), 0);
+  assert.ok(flipWild(t, "p0", "wild_rainbow_1", "brown").success, "a two-colour wild is a card of that colour");
+  assert.equal(countCompleteSets(c.properties, SET_SIZES), 1);
+  console.log("any-colour wild: ok");
 }
 
 console.log("all engine checks passed");

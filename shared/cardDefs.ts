@@ -91,8 +91,8 @@ const propertyCards: CardDef[] = [
 // ========== WILD CARDS (11) ==========
 const wildCards: CardDef[] = [
   // 2x any-colour Property Wild Card
-  { id: "wild_rainbow_1", type: "wild", name: "Property Wild Card", shortName: "Any colour", text: "Counts as any colour. You can move it between sets on your turn.", value: 0, wildColors: "rainbow" },
-  { id: "wild_rainbow_2", type: "wild", name: "Property Wild Card", shortName: "Any colour", text: "Counts as any colour. You can move it between sets on your turn.", value: 0, wildColors: "rainbow" },
+  { id: "wild_rainbow_1", type: "wild", name: "Property Wild Card", shortName: "Any colour", text: "Joins a colour you already have. On its own it has no colour and earns no rent. Move it between your sets on your turn.", value: 0, wildColors: "rainbow" },
+  { id: "wild_rainbow_2", type: "wild", name: "Property Wild Card", shortName: "Any colour", text: "Joins a colour you already have. On its own it has no colour and earns no rent. Move it between your sets on your turn.", value: 0, wildColors: "rainbow" },
   // Light Blue / Brown
   { id: "wild_lb_brown_1", type: "wild", name: "Property Wild Card (Light Blue / Brown)", value: 1, wildColors: ["light_blue", "brown"] },
   // Light Blue / Railroad
@@ -361,6 +361,24 @@ export function getEffectiveColor(card: { defId: string; assignedColor?: Propert
   return undefined;
 }
 
+/** The any-colour Property Wild Card. */
+export const isAnyColourWild = (defId: string) => CARD_DEF_MAP[defId]?.wildColors === "rainbow";
+
+/**
+ * The colour a card on someone's table counts as. The any-colour wild only
+ * counts towards a colour while that set also holds a card of its own colour
+ * (a property or a two-colour wild). On its own it sits there with no colour:
+ * it doesn't make a set and can't be charged rent for.
+ */
+export function colorOnTable(
+  card: { defId: string; assignedColor?: PropertyColor },
+  properties: { defId: string; assignedColor?: PropertyColor }[],
+): PropertyColor | undefined {
+  const color = getEffectiveColor(card);
+  if (!color || !isAnyColourWild(card.defId)) return color;
+  return properties.some(o => !isAnyColourWild(o.defId) && getEffectiveColor(o) === color) ? color : undefined;
+}
+
 // Count complete sets for a player's properties
 export function countCompleteSets(
   properties: { defId: string; assignedColor?: PropertyColor }[],
@@ -368,7 +386,7 @@ export function countCompleteSets(
 ): number {
   const colorCounts: Partial<Record<PropertyColor, number>> = {};
   for (const card of properties) {
-    const color = getEffectiveColor(card);
+    const color = colorOnTable(card, properties);
     if (color) {
       colorCounts[color] = (colorCounts[color] || 0) + 1;
     }

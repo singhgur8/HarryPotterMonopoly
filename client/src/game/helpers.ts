@@ -1,6 +1,6 @@
 import type { GameCard, GameState, PlayerState, PropertyColor, PendingAction, RoleType } from "@shared/schema";
 import { SET_SIZES, RENT_TABLE, SET_STYLE, PROPERTY_COLORS } from "@shared/schema";
-import { CARD_DEF_MAP, getEffectiveColor, roleDef } from "@shared/cardDefs";
+import { CARD_DEF_MAP, getEffectiveColor, colorOnTable, isAnyColourWild, roleDef } from "@shared/cardDefs";
 
 export const COLORS = PROPERTY_COLORS as readonly PropertyColor[];
 export const label = (c: PropertyColor) => SET_STYLE[c].label;
@@ -25,13 +25,19 @@ export const roleNames = (p: PlayerState, short = false) =>
 export function groupSets(properties: GameCard[]): { color: PropertyColor; cards: GameCard[] }[] {
   const out: { color: PropertyColor; cards: GameCard[] }[] = [];
   for (const color of COLORS) {
-    const cards = properties.filter(c => getEffectiveColor(c) === color);
+    const cards = properties.filter(c => colorOnTable(c, properties) === color);
     if (cards.length) out.push({ color, cards });
   }
   return out;
 }
 
-export const countOf = (p: PlayerState, c: PropertyColor) => p.properties.filter(x => getEffectiveColor(x) === c).length;
+/** Any-colour wilds sitting on their own: no colour, no set, no rent. */
+export const looseWilds = (properties: GameCard[]) => properties.filter(c => !colorOnTable(c, properties));
+
+/** Colours an any-colour wild can join: ones the player already has a card of. */
+export const joinableColors = (p: PlayerState) => groupSets(p.properties).map(g => g.color);
+
+export const countOf = (p: PlayerState, c: PropertyColor) => p.properties.filter(x => colorOnTable(x, p.properties) === c).length;
 export const isComplete = (p: PlayerState, c: PropertyColor) => countOf(p, c) >= SET_SIZES[c];
 export const completeSets = (p: PlayerState) => COLORS.filter(c => isComplete(p, c)).length;
 
@@ -63,8 +69,8 @@ export const shieldOf = (p: PlayerState) => (roleActive(p, "harry") ? p.protecte
 
 /** Mirrors the server's rule for Accio, Confundus and Reducto. */
 export function canTake(attacker: PlayerState, target: PlayerState, card: GameCard): boolean {
-  const c = getEffectiveColor(card);
-  if (!c) return false;
+  const c = colorOnTable(card, target.properties);
+  if (!c) return true; // a wild on its own is in no set, so nothing protects it
   if (shieldOf(target) === c) return false;
   if (isComplete(target, c) && !roleActive(attacker, "draco")) return false;
   return true;
@@ -90,7 +96,7 @@ export function tileFill(card: GameCard, color: PropertyColor, stripe = 4): stri
 /** Cards a player is required to pay with (Harry's shielded colour is optional). */
 export function payableCards(p: PlayerState): GameCard[] {
   const shield = shieldOf(p);
-  return [...p.bank, ...p.properties.filter(c => !shield || getEffectiveColor(c) !== shield)];
+  return [...p.bank, ...p.properties.filter(c => !shield || colorOnTable(c, p.properties) !== shield)];
 }
 
 export const playerName = (s: GameState, id?: string | null) => s.players.find(p => p.visitorId === id)?.animal.name ?? "Someone";
@@ -129,7 +135,7 @@ export function drawCount(p: PlayerState) {
   return roleActive(p, "luna") ? 3 : 2;
 }
 
-export { SET_SIZES, RENT_TABLE, CARD_DEF_MAP, getEffectiveColor };
+export { SET_SIZES, RENT_TABLE, CARD_DEF_MAP, getEffectiveColor, colorOnTable, isAnyColourWild };
 
 /** How far each card in a played set sits below the one before it. */
 export const STACK_STEP = 30;
@@ -142,7 +148,7 @@ export function cardBlurb(defId: string): string {
   switch (def.type) {
     case "money": return `Money. Bank it for ${def.value}M.`;
     case "property": return `${label(def.color!)} property. ${SET_SIZES[def.color!]} make a full set.`;
-    case "wild": return def.wildColors === "rainbow" ? "Wild property. Joins any colour." : `Wild property. Counts as ${both(def.wildColors as PropertyColor[])}.`;
+    case "wild": return def.wildColors === "rainbow" ? "Wild property. Joins a colour you already have. Alone it has no colour and earns no rent." : `Wild property. Counts as ${both(def.wildColors as PropertyColor[])}.`;
     case "rent": return def.rentColors === "rainbow" ? "Rent. Charge everyone for any one of your sets." : `Rent. Charge everyone for ${both(def.rentColors as PropertyColor[])}.`;
     default: return def.text ?? "";
   }
@@ -181,7 +187,13 @@ export function usefulToPlay(s: GameState, me: PlayerState, defId: string): bool
 }
 
 /** Wilds on your table that could still be moved to another colour (free, on your turn). */
-export const movableWilds = (me: PlayerState) => me.properties.filter(c => CARD_DEF_MAP[c.defId]?.type === "wild");
+export const movableWilds = (me: PlayerState) => me.properties.filter(c => {
+  if (CARD_DEF_MAP[c.defId]?.type !== "wild") return false;
+  if (!isAnyColourWild(c.defId)) return true;
+  // The any-colour wild needs another colour it could join
+  const now = colorOnTable(c, me.properties);
+  return joinableColors(me).some(col => col !== now);
+});
 
 /**
  * Nothing left to do this turn: no actions (or no cards) left and no wilds to move.
