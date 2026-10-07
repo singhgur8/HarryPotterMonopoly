@@ -3,10 +3,9 @@ import { GameCard } from "@/components/GameCard";
 import { useGame } from "./context";
 import {
   groupSets, SET_SIZES, RENT_TABLE, label, fillOf, sumValue, valueOf, nameOf, otherColor, RAINBOW,
-  completeSets, roleInfo, shieldOf, type PaySelection,
+  completeSets, roleInfo, shieldOf, STACK_STEP, type PaySelection,
 } from "./helpers";
-
-const STACK_STEP = 30;
+import { TimerAvatar } from "./Opponents";
 
 /** Keyboard and pointer props for a card you can tap. */
 function tappable(pressed: boolean, label: string, onTap: () => void) {
@@ -16,7 +15,8 @@ function tappable(pressed: boolean, label: string, onTap: () => void) {
   } as const;
 }
 
-export function MyArea({ flipId, onFlip, onPaySilencio, pay }: {
+export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
+  full: boolean;
   flipId: string | null;
   onFlip: (defId: string | null) => void;
   onPaySilencio: () => void;
@@ -31,7 +31,7 @@ export function MyArea({ flipId, onFlip, onPaySilencio, pay }: {
   const role = roleInfo(me.role);
   const shield = shieldOf(me);
 
-  return (
+  const area = (
     <div className={`hp-mine ${pay.active ? "paying" : ""}`}>
       <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
         <div className="hp-label">My sets · {completeSets(me)} of 3 complete{pay.active && <span className="hp-chip solid" style={{ marginLeft: 8 }}>Tap cards to pay with them</span>}</div>
@@ -126,5 +126,20 @@ export function MyArea({ flipId, onFlip, onPaySilencio, pay }: {
         )}
       </div>
     </div>
+  );
+  if (!full) return area;
+  // Full view: my cards get the same bordered row as everyone else's
+  const waited = s.waitingOn === me.visitorId && !isMyTurn;
+  return (
+    <section className={`hp-zone me ${isMyTurn ? "turn" : waited ? "waited" : ""}`} aria-label={`Your table${isMyTurn ? ", your turn" : ""}`} data-testid="my-row">
+      <div className="hp-zone-head">
+        <TimerAvatar p={me} />
+        <span className="nm">{me.animal.name} (you)</span>
+        {isMyTurn && <span className="hp-chip solid">Your turn</span>}
+        {waited && <span className="hp-chip gold">Your move</span>}
+        {me.isSleeping && <span className="hp-chip zz">💤 Bot playing</span>}
+      </div>
+      {area}
+    </section>
   );
 }
