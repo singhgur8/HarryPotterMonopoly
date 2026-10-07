@@ -300,7 +300,7 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
         pay={pay}
         amount={10}
         mustCover
-        title={<><b>End the Power Outage.</b> Pay 10M from your bank or properties. The cards are discarded and your role power comes back.</>}
+        title={<><b>End the Power Outage.</b> Pay 10M from your bank or properties. The cards are discarded, your role power comes back, and it doesn't use up a play.</>}
         payLabel={n => `Pay ${n}M`}
         onPay={ids => { send("pay_silencio", { cardDefIds: ids }); setSilencioOpen(false); }}
         onCancel={() => setSilencioOpen(false)}

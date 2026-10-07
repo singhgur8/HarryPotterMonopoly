@@ -199,9 +199,17 @@ export const movableWilds = (me: PlayerState) => me.properties.filter(c => {
  * Nothing left to do this turn: no actions (or no cards) left and no wilds to move.
  * Only then is it safe to end the turn for the player.
  */
+/** A powered-out player can pay 10M to end it, but only on their own turn after drawing. */
+export function canEndOutage(s: GameState, me: PlayerState): boolean {
+  return me.isSilenced && s.status === "playing" && s.players[s.currentTurnIndex]?.visitorId === me.visitorId &&
+    s.drawnThisTurn && !s.pendingAction;
+}
+
 export function outOfMoves(s: GameState, me: PlayerState): boolean {
   if (s.status !== "playing" || s.players[s.currentTurnIndex]?.visitorId !== me.visitorId) return false;
   if (!s.drawnThisTurn || s.pendingAction || s.freePlayCardId || me.isSleeping) return false;
   const noPlays = s.actionsUsed >= s.maxActions || me.hand.length === 0;
-  return noPlays && movableWilds(me).length === 0;
+  // Paying off a Power Outage is still a choice, so it keeps the turn open
+  const canPayOutage = canEndOutage(s, me) && sumValue([...me.bank, ...me.properties]) >= 10;
+  return noPlays && movableWilds(me).length === 0 && !canPayOutage;
 }

@@ -4,7 +4,7 @@ import { useGame } from "./context";
 import { SET_STYLE } from "@shared/schema";
 import {
   groupSets, SET_SIZES, RENT_TABLE, label, fillOf, sumValue, valueOf, nameOf, otherColor, RAINBOW,
-  completeSets, roleInfo, borrowedText, shieldOf, STACK_STEP, looseWilds, movableWilds, type PaySelection,
+  completeSets, roleInfo, borrowedText, canEndOutage, shieldOf, STACK_STEP, looseWilds, movableWilds, type PaySelection,
 } from "./helpers";
 import { TimerAvatar } from "./Opponents";
 
@@ -170,7 +170,9 @@ export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
             {me.isSilenced && (
               <>
                 <span className="hp-chip late" style={{ justifySelf: "start" }}>Power Outage · power off</span>
-                <button className="hp-btn ghost" onClick={onPaySilencio} disabled={s.status !== "playing"}>Pay 10M to end the Power Outage</button>
+                {canEndOutage(s, me)
+                  ? <button className="hp-btn ghost" onClick={onPaySilencio}>Pay 10M to end the Power Outage</button>
+                  : <span className="hp-muted" style={{ fontSize: 12.5 }}>{isMyTurn && !s.drawnThisTurn ? "Draw first, then you can pay 10M to end it." : "You can pay 10M to end it on your turn, after you draw."}</span>}
               </>
             )}
           </div>
