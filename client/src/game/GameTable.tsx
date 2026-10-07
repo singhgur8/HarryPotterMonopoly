@@ -7,7 +7,7 @@ import { Opponents } from "./Opponents";
 import { ActionPanel } from "./ActionPanel";
 import { MyArea } from "./MyArea";
 import { HandDock } from "./HandDock";
-import { usePhone } from "./useMedia";
+import { usePhone, useTableView } from "./useMedia";
 import { isPayment } from "./helpers";
 import { useGameSounds } from "./sounds";
 import { HomeButton } from "./Brand";
@@ -114,6 +114,9 @@ function ChatBody({ chat }: { chat: Entry[] }) {
 export function GameTable() {
   const { s, me, connected, isMyTurn } = useGame();
   const mobile = usePhone();
+  const [view, setView] = useTableView();
+  // Full view needs the room of a desktop screen; phones always get the compact table
+  const full = !mobile && view === "full";
   const entries = useEntries();
   const { muted, toggleMute } = useGameSounds();
 
@@ -205,6 +208,10 @@ export function GameTable() {
             👀 {watchers} watching
           </span>
         )}
+        <div className="hp-tabs hp-desk-only" role="group" aria-label="Table view">
+          <button aria-pressed={view === "compact"} onClick={() => setView("compact")} title="Opponents as small summaries" data-testid="button-view-compact">Compact</button>
+          <button aria-pressed={view === "full"} onClick={() => setView("full")} title="Everyone's cards laid out in their own row" data-testid="button-view-full">Full view</button>
+        </div>
         {me && s.status === "playing" && <ForfeitButton />}
         <button className="hp-btn ghost" style={{ padding: "2px 10px" }} onClick={toggleMute} aria-pressed={muted} aria-label={muted ? "Turn sounds on" : "Mute sounds"} title={muted ? "Sounds off" : "Sounds on"}>
           {muted ? "🔇" : "🔊"}
@@ -222,9 +229,9 @@ export function GameTable() {
       <div className="hp-main">
         <div className="hp-table">
           <div className="hp-scroll">
-            <Opponents />
+            <Opponents full={full} />
             <ActionPanel discardPicked={picked} silencioOpen={silencioOpen} setSilencioOpen={setSilencioOpen} pay={pay} />
-            <MyArea flipId={flipId} onFlip={id => { setSel(null); setFlipId(id); }} onPaySilencio={() => setSilencioOpen(true)} pay={pay} />
+            <MyArea full={full} flipId={flipId} onFlip={id => { setSel(null); setFlipId(id); }} onPaySilencio={() => setSilencioOpen(true)} pay={pay} />
           </div>
           <HandDock sel={sel} setSel={setSel} flipId={flipId} setFlip={setFlipId} discard={{ active: discardActive, picked, toggle: togglePick }} />
           {!me && (
