@@ -131,10 +131,6 @@ function totalValue(cards: GameCard[]): number {
   return cards.reduce((sum, c) => sum + cardValue(c), 0);
 }
 
-function hasProtego(player: PlayerState | undefined): boolean {
-  return !!player && player.hand.some(c => CARD_DEF_MAP[c.defId]?.actionType === "protego");
-}
-
 function removeCard(arr: GameCard[], defId: string): GameCard | undefined {
   const idx = arr.findIndex(c => c.defId === defId);
   if (idx === -1) return undefined;
@@ -783,20 +779,23 @@ export function payWithCards(state: GameState, visitorId: string, cardDefIds: st
 // An attack waits in a "protego_response" while the defender (and then the
 // attacker, and so on) may cancel it. An even number of Protegos means the
 // original action happens; an odd number cancels it.
+// The side being asked is always asked, even with no Just Say No in hand, so
+// nobody can tell from the game skipping the question who holds one. They can
+// always allow it; only someone holding a Just Say No can block.
+
+function askProtego(state: GameState, original: PendingAction, responderId: string, blocks: number) {
+  state.pendingAction = {
+    type: "protego_response",
+    sourcePlayerId: original.sourcePlayerId,
+    targetPlayerId: responderId,
+    cardDefId: original.cardDefId,
+    data: { originalAction: original, blocks },
+  };
+}
 
 function offerProtego(state: GameState, original: PendingAction) {
-  const defender = getPlayer(state, original.targetPlayerId);
-  if (hasProtego(defender)) {
-    state.pendingAction = {
-      type: "protego_response",
-      sourcePlayerId: original.sourcePlayerId,
-      targetPlayerId: original.targetPlayerId,
-      cardDefId: original.cardDefId,
-      data: { originalAction: original, blocks: 0 },
-    };
-  } else {
-    executeAction(state, original);
-  }
+  if (getPlayer(state, original.targetPlayerId)) askProtego(state, original, original.targetPlayerId, 0);
+  else executeAction(state, original);
 }
 
 export function playProtego(state: GameState, visitorId: string): Result {
@@ -825,17 +824,8 @@ export function playProtego(state: GameState, visitorId: string): Result {
 
   // The other side may answer with their own Protego
   const nextResponder = blocks % 2 === 1 ? original.sourcePlayerId : original.targetPlayerId;
-  if (hasProtego(getPlayer(state, nextResponder))) {
-    state.pendingAction = {
-      type: "protego_response",
-      sourcePlayerId: original.sourcePlayerId,
-      targetPlayerId: nextResponder,
-      cardDefId: original.cardDefId,
-      data: { originalAction: original, blocks },
-    };
-    return ok;
-  }
-  resolveProtego(state, original, blocks);
+  if (getPlayer(state, nextResponder)) askProtego(state, original, nextResponder, blocks);
+  else resolveProtego(state, original, blocks);
   return ok;
 }
 
