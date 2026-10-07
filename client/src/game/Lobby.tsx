@@ -1,7 +1,7 @@
 import { useRoom } from "./context";
 import { roleInfo } from "./helpers";
 import { VARIATIONS, VARIATION_IDS, variationOf, DEFAULT_CUSTOM_RULES } from "@shared/variations";
-import type { CustomRules } from "@shared/schema";
+import { ANIMALS, type CustomRules } from "@shared/schema";
 import { CustomSetup, PickRoles } from "./CustomSetup";
 import { Crest, HomeButton } from "./Brand";
 
@@ -51,6 +51,8 @@ export function Lobby() {
     : notReady.length
       ? `Waiting on ${notReady.map(s => s.animal.name).join(" and ")} to get ready`
       : "Everyone is ready";
+
+  const taken = new Set<string>(gameState.takenAnimals ?? []);
 
   const copyLink = () => {
     navigator.clipboard?.writeText(window.location.href).catch(() => {});
@@ -111,6 +113,23 @@ export function Lobby() {
                     <button className="hp-linkbtn" style={{ fontSize: 12 }} onClick={() => send("remove_bot", { visitorId: s.visitorId })}>Remove</button>
                   )}
                 </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gap: 8 }}>
+          <div className="hp-label">Your character · tap to change</div>
+          <div className="hp-chars">
+            {ANIMALS.map(a => {
+              const mine = myAnimal?.name === a.name;
+              const isTaken = !mine && taken.has(a.name);
+              return (
+                <button key={a.name} className="hp-char" aria-pressed={mine} disabled={isTaken} onClick={() => !mine && send("pick_animal", { name: a.name })} data-testid={`character-${a.name}`}>
+                  <span className="big">{a.emoji}</span>
+                  <b>{a.name}</b>
+                  {isTaken && <span className="hp-muted" style={{ fontSize: 11 }}>Taken</span>}
+                </button>
               );
             })}
           </div>

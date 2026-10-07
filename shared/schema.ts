@@ -260,6 +260,7 @@ export type WSMessageType =
   | "set_variation"
   | "set_custom_rules"
   | "pick_roles"
+  | "pick_animal"
   | "start_game"
   | "add_bot"
   | "remove_bot"

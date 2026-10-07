@@ -59,7 +59,6 @@ interface Room {
   custom: CustomRules; // the host's settings for a Custom game
   clients: Map<string, RoomClient>;
   gameState: GameState | null;
-  usedAnimals: number[];
   timerSetAt: number; // when gameState.turnTimer was last brought up to date
   lastActivity: number;
   // Not persisted: how to reach the room's open sockets.
@@ -86,15 +85,18 @@ function withRoleLists(state: GameState): GameState {
   return state;
 }
 
+/** Characters someone in the room already has, optionally ignoring one visitor. */
+function takenAnimals(room: Room, except?: string): Set<string> {
+  return new Set([...room.clients.values()].filter(c => c.visitorId !== except).map(c => c.animal.name));
+}
+
+/** A character nobody in the room has yet, for newcomers and bots. */
 function getRandomAnimal(room: Room): AnimalProfile {
-  const available = ANIMALS.map((_, i) => i).filter(i => !room.usedAnimals.includes(i));
-  if (available.length === 0) {
-    // All used, just pick random
-    return ANIMALS[Math.floor(Math.random() * ANIMALS.length)];
-  }
-  const idx = available[Math.floor(Math.random() * available.length)];
-  room.usedAnimals.push(idx);
-  return ANIMALS[idx];
+  const taken = takenAnimals(room);
+  const available = ANIMALS.filter(a => !taken.has(a.name));
+  // More people than characters (spectators included): repeats are allowed
+  const pool = available.length ? available : ANIMALS;
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 function send(ws: WebSocket, data: string) {
@@ -170,6 +172,7 @@ function getLobbyState(room: Room): any {
     custom: room.custom,
     seats,
     spectators,
+    takenAnimals: [...takenAnimals(room)],
     status: room.gameState ? "playing" : "lobby",
   };
 }
@@ -303,6 +306,19 @@ function handlePickRoles(room: Room, client: RoomClient, payload: any) {
   const roles = payload?.roles;
   if (!Array.isArray(roles)) return sendError(room, client, "Invalid roles");
   client.pickedRoles = room.custom.roles.filter(r => roles.includes(r));
+  broadcastLobbyState(room);
+}
+
+/** Choose your own character in the lobby; nobody else in the room may have it. */
+function handlePickAnimal(room: Room, client: RoomClient, payload: any) {
+  if (room.gameState) return sendError(room, client, "Game in progress");
+  const animal = ANIMALS.find(a => a.name === payload?.name);
+  if (!animal) return sendError(room, client, "Unknown character");
+  if (takenAnimals(room, client.visitorId).has(animal.name)) {
+    return sendError(room, client, `${animal.name} is already taken`);
+  }
+  client.animal = animal;
+  sendToClient(room, client, { type: "player_joined", payload: { visitorId: client.visitorId, animal } });
   broadcastLobbyState(room);
 }
 
@@ -620,6 +636,7 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
     case "set_variation": return handleSetVariation(room, client, payload);
     case "set_custom_rules": return handleSetCustomRules(room, client, payload);
     case "pick_roles": return handlePickRoles(room, client, payload);
+    case "pick_animal": return handlePickAnimal(room, client, payload);
     case "start_game": return handleStartGame(room, client);
     case "add_bot": return handleAddBot(room, client);
     case "remove_bot": return handleRemoveBot(room, client, payload);
@@ -711,7 +728,6 @@ export class GameRoom extends DurableObject<Env> {
       custom: DEFAULT_CUSTOM_RULES,
       clients: [],
       gameState: null,
-      usedAnimals: [],
       lastWaitingOn: null,
       lastDrawStep: false,
       botDueAt: null,
