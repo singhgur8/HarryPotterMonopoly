@@ -12,7 +12,7 @@ import {
   sleepForDisconnect, settleWilds, playChargeback, playReverse, tharkiShortcutColor, kanjarChooseFriend, calculateRent,
   vegasGamble, guessCard, guessKindOf,
 } from "../worker/gameEngine";
-import { ANIMALS, SET_SIZES, DRAW_SECONDS, inDrawStep, freshTurnTimer } from "../shared/schema";
+import { ANIMALS, SET_SIZES, DRAW_SECONDS, inDrawStep, freshTurnTimer, PLAYS_USED_UP_SECONDS } from "../shared/schema";
 import type { GameState, PlayerState, RoleType } from "../shared/schema";
 import { CARD_DEF_MAP, countCompleteSets, roleDef } from "../shared/cardDefs";
 import { VARIATIONS, ACTION_CHOICES, DEFAULT_CUSTOM_RULES, ALL_ROLES, updateCustomRules, customFrom, customDeck, gameSetup } from "../shared/variations";
@@ -798,6 +798,10 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.equal(p0.hand.length, before + 2);
   assert.ok(!inDrawStep(s));
   assert.equal(freshTurnTimer(s), 60);
+  // Once the plays are used up the clock drops to 20s
+  s.actionsUsed = s.maxActions;
+  assert.equal(freshTurnTimer(s), PLAYS_USED_UP_SECONDS);
+  s.actionsUsed = 0;
   // The next turn starts on the draw timer again
   while (p0.hand.length > 7) p0.hand.pop();
   assert.ok(endTurn(s, p0.visitorId).success);

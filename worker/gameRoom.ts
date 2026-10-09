@@ -7,7 +7,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { v4 as uuidv4 } from "uuid";
 import type { GameState, WSMessage, AnimalProfile, VariationId, CustomRules, RoleType, PlayerState, StartSeat, ChatMessage } from "../shared/schema";
-import { ANIMALS, freshTurnTimer, inDrawStep } from "../shared/schema";
+import { ANIMALS, freshTurnTimer, inDrawStep, turnTimeLimit } from "../shared/schema";
 import { DEFAULT_VARIATION, DEFAULT_CUSTOM_RULES, isVariationId, updateCustomRules } from "../shared/variations";
 import {
   createInitialGameState, drawCards, playCard, bankCard, endTurn,
@@ -637,6 +637,13 @@ function afterGameChange(room: Room) {
     room.timerSetAt = Date.now();
     room.moveBonuses = 0;
     broadcastGameState(room);
+  } else if (waitingOn === state.players[state.currentTurnIndex]?.visitorId) {
+    // The last play just used up the turn: cut the clock down
+    tickTurnTimer(room);
+    if (state.turnTimer > turnTimeLimit(state)) {
+      state.turnTimer = turnTimeLimit(state);
+      broadcastGameState(room);
+    }
   }
   // The bot step itself runs from the Durable Object alarm (see GameRoom.alarm)
   const waiting = state.players.find(p => p.visitorId === waitingOn);
