@@ -12,6 +12,7 @@ import { usePhone, useTableView } from "./useMedia";
 import { isPayment, canEndOutage, roleNames, allRolesCut } from "./helpers";
 import { useGameSounds } from "./sounds";
 import { HomeButton } from "./Brand";
+import { ThemeToggle } from "./ThemeToggle";
 import { ChatBody, Feed, chatEntries, type Entry } from "./Chat";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -169,6 +170,7 @@ export function GameTable() {
         <button className="hp-btn ghost" style={{ padding: "2px 10px" }} onClick={toggleMute} aria-pressed={muted} aria-label={muted ? "Turn sounds on" : "Mute sounds"} title={muted ? "Sounds off" : "Sounds on"}>
           {muted ? "🔇" : "🔊"}
         </button>
+        <ThemeToggle />
         {s.status === "playing" && (
           <span className={`hp-timer hp-mobile-only ${s.turnTimer <= (drawStep ? 3 : 10) ? "low" : ""}`}>
             {drawStep && <small className="hp-timer-label">Draw</small>}{timer}
