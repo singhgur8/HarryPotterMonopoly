@@ -73,7 +73,7 @@ export type RoleType =
   // Classic Harry Potter
   | "harry" | "hermione" | "draco" | "cedric" | "luna"
   // GG
-  | "ganda" | "lucha";
+  | "ganda" | "lucha" | "gandu" | "tharki" | "kanjar";
 
 // Rent card color pairs
 export type RentColors = [PropertyColor, PropertyColor] | "rainbow";
@@ -128,6 +128,8 @@ export interface PlayerState {
   isSilenced: boolean;             // Silencio debuff active
   borrowedRoles?: RoleType[];      // Lucha: the powers copied at the end of the last turn
   borrowedFrom?: string;           // Lucha: whose powers those are (can't pick them twice in a row)
+  shortcutColor?: PropertyColor;   // Tharki: the colour that needs one fewer card for a full set
+  friendId?: string;               // Kanjar: the player who can't charge him or act against him this round
 }
 
 // Animal profiles
@@ -194,6 +196,8 @@ export type PendingActionType =
   | "harry_protect"      // Harry chooses color to protect at end of turn
   | "cedric_draw_choice" // Start-of-turn draw choice: deck, discard (Cedric) or an opponent's hand (Ganda)
   | "lucha_choose"       // Lucha picks whose power to copy for next turn
+  | "tharki_shortcut"    // Tharki keeps, moves or drops his Shortcut at end of turn
+  | "kanjar_friend"      // Kanjar picks his friend for the next round at end of turn
   | "time_turner_play"   // Must play the Time-Turner drawn card immediately
   | "discard_excess";    // Must discard down to 7 cards
 
@@ -209,7 +213,7 @@ export interface PendingAction {
 // How each player's part of a multi-player payment ended (shown in the tracker)
 export interface PaymentResult {
   playerId: string;
-  outcome: "paid" | "nothing" | "blocked" | "shielded";
+  outcome: "paid" | "nothing" | "blocked" | "shielded" | "friend";
   amount: number;
 }
 
@@ -292,6 +296,8 @@ export type WSMessageType =
   | "harry_protect_color"
   | "cedric_choose_source"
   | "lucha_choose"
+  | "tharki_shortcut_color"
+  | "kanjar_choose_friend"
   | "discard_cards"
   | "pay_silencio"
   | "put_to_sleep"

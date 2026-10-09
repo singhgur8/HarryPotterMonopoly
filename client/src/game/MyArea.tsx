@@ -4,7 +4,7 @@ import { useGame } from "./context";
 import { SET_STYLE } from "@shared/schema";
 import {
   groupSets, SET_SIZES, RENT_TABLE, label, fillOf, sumValue, valueOf, nameOf, otherColor, RAINBOW,
-  completeSets, roleInfo, borrowedText, canEndOutage, shieldOf, STACK_STEP, looseWilds, movableWilds, type PaySelection,
+  completeSets, roleInfo, borrowedText, setSizeFor, shortcutOf, friendName, rentFor, canEndOutage, shieldOf, STACK_STEP, looseWilds, movableWilds, type PaySelection,
 } from "./helpers";
 import { TimerAvatar } from "./Opponents";
 
@@ -41,16 +41,17 @@ export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
         <div className="hp-sets">
           {sets.map(({ color, cards }) => {
             const n = cards.length;
-            const size = SET_SIZES[color];
+            const size = setSizeFor(me, color);
             const full = n >= size;
             const ladder = RENT_TABLE[color];
+            const rentNow = rentFor(me, color);
             return (
               <div className="hp-set" key={color}>
                 <div className="hp-set-head"><span className="hp-dot" style={{ background: fillOf(color) }} />{label(color)} {n}/{size}</div>
                 <div className="hp-ladder" title="Rent at each set size">
-                  {ladder.map((v, i) => <span key={i} className={i === Math.min(n, ladder.length) - 1 ? "on" : ""}>{v}</span>)}
+                  {ladder.map((v, i) => <span key={i} className={i === (full ? ladder.length : Math.min(n, ladder.length)) - 1 ? "on" : ""}>{v}</span>)}
                 </div>
-                <div className={`rent ${full ? "full" : ""}`}>{full ? "Locked · rent " : "Rent "}{ladder[Math.min(n, ladder.length) - 1]}M{shield === color ? " · Shielded" : ""}</div>
+                <div className={`rent ${full ? "full" : ""}`}>{full ? "Locked · rent " : "Rent "}{rentNow}M{shield === color ? " · Shielded" : ""}{shortcutOf(me) === color ? " · Shortcut" : ""}</div>
                 <div className="worth">Worth {sumValue(cards)}M to pay with</div>
                 <div className="hp-stack" style={{ height: 134 + (n - 1) * STACK_STEP }}>
                   {cards.map((c, i) => {
@@ -167,6 +168,8 @@ export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
               </div>
             ))}
             {borrowedText(s, me) && <span className="hp-chip gold" style={{ justifySelf: "start", whiteSpace: "normal" }}>{borrowedText(s, me)}</span>}
+            {shortcutOf(me) && <span className="hp-chip gold" style={{ justifySelf: "start", whiteSpace: "normal" }}>✂ Shortcut on {label(shortcutOf(me)!)}: {setSizeFor(me, shortcutOf(me)!)} cards make a full set</span>}
+            {friendName(s, me) && <span className="hp-chip gold" style={{ justifySelf: "start", whiteSpace: "normal" }}>🤝 Friends with {friendName(s, me)}: they can't act against you</span>}
             {me.isSilenced && (
               <>
                 <span className="hp-chip late" style={{ justifySelf: "start" }}>Power Outage · power off</span>

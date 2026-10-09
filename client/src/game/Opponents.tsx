@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { GameCard } from "@/components/GameCard";
 import { useGame } from "./context";
 import {
-  groupSets, SET_SIZES, tileFill, valueOf, sumValue, label, fillOf, roleName, roleNames, roleInfo, borrowedText, shieldOf, nameOf, otherColor, completeSets, looseWilds, colorOnTable, RAINBOW,
+  groupSets, SET_SIZES, tileFill, valueOf, sumValue, label, fillOf, roleName, roleNames, roleInfo, borrowedText, shieldOf, setSizeFor, shortcutOf, friendName, rentFor, sparedBy, nameOf, otherColor, completeSets, looseWilds, colorOnTable, RAINBOW,
   CARD_DEF_MAP, canTake, isComplete, RENT_TABLE, STACK_STEP,
 } from "./helpers";
 
@@ -68,7 +68,7 @@ function SetLines({ p }: { p: PlayerState }) {
   return (
     <div className="hp-opp-sets">
       {sets.map(({ color, cards }) => {
-        const size = SET_SIZES[color];
+        const size = setSizeFor(p, color);
         const wilds = cards.filter(c => otherColor(c)).length;
         return (
           <div className="hp-setline" key={color}>
@@ -89,6 +89,7 @@ function SetLines({ p }: { p: PlayerState }) {
             <span>{cards.length}/{size}</span>
             {cards.length >= size && <span className="hp-lock">Locked</span>}
             {shield === color && <span className="hp-lock">🛡 Shield</span>}
+            {shortcutOf(p) === color && <span className="hp-lock">✂ Shortcut</span>}
             {wilds > 0 && cards.length < size && <span className="hp-muted" style={{ fontSize: 11 }}>{wilds} wild</span>}
           </div>
         );
@@ -113,7 +114,7 @@ export function OpponentSeat({ p, onOpen }: { p: PlayerState; onOpen: () => void
   // Something here my attack cards could hit: say so, since tapping opens their table
   const target = !!me && !!(
     CARD_ATTACKS.some(k => attacks[k] && p.properties.some(c => hits(k, me, p, c))) ||
-    (attacks.expelliarmus && groupSets(p.properties).some(({ color }) => isComplete(p, color) && shieldOf(p) !== color))
+    (attacks.expelliarmus && !sparedBy(me, p) && groupSets(p.properties).some(({ color }) => isComplete(p, color) && shieldOf(p) !== color))
   );
   const turn = s.players[s.currentTurnIndex]?.visitorId === p.visitorId;
   const coins = [...p.bank].sort((a, b) => valueOf(b) - valueOf(a));
@@ -173,6 +174,8 @@ export function Opponents({ full }: { full: boolean }) {
                     {borrowedText(s, shown) && <span>{borrowedText(s, shown)}.</span>}
                     {shown.isSilenced && <span>Their power is switched off right now.</span>}
                     {shieldOf(shown) && <span>Shield is on {label(shieldOf(shown)!)}.</span>}
+                    {shortcutOf(shown) && <span>Shortcut is on {label(shortcutOf(shown)!)}: {setSizeFor(shown, shortcutOf(shown)!)} cards make a full set.</span>}
+                    {friendName(s, shown) && <span>Friends with {friendName(s, shown)} this round.</span>}
                   </div>
                 )}
                 <StealableSets target={shown} done={() => setOpen(null)} />
@@ -201,6 +204,8 @@ function SeatChips({ p, target }: { p: PlayerState; target: boolean }) {
     <>
       {p.isSilenced && <span className="hp-chip late">Power off</span>}
       {shieldOf(p) && <span className="hp-chip gold" title={`${label(shieldOf(p)!)} is shielded by Harry's charm`}>🛡 {label(shieldOf(p)!)}</span>}
+      {shortcutOf(p) && <span className="hp-chip gold" title={`${label(shortcutOf(p)!)} needs one fewer card (Tharki's Shortcut)`}>✂ {label(shortcutOf(p)!)}</span>}
+      {friendName(s, p) && <span className="hp-chip gold" title={`${friendName(s, p)} can't act against ${p.animal.name} this round`}>🤝 {friendName(s, p)}</span>}
       {turn && <span className="hp-chip solid">Turn</span>}
       {waited && <span className="hp-chip gold">Deciding</span>}
       {late && <span className="hp-chip late">Out of time</span>}
@@ -244,14 +249,14 @@ function OpponentRow({ p }: { p: PlayerState }) {
           <div className="hp-sets">
             {sets.map(({ color, cards }) => {
               const n = cards.length;
-              const size = SET_SIZES[color];
-              const ladder = RENT_TABLE[color];
+              const size = setSizeFor(p, color);
               const full = n >= size;
               return (
                 <div className="hp-set" key={color}>
                   <div className="hp-set-head"><span className="hp-dot" style={{ background: fillOf(color) }} />{label(color)} {n}/{size}</div>
-                  <div className={`rent ${full ? "full" : ""}`}>{full ? "Locked · rent " : "Rent "}{ladder[Math.min(n, ladder.length) - 1]}M</div>
+                  <div className={`rent ${full ? "full" : ""}`}>{full ? "Locked · rent " : "Rent "}{rentFor(p, color)}M</div>
                   {shield === color && <span className="hp-lock">🛡 Shielded by Harry</span>}
+                  {shortcutOf(p) === color && <span className="hp-lock">✂ Tharki's Shortcut</span>}
                   {st.takeableSet(color) && (
                     <button className="hp-btn gold hp-useful" style={{ padding: "3px 8px", fontSize: 12 }} onClick={() => st.play("expelliarmus", color)}>
                       Deal Breaker
@@ -319,6 +324,7 @@ function OpponentRow({ p }: { p: PlayerState }) {
                 </div>
               ))}
               {borrowedText(s, p) && <span>{borrowedText(s, p)}.</span>}
+              {friendName(s, p) && <span>Friends with {friendName(s, p)} this round.</span>}
               {p.isSilenced && <span>Their power is switched off right now.</span>}
             </div>
           )}
@@ -345,7 +351,7 @@ function useSteal(target: PlayerState, done?: () => void) {
     const c = target.properties.find(x => x.defId === defId);
     return !!me && !!c && (kind ? [kind] : cardKinds).some(k => attacks[k] && hits(k, me, target, c));
   };
-  const takeableSet = (color: PropertyColor) => !!me && !!attacks.expelliarmus && isComplete(target, color) && shieldOf(target) !== color;
+  const takeableSet = (color: PropertyColor) => !!me && !!attacks.expelliarmus && !sparedBy(me, target) && isComplete(target, color) && shieldOf(target) !== color;
   // The pick goes stale when the card moves or I can no longer use anything on it
   const stale = !!picked && !usable(picked);
   useEffect(() => { if (stale) { setPicked(null); setSwapping(false); } }, [stale]);
@@ -420,7 +426,7 @@ function StealableSets({ target, done }: { target: PlayerState; done: () => void
       {sets.map(({ color, cards }) => (
         <div key={color} style={{ display: "grid", gap: 6 }}>
           <div className="hp-row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
-            <div className="hp-label">{label(color)} · {cards.length}/{SET_SIZES[color]}{shieldOf(target) === color ? " · 🛡 Shielded by Harry" : ""}</div>
+            <div className="hp-label">{label(color)} · {cards.length}/{setSizeFor(target, color)}{shieldOf(target) === color ? " · 🛡 Shielded by Harry" : ""}</div>
             {takeableSet(color) && <button className="hp-btn gold" onClick={() => play("expelliarmus", color)}>Take the set with Deal Breaker</button>}
           </div>
           <div className="cards">

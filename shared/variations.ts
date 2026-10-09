@@ -104,7 +104,7 @@ export const VARIATIONS: Record<VariationId, Variation> = {
     id: "gg",
     name: "GG",
     description: "New roles, with more on the way.",
-    roles: ["ganda", "lucha"],
+    roles: ["ganda", "lucha", "gandu", "tharki", "kanjar"],
     deck: [...CLASSIC_DECK],
   },
   custom: {

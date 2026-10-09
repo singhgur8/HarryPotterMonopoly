@@ -10,6 +10,9 @@ import type {
 import { SET_SIZES, RENT_TABLE, PROPERTY_COLORS, freshTurnTimer } from "../shared/schema";
 import { CARD_DEF_MAP, getEffectiveColor, countCompleteSets, colorOnTable, isAnyColourWild } from "../shared/cardDefs";
 import { gameSetup, type GameSetup } from "../shared/variations";
+import { roleActive, canShortcut, setSizeFor, setSizesFor, sparedBy, rentOwedBy, KANJAR_MIN_PLAYERS } from "../shared/rolePowers";
+
+export { roleActive };
 
 type Result = { success: boolean; error?: string };
 const ok: Result = { success: true };
@@ -74,13 +77,6 @@ function isCurrentTurn(state: GameState, visitorId: string): boolean {
   return getCurrentPlayer(state)?.visitorId === visitorId;
 }
 
-// A role power only works while the player isn't silenced
-export function roleActive(player: PlayerState | undefined, role: RoleType): boolean {
-  if (!player || player.isSilenced) return false;
-  // Lucha also has whichever powers he copied at the end of his last turn
-  return player.roles.includes(role) || (player.roles.includes("lucha") && !!player.borrowedRoles?.includes(role));
-}
-
 // Harry's shielded colour, only while his power is switched on
 export function shieldOf(player: PlayerState): PropertyColor | undefined {
   return roleActive(player, "harry") ? player.protectedColor : undefined;
@@ -112,16 +108,21 @@ export function settleWilds(state: GameState) {
   }
 }
 
+// Tharki's Shortcut colour is complete with one fewer card
 function isSetComplete(player: PlayerState, color: PropertyColor): boolean {
-  return getPropertiesOfColor(player, color).length >= SET_SIZES[color];
+  return getPropertiesOfColor(player, color).length >= setSizeFor(player, color);
 }
 
+// A complete set always earns the full-set rent, Shortcut or not
 export function calculateRent(player: PlayerState, color: PropertyColor): number {
   const count = getPropertiesOfColor(player, color).length;
   const table = RENT_TABLE[color];
   if (count === 0) return 0;
+  if (isSetComplete(player, color)) return table[table.length - 1];
   return table[Math.min(count, table.length) - 1];
 }
+
+const completeSetCount = (player: PlayerState) => countCompleteSets(player.properties, setSizesFor(player));
 
 function cardValue(card: GameCard): number {
   return CARD_DEF_MAP[card.defId]?.value ?? 0;
@@ -225,7 +226,8 @@ export function createInitialGameState(
  * rolesPerPlayer different roles, spread so no role repeats until all are out.
  */
 function dealRoles(setup: GameSetup, players: { isBot?: boolean; pickedRoles?: RoleType[] }[]): RoleType[][] {
-  const pool = setup.roles;
+  // Kanjar needs 3 or more players: one on one his friend would be everyone
+  const pool = setup.roles.filter(r => r !== "kanjar" || players.length >= KANJAR_MIN_PLAYERS);
   if (pool.length === 0) return players.map(() => []);
   const used = new Map<RoleType, number>(pool.map(r => [r, 0]));
   const take = (n: number): RoleType[] => {
@@ -283,7 +285,7 @@ export function drawOptions(state: GameState, player: PlayerState): { discard: b
   if (player.hand.length === 0) return { discard: false, opponent: false }; // empty hand: draw 5 from the deck
   return {
     discard: roleActive(player, "cedric") && state.discardPile.length > 0,
-    opponent: roleActive(player, "ganda") && state.players.some(p => p.visitorId !== player.visitorId && p.hand.length > 0),
+    opponent: roleActive(player, "ganda") && state.players.some(p => p.visitorId !== player.visitorId && p.hand.length > 0 && !sparedBy(player, p)),
   };
 }
 
@@ -312,6 +314,10 @@ export function cedricChooseSource(state: GameState, visitorId: string, source: 
     if (!roleActive(player, "ganda") || !target || target === player || target.hand.length === 0) {
       state.pendingAction = pending;
       return fail("Pick a player who has cards in their hand");
+    }
+    if (sparedBy(player, target)) {
+      state.pendingAction = pending;
+      return fail(friendError(target));
     }
     const [card] = target.hand.splice(Math.floor(Math.random() * target.hand.length), 1);
     player.hand.push(card);
@@ -474,7 +480,7 @@ function startPayments(state: GameState, type: "pay_rent" | "pay_debt" | "pay_bi
     targetPlayerId: "",
     amount,
     cardDefId,
-    data: { rentColor, remainingTargets: [...targets], allTargets: [...targets], results: [] as PaymentResult[], resume },
+    data: { rentColor, baseAmount: amount, remainingTargets: [...targets], allTargets: [...targets], results: [] as PaymentResult[], resume },
   };
   nextPayer(state, payment);
 }
@@ -490,7 +496,17 @@ function nextPayer(state: GameState, payment: PendingAction) {
       data.results.push({ playerId: nextId, outcome: "shielded", amount: 0 });
       continue;
     }
-    state.pendingAction = { ...payment, targetPlayerId: nextId, data: { ...data } };
+    const source = getPlayer(state, payment.sourcePlayerId);
+    if (sparedBy(source, next)) {
+      log(state, next, `is Kanjar's friend with ${source!.animal.name} this round, so they can't charge them`);
+      data.results.push({ playerId: nextId, outcome: "friend", amount: 0 });
+      continue;
+    }
+    // Each payer's amount starts from the full charge (Gandu pays half of a rent)
+    const base: number = data.baseAmount ?? payment.amount ?? 0;
+    const amount = payment.type === "pay_rent" ? rentOwedBy(next, base) : base;
+    if (amount < base) log(state, next, `pays half rent as Gandu: ${amount}M instead of ${base}M`);
+    state.pendingAction = { ...payment, amount, targetPlayerId: nextId, data: { ...data } };
     return;
   }
   state.pendingAction = null;
@@ -499,7 +515,8 @@ function nextPayer(state: GameState, payment: PendingAction) {
 
 function playActionCard(state: GameState, player: PlayerState, cardDefId: string): Result {
   const def = CARD_DEF_MAP[cardDefId];
-  const others = state.players.filter(p => p.visitorId !== player.visitorId);
+  // Kanjar's friend can't aim anything at Kanjar this round
+  const others = state.players.filter(p => p.visitorId !== player.visitorId && !sparedBy(player, p));
 
   // Actions that need a target can't be played if nobody has a valid target
   const discardIt = () => {
@@ -565,7 +582,8 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
     case "yule_ball": {
       discardIt();
       log(state, player, "played It's My Birthday. Everyone pays 2M", def.id);
-      startPayments(state, "pay_birthday", player.visitorId, others.map(o => o.visitorId), 2, cardDefId);
+      const everyone = state.players.filter(p => p.visitorId !== player.visitorId);
+      startPayments(state, "pay_birthday", player.visitorId, everyone.map(o => o.visitorId), 2, cardDefId);
       return ok;
     }
 
@@ -665,15 +683,32 @@ export function endTurn(state: GameState, visitorId: string): Result {
     state.pendingAction = { type: "lucha_choose", sourcePlayerId: visitorId, targetPlayerId: visitorId };
     return ok;
   }
-  return harryThenFinalize(state, visitorId);
+  return nextEndOfTurnChoice(state, visitorId);
 }
 
-function harryThenFinalize(state: GameState, visitorId: string): Result {
-  const player = getPlayer(state, visitorId)!;
-  if (roleActive(player, "harry")) {
-    state.pendingAction = { type: "harry_protect", sourcePlayerId: visitorId, targetPlayerId: visitorId };
-    return ok;
+// End-of-turn choices, asked one after another (after Lucha's copy)
+const END_OF_TURN_CHOICES = ["harry_protect", "tharki_shortcut", "kanjar_friend"] as const;
+type EndOfTurnChoice = typeof END_OF_TURN_CHOICES[number];
+
+function wantsChoice(state: GameState, player: PlayerState, type: EndOfTurnChoice): boolean {
+  switch (type) {
+    case "harry_protect": return roleActive(player, "harry");
+    // Only asked when there's something to keep, move or pick
+    case "tharki_shortcut": return roleActive(player, "tharki") && (!!player.shortcutColor || shortcutChoices(player).length > 0);
+    case "kanjar_friend": return roleActive(player, "kanjar") && state.players.length >= KANJAR_MIN_PLAYERS;
   }
+}
+
+function nextEndOfTurnChoice(state: GameState, visitorId: string, after?: EndOfTurnChoice): Result {
+  const player = getPlayer(state, visitorId)!;
+  const start = after ? END_OF_TURN_CHOICES.indexOf(after) + 1 : 0;
+  for (const type of END_OF_TURN_CHOICES.slice(start)) {
+    if (wantsChoice(state, player, type)) {
+      state.pendingAction = { type, sourcePlayerId: visitorId, targetPlayerId: visitorId };
+      return ok;
+    }
+  }
+  state.pendingAction = null;
   return finalizeTurn(state, visitorId);
 }
 
@@ -692,14 +727,16 @@ export function luchaChoose(state: GameState, visitorId: string, targetId: strin
 
   player.borrowedRoles = target.roles.filter(r => r !== "lucha");
   player.borrowedFrom = target.visitorId;
-  // A shield only lasts while Lucha has Harry's power
+  // A shield, Shortcut or friend only lasts while Lucha has that power
   if (!roleActive(player, "harry")) player.protectedColor = undefined;
+  if (!roleActive(player, "tharki")) player.shortcutColor = undefined;
+  if (!roleActive(player, "kanjar")) player.friendId = undefined;
   const names = player.borrowedRoles.map(r => CARD_DEF_MAP[`role_${r}`]?.name ?? r).join(" and ");
   log(state, player, names
     ? `copied ${target.animal.name}'s power (${names}) for their next turn`
     : `copied ${target.animal.name}, who has no power to copy, for their next turn`);
   state.pendingAction = null;
-  return harryThenFinalize(state, visitorId);
+  return nextEndOfTurnChoice(state, visitorId);
 }
 
 function finalizeTurn(state: GameState, visitorId: string): Result {
@@ -962,6 +999,7 @@ function reversePlan(state: GameState, original: PendingAction, me: PlayerState,
     offerProtego(state, { type, sourcePlayerId: me.visitorId, targetPlayerId: attacker.visitorId, cardDefId, data: {} });
   };
   const takeable = (allowComplete = false) => attacker.properties.some(c => canTakeProperty(me, attacker, c.defId, allowComplete).success);
+  if (sparedBy(me, attacker)) return null; // Kanjar's friend can only block him, not hit back
 
   if (PAYMENT_TYPES.includes(original.type)) {
     const amount = original.amount ?? 0;
@@ -1091,6 +1129,7 @@ function executeAction(state: GameState, action: PendingAction) {
 function canTakeProperty(attacker: PlayerState, target: PlayerState, cardDefId: string, allowComplete = false): Result {
   const card = target.properties.find(c => c.defId === cardDefId);
   if (!card) return fail("That property isn't there any more");
+  if (sparedBy(attacker, target)) return fail(friendError(target));
   const color = colorOnTable(card, target.properties);
   if (color && shieldOf(target) === color) return fail("That colour is shielded by Harry's charm");
   if (color && !allowComplete && isSetComplete(target, color) && !roleActive(attacker, "draco")) {
@@ -1108,6 +1147,7 @@ export function chooseTarget(state: GameState, visitorId: string, targetPlayerId
   const target = getPlayer(state, targetPlayerId);
   if (!target) return fail("Choose another player");
   if (target.visitorId === visitorId) return fail("Choose another player, not yourself");
+  if (sparedBy(attacker, target)) return fail(friendError(target));
   if (pending.data?.onlyTarget && targetPlayerId !== pending.data.onlyTarget) return fail("Reverse turns it back on the player who played it");
 
   const action = (type: PendingAction["type"], data: any): PendingAction => ({
@@ -1215,8 +1255,59 @@ export function harryProtectColor(state: GameState, visitorId: string, color?: P
     player.protectedColor = color;
     log(state, player, `moved their shield to ${colorTag(color)}`);
   }
-  state.pendingAction = null;
-  return finalizeTurn(state, visitorId);
+  return nextEndOfTurnChoice(state, visitorId, "harry_protect");
+}
+
+/** Colours Tharki can put his Shortcut on: ones he has a card of that need 3 or more for a set. */
+export function shortcutChoices(player: PlayerState): PropertyColor[] {
+  return ownedColors(player).filter(canShortcut);
+}
+
+// Tharki's Shortcut stays put until he moves it, like Harry's shield. At the
+// end of each turn he keeps it (no colour), moves it (a colour) or drops it (null).
+export function tharkiShortcutColor(state: GameState, visitorId: string, color?: PropertyColor | null): Result {
+  const pending = state.pendingAction;
+  if (!pending || pending.type !== "tharki_shortcut" || pending.targetPlayerId !== visitorId) return fail("Nothing to shortcut right now");
+  const player = getPlayer(state, visitorId)!;
+  if (!roleActive(player, "tharki")) return fail("Only Tharki can shortcut a colour");
+  if (color && !shortcutChoices(player).includes(color)) return fail("Pick a colour you have that needs 3 or more cards");
+
+  if (color === null) {
+    if (player.shortcutColor) log(state, player, `dropped their Shortcut on ${colorTag(player.shortcutColor)}`);
+    player.shortcutColor = undefined;
+  } else if (color && color !== player.shortcutColor) {
+    player.shortcutColor = color;
+    log(state, player, `put their Shortcut on ${colorTag(color)}: it needs ${setSizeFor(player, color)} cards for a full set`);
+  }
+  // Moving the Shortcut can complete a third set
+  checkWinCondition(state, visitorId);
+  if (state.status !== "playing") return ok;
+  return nextEndOfTurnChoice(state, visitorId, "tharki_shortcut");
+}
+
+/**
+ * Kanjar picks his friend for the next round: until his next pick they can't
+ * charge him rent or play anything against him. Sending no one keeps the friend he has.
+ */
+export function kanjarChooseFriend(state: GameState, visitorId: string, friendId?: string): Result {
+  const pending = state.pendingAction;
+  if (!pending || pending.type !== "kanjar_friend" || pending.targetPlayerId !== visitorId) return fail("Nothing to pick right now");
+  const player = getPlayer(state, visitorId)!;
+  if (friendId) {
+    const friend = getPlayer(state, friendId);
+    if (!friend || friend === player) return fail("Pick another player");
+    if (friend.visitorId !== player.friendId) {
+      player.friendId = friend.visitorId;
+      log(state, player, `made ${friend.animal.name} their friend. ${friend.animal.name} can't charge them or act against them until their next pick`);
+    } else {
+      log(state, player, `stays friends with ${friend.animal.name}`);
+    }
+  }
+  return nextEndOfTurnChoice(state, visitorId, "kanjar_friend");
+}
+
+function friendError(kanjar: PlayerState): string {
+  return `${kanjar.animal.name} is Kanjar and you're their friend this round, so you can't act against them`;
 }
 
 export function timeTurnerChoose(state: GameState, visitorId: string, cardDefId: string): Result {
@@ -1364,11 +1455,14 @@ export function forfeit(state: GameState, visitorId: string): Result {
     `forfeited. Their ${returned.length} cards were shuffled back into the draw pile`);
 
   const left = state.players;
+  // One on one, Kanjar's friend would be everyone, so friendships end
+  if (left.length < KANJAR_MIN_PLAYERS) for (const p of left) p.friendId = undefined;
+  for (const p of left) if (p.friendId === visitorId) p.friendId = undefined;
   if (left.length > 1 && !left.every(p => p.isBot)) {
     if (wasTurn) beginTurn(state);
     else dropFromPending(state, visitorId);
   } else {
-    const sets = (p: PlayerState) => countCompleteSets(p.properties, SET_SIZES);
+    const sets = completeSetCount;
     const winner = [...left].sort((a, b) => sets(b) - sets(a) || worth(b) - worth(a))[0];
     state.status = "finished";
     state.pendingAction = null;
@@ -1465,7 +1559,7 @@ export function botStep(state: GameState): boolean {
     switch (pending.type) {
       case "choose_chargeback": {
         // Others are still waiting to pay after this, so even a sleeping player picks someone
-        const richest = state.players.filter(p => p.visitorId !== id).sort((a, b) => worth(b) - worth(a))[0];
+        const richest = state.players.filter(p => p.visitorId !== id && !sparedBy(bot, p)).sort((a, b) => worth(b) - worth(a))[0];
         if (richest && chooseTarget(state, id, richest.visitorId).success) return true;
         state.pendingAction = null;
         if (pending.data?.resume) nextPayer(state, pending.data.resume);
@@ -1473,7 +1567,7 @@ export function botStep(state: GameState): boolean {
       }
       case "choose_goblin": case "choose_rent_target":
         if (bot.isBot) {
-          const richest = state.players.filter(p => p.visitorId !== id)
+          const richest = state.players.filter(p => p.visitorId !== id && !sparedBy(bot, p))
             .sort((a, b) => worth(b) - worth(a))[0];
           if (richest && chooseTarget(state, id, richest.visitorId).success) return true;
         }
@@ -1489,6 +1583,21 @@ export function botStep(state: GameState): boolean {
         // A sleeping player keeps their shield where it is; a practice bot guards its best colour
         const owned = PROPERTY_COLORS.filter(c => getPropertiesOfColor(bot, c).length > 0);
         return harryProtectColor(state, id, bot.isBot && owned.length ? bestColorFor(bot, owned) : undefined).success;
+      }
+      case "tharki_shortcut": {
+        // A sleeping player keeps their Shortcut; a practice bot puts it on its closest set
+        const choices = shortcutChoices(bot).filter(c => !isSetComplete({ ...bot, shortcutColor: undefined }, c));
+        const best = bot.isBot && choices.length
+          ? [...choices].sort((a, b) => (SET_SIZES[a] - getPropertiesOfColor(bot, a).length) - (SET_SIZES[b] - getPropertiesOfColor(bot, b).length))[0]
+          : undefined;
+        return tharkiShortcutColor(state, id, best).success;
+      }
+      case "kanjar_friend": {
+        // A sleeping player keeps their friend; a practice bot befriends the biggest threat
+        const pick = bot.isBot
+          ? state.players.filter(p => p.visitorId !== id).sort((a, b) => completeSetCount(b) - completeSetCount(a) || worth(b) - worth(a))[0]
+          : undefined;
+        return kanjarChooseFriend(state, id, pick?.visitorId).success;
       }
       case "cedric_draw_choice":
         return cedricChooseSource(state, id, "deck").success;
@@ -1575,7 +1684,7 @@ function checkWinCondition(state: GameState, visitorId: string) {
   if (state.status !== "playing") return;
   const player = getPlayer(state, visitorId);
   if (!player) return;
-  const completeSets = countCompleteSets(player.properties, SET_SIZES);
+  const completeSets = completeSetCount(player);
   if (completeSets >= 3) {
     state.winnerId = visitorId;
     state.status = "finished";
