@@ -134,6 +134,7 @@
 .hp-prompt.alert { background: var(--alert-soft); border-color: var(--alert); }
 .hp-prompt.wait { background: var(--gold-soft); border-color: var(--gold-line); }
 .hp-prompt.win { background: var(--gold-soft); border-color: var(--gold); text-align: center; justify-items: center; }
+.hp-owe { font-weight: 800; font-size: 1.15em; color: var(--alert); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .hp-prompt .head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 .hp-prompt .head p { margin: 0; flex: 1 1 240px; min-width: 0; }
 .hp-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }

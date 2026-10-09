@@ -1,7 +1,7 @@
 /**
  * Role power rules the server and the screen both need, so they always agree:
  * whether a power is on, Tharki's Shortcut (set sizes), Kanjar's friend and
- * Gandu's half rent.
+ * Gandu's half price.
  */
 import type { PlayerState, PropertyColor, RoleType } from "./schema";
 import { SET_SIZES, PROPERTY_COLORS } from "./schema";
@@ -43,7 +43,7 @@ export function sparedBy(actor: PlayerState | undefined, target: PlayerState | u
   return !!actor && !!target && actor !== target && friendOf(target) === actor.visitorId;
 }
 
-/** What a player pays for a rent charge: Gandu pays half, rounded up (there's no change). */
-export function rentOwedBy(player: PlayerState | undefined, amount: number): number {
+/** What a player pays for any charge (rent, Birthday, Debt Collector...): Gandu pays half, rounded up (there's no change). */
+export function chargeOwedBy(player: PlayerState | undefined, amount: number): number {
   return roleActive(player, "gandu") ? Math.ceil(amount / 2) : amount;
 }

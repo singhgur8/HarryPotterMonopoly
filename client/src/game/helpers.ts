@@ -1,9 +1,9 @@
 import type { GameCard, GameRules, GameState, PlayerState, PropertyColor, PendingAction, RoleType } from "@shared/schema";
 import { SET_SIZES, RENT_TABLE, SET_STYLE, PROPERTY_COLORS } from "@shared/schema";
 import { CARD_DEF_MAP, getEffectiveColor, colorOnTable, isAnyColourWild, roleDef } from "@shared/cardDefs";
-import { roleActive, setSizeFor, shortcutOf, sparedBy, friendOf, rentOwedBy } from "@shared/rolePowers";
+import { roleActive, setSizeFor, shortcutOf, sparedBy, friendOf, chargeOwedBy } from "@shared/rolePowers";
 
-export { roleActive, setSizeFor, shortcutOf, sparedBy, friendOf, rentOwedBy };
+export { roleActive, setSizeFor, shortcutOf, sparedBy, friendOf, chargeOwedBy };
 
 export const COLORS = PROPERTY_COLORS as readonly PropertyColor[];
 export const label = (c: PropertyColor) => SET_STYLE[c].label;

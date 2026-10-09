@@ -360,7 +360,7 @@ const roleCards: CardDef[] = [
     name: "Gandu",
     value: 0,
     roleType: "gandu",
-    text: "Pay half of any rent charged to you, rounded up (1M stays 1M, 3M becomes 2M).",
+    text: "Pay half of anything charged to you (rent, birthdays, debts), rounded up (1M stays 1M, 3M becomes 2M).",
   },
   {
     id: "role_tharki",
