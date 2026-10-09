@@ -97,8 +97,10 @@ export function updateCustomRules(current: CustomRules, change: Record<string, u
     const full = countsIn(ALL_CARD_DEFS.filter(d => d.type === "action" && !PRIME_EXTRA_COPIES.includes(d.id)).map(d => d.id));
     for (const a of ACTION_CHOICES) next.counts[a.type] = (change.actions as unknown[]).includes(a.type) ? full[a.type] : 0;
   }
-  if (change.counts && typeof change.counts === "object") {
-    for (const [key, n] of Object.entries(change.counts as Record<string, unknown>)) {
+  // Messages carry one count at a time (countKey + count); saved rules carry them all
+  const counts = typeof change.countKey === "string" ? { [change.countKey]: change.count } : change.counts;
+  if (counts && typeof counts === "object") {
+    for (const [key, n] of Object.entries(counts as Record<string, unknown>)) {
       if (key in COPY_IDS && typeof n === "number" && Number.isFinite(n)) next.counts[key] = Math.max(0, Math.min(MAX_COPIES, Math.round(n)));
     }
   }

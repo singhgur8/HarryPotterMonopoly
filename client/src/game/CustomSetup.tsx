@@ -23,14 +23,15 @@ function Stepper({ value, min, max, disabled, label, onChange, testId }: {
 /** The host's settings for a Custom game: where it starts from, roles, card counts and the win condition. */
 export function CustomSetup({ rules, isHost, send }: { rules: CustomRules; isHost: boolean; send: (type: any, payload?: any) => void }) {
   const set = (change: Record<string, unknown>) => send("set_custom_rules", change);
-  const setCount = (key: string, n: number) => set({ counts: { [key]: n } });
+  const setCount = (key: string, n: number) => set({ countKey: key, count: n });
   const deckSize = customDeck(rules).length;
   const actionCards = ACTION_CHOICES.reduce((n, a) => n + (rules.counts[a.type] ?? 0), 0);
+  const moneyCards = MONEY_CHOICES.reduce((n, v) => n + (rules.counts[`money_${v}`] ?? 0), 0);
   const changed = !same(rules, customFrom(rules.template));
   const each = `${rules.rolesPerPlayer} role${rules.rolesPerPlayer === 1 ? "" : "s"} each`;
 
   return (
-    <details className="hp-custom" open>
+    <details className="hp-custom" open={isHost}>
       <summary>
         <span className="hp-label">Custom rules{isHost ? "" : " · set by the host"}</span>
         <span className="hp-muted">
@@ -90,6 +91,8 @@ export function CustomSetup({ rules, isHost, send }: { rules: CustomRules; isHos
 
       <section>
         <div className="hp-cstep"><span>{rules.roles.length > 0 ? 4 : 3}</span><b>Cards</b></div>
+        <details className="hp-cards">
+          <summary data-testid="custom-cards-toggle">{actionCards} action cards and {moneyCards} money cards · tap to change how many</summary>
         <div className="hp-opts">
           {ACTION_CHOICES.map(a => {
             const n = rules.counts[a.type] ?? 0;
@@ -110,6 +113,7 @@ export function CustomSetup({ rules, isHost, send }: { rules: CustomRules; isHos
             </div>
           ))}
         </div>
+        </details>
         <span className="hp-muted" style={{ fontSize: 13 }}>Properties, wilds and rent cards come from {VARIATIONS[rules.template].name}.</span>
       </section>
 

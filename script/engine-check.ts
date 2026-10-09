@@ -432,6 +432,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.equal(n("yule_ball"), 10, "capped at 10");
   assert.equal(deck.filter(id => CARD_DEF_MAP[id].type === "money" && CARD_DEF_MAP[id].value === 10).length, 4);
   assert.equal(new Set(deck).size, deck.length, "every card id is different");
+  assert.equal(updateCustomRules(DEFAULT_CUSTOM_RULES, { countKey: "reverse", count: 2 }).counts.reverse, 2, "one count per message");
 
   // Random, 3 roles each, all different within a player
   const r = createInitialGameState("TEST", players, 60, "custom", { ...DEFAULT_CUSTOM_RULES, roles: ["harry", "luna", "ganda", "lucha"], rolesPerPlayer: 3 });
