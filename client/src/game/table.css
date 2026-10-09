@@ -220,6 +220,7 @@ button.hp-cn[aria-pressed="true"] { background: var(--gold); color: #fff; border
 .hp-log { flex: 1; min-height: 0; overflow-y: auto; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .hp-log li { color: var(--muted); }
 .hp-log li b { color: var(--fg); }
+.hp-logchip.hidden { background: var(--plum); color: #fff; border-radius: 4px; }
 .hp-logchip { display: inline-block; padding: 0 6px; border-radius: 999px; font-size: 11.5px; font-weight: 700; line-height: 17px; vertical-align: 1px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 12%); }
 .hp-log li.chat { color: var(--fg); background: var(--sunk); border-radius: 8px; padding: 4px 8px; }
 .hp-tabs { display: flex; gap: 4px; }
