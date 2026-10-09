@@ -965,7 +965,6 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.equal(calculateRent(a, "orange"), 3);
   assert.ok(endTurn(s, "p0").success);
   assert.equal(s.pendingAction?.type, "tharki_shortcut");
-  assert.equal(tharkiShortcutColor(s, "p0", "brown").success, false, "brown already needs only 2");
   assert.ok(tharkiShortcutColor(s, "p0", "orange").success);
   assert.equal(a.shortcutColor, "orange");
   assert.equal(calculateRent(a, "orange"), 5, "a Shortcut set earns full-set rent");
@@ -995,6 +994,16 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   // Silenced Tharki loses the Shortcut's effect
   a.shortcutColor = "orange"; a.isSilenced = true;
   assert.equal(calculateRent(a, "orange"), 3);
+  // A 2-card colour on Shortcut is complete with a single card
+  a.isSilenced = false; a.shortcutColor = "brown";
+  assert.equal(calculateRent(a, "brown"), 2, "one brown on Shortcut earns full-set rent");
+  const one = setup(2);
+  const solo = one.players[0]; solo.roles = ["tharki"]; one.players[1].roles = [];
+  for (const id of ["prop_brown_1", "prop_darkblue_1", "prop_red_1", "prop_red_2", "prop_red_3", "prop_orange_1", "prop_orange_2", "prop_orange_3"]) give(one, solo, "properties", id);
+  assert.ok(endTurn(one, "p0").success);
+  assert.equal(one.status, "playing");
+  assert.ok(tharkiShortcutColor(one, "p0", "dark_blue").success);
+  assert.equal(one.status, "finished", "one dark blue on Shortcut completes the third set");
   console.log("tharki: ok");
 }
 

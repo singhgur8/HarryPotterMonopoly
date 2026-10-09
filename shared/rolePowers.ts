@@ -19,13 +19,10 @@ export function shortcutOf(player: PlayerState | undefined): PropertyColor | und
   return roleActive(player, "tharki") ? player!.shortcutColor : undefined;
 }
 
-/** Colours a Shortcut changes: the ones that need 3 or more cards. */
-export const canShortcut = (color: PropertyColor) => SET_SIZES[color] > 2;
-
 /** Cards this player needs for a full set of a colour (one fewer on Tharki's Shortcut colour). */
 export function setSizeFor(player: PlayerState | undefined, color: PropertyColor): number {
   const size = SET_SIZES[color];
-  return shortcutOf(player) === color && canShortcut(color) ? size - 1 : size;
+  return shortcutOf(player) === color ? size - 1 : size;
 }
 
 /** Set sizes for every colour, for countCompleteSets. */

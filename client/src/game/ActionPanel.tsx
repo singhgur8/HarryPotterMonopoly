@@ -10,7 +10,7 @@ import { CardInfo, DiscardLink, DiscardPile } from "./DiscardPile";
 import {
   CARD_DEF_MAP, COLORS, label, fillOf, valueOf, sumValue, nameOf, groupSets, canTake, isComplete, shieldOf, roleName, roleNames,
   payableCards, playerName, waitingText, isPayment, hasProtego, hasAction, drawCount, tileFill, colorOnTable, looseWilds, cardBlurb, outOfMoves,
-  sparedBy, setSizeFor, canShortcut,
+  sparedBy, setSizeFor,
   type PaySelection,
 } from "./helpers";
 
@@ -203,7 +203,7 @@ function TargetPicker() {
 
 // ---------- ending the turn for you ----------
 
-const AUTO_END_SECONDS = 5;
+const AUTO_END_SECONDS = 10;
 
 /**
  * Once there's truly nothing left to do (no actions or cards to play, no wilds
@@ -452,7 +452,7 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
         break;
       }
       case "tharki_shortcut": {
-        const owned = groupSets(me.properties).map(g => g.color).filter(canShortcut);
+        const owned = groupSets(me.properties).map(g => g.color);
         const current = me.shortcutColor;
         const moveTo = owned.filter(c => c !== current);
         const need = (c: PropertyColor) => `${setSizeFor({ ...me, shortcutColor: c }, c)} cards`;
