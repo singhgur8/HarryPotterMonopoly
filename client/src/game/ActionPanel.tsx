@@ -299,7 +299,7 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
         <div style={{ fontSize: 40 }}>🏆</div>
         <h2 style={{ font: "800 24px var(--display)" }}>{winner.visitorId === meId ? "You win!" : `${winner.animal.name} wins!`}</h2>
         <p className="hp-muted" style={{ margin: 0 }}>
-          {countCompleteSets(winner.properties, setSizesFor(winner)) >= 3 ? "Three complete sets." : "Won by forfeit."} Play again with everyone here; the host can change the game first.
+          {countCompleteSets(winner.properties, setSizesFor(winner)) >= (s.rules?.setsToWin ?? 3) ? `${s.rules?.setsToWin ?? 3} complete set${(s.rules?.setsToWin ?? 3) === 1 ? "" : "s"}.` : "Won by forfeit."} Play again with everyone here; the host can change the game first.
         </p>
         <div className="hp-row" style={{ justifyContent: "center" }}>
           <button className="hp-btn gold" onClick={() => send("new_game")} data-testid="button-play-again">Play again</button>

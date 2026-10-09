@@ -245,7 +245,7 @@ function OpponentRow({ p }: { p: PlayerState }) {
       </div>
       <div className="hp-mine">
         <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
-          <div className="hp-label">Sets · {completeSets(p)} of 3 complete</div>
+          <div className="hp-label">Sets · {completeSets(p)} of {s.rules?.setsToWin ?? 3} complete</div>
           <div className="hp-sets">
             {sets.map(({ color, cards }) => {
               const n = cards.length;
