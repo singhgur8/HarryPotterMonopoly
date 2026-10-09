@@ -223,7 +223,7 @@ const actionCards: CardDef[] = [
     name: "Power Outage",
     value: 5,
     actionType: "silencio" as const,
-    text: "Switch off a player's role power. On their turn, after drawing, they can pay 10M to switch it back on (not a play).",
+    text: "Switch off a player's role power (one role of your choice if they have several). On their turn, after drawing, they can pay 10M to switch it back on (not a play).",
     target: "one" as const,
   })),
   // 2x Rewind (was Time-Turner)
@@ -367,7 +367,7 @@ const roleCards: CardDef[] = [
     name: "Lucha",
     value: 0,
     roleType: "lucha",
-    text: "At the end of each turn, copy another player's role power for your next turn. Pick someone new each time, unless it's one on one.",
+    text: "At the end of each turn, copy one role power from another player for your next turn (just one, even if they have several). Pick someone new each time, unless it's one on one.",
   },
   {
     id: "role_gandu",
@@ -383,7 +383,7 @@ const roleCards: CardDef[] = [
     name: "Tharki",
     value: 0,
     roleType: "tharki",
-    text: "Shortcut one colour: its set is complete with one fewer card. It stays until you move it at the end of one of your turns.",
+    text: "Shortcut one colour that needs 3 or more cards: its set is complete with one fewer card. 2-card colours (brown, dark blue, utility) can't be shortcut. It stays until you move it at the end of one of your turns.",
   },
   {
     id: "role_kanjar",
@@ -412,6 +412,37 @@ export const ALL_CARD_DEFS: CardDef[] = [
 export const CARD_DEF_MAP: Record<string, CardDef> = {};
 for (const def of ALL_CARD_DEFS) {
   CARD_DEF_MAP[def.id] = def;
+}
+
+// ========== EXTRA COPIES FOR CUSTOM GAMES ==========
+// Custom games set how many copies of each action card (by action) and each
+// money card (by value) go in the deck. Copies past the ones above get ids
+// that carry on the numbering, e.g. action_accio_4.
+export const MAX_COPIES = 10;
+
+/** What sets a card's copy count in Custom games, or null for cards that come from the template's deck. */
+export function copyKey(defId: string): string | null {
+  const d = CARD_DEF_MAP[defId];
+  if (d?.type === "action") return d.actionType!;
+  if (d?.type === "money") return `money_${d.value}`;
+  return null;
+}
+
+/** The ids of every copy of a card, by copyKey: the first n are the copies in an n-copy deck. */
+export const COPY_IDS: Record<string, string[]> = {};
+for (const d of ALL_CARD_DEFS) {
+  const key = copyKey(d.id);
+  if (key) (COPY_IDS[key] ??= []).push(d.id);
+}
+for (const ids of Object.values(COPY_IDS)) {
+  const first = CARD_DEF_MAP[ids[0]];
+  const stem = first.id.replace(/_\d+$/, "");
+  for (let n = 1; ids.length < MAX_COPIES; n++) {
+    const id = `${stem}_${n}`;
+    if (CARD_DEF_MAP[id]) continue;
+    CARD_DEF_MAP[id] = { ...first, id };
+    ids.push(id);
+  }
 }
 
 // The Classic Harry Potter play deck: every card above except the extra

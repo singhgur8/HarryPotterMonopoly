@@ -15,7 +15,7 @@ import {
 import { ANIMALS, SET_SIZES, DRAW_SECONDS, inDrawStep, freshTurnTimer } from "../shared/schema";
 import type { GameState, PlayerState, RoleType } from "../shared/schema";
 import { CARD_DEF_MAP, countCompleteSets, roleDef } from "../shared/cardDefs";
-import { VARIATIONS, ACTION_CHOICES, NON_CLASSIC_ACTIONS, DEFAULT_CUSTOM_RULES, ALL_ROLES, updateCustomRules } from "../shared/variations";
+import { VARIATIONS, ACTION_CHOICES, DEFAULT_CUSTOM_RULES, ALL_ROLES, updateCustomRules, customFrom, customDeck, gameSetup } from "../shared/variations";
 
 function newGame(n: number): GameState {
   const players = Array.from({ length: n }, (_, i) => ({ visitorId: `p${i}`, seatIndex: i, animal: ANIMALS[i] }));
@@ -298,6 +298,14 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.ok(endTurn(s, "p0").success);
   assert.ok(harryProtectColor(s, "p0", null).success);
   assert.equal(a.protectedColor, undefined, "dropped");
+  // Only colours on his table: not one he has never had
+  s.currentTurnIndex = 0; s.drawnThisTurn = true; s.pendingAction = null;
+  assert.ok(endTurn(s, "p0").success);
+  assert.equal(harryProtectColor(s, "p0", "green").success, false, "no green on his table");
+  // A shield left on a colour he no longer has comes off when he keeps it
+  a.protectedColor = "green";
+  assert.ok(harryProtectColor(s, "p0").success);
+  assert.equal(a.protectedColor, undefined, "nothing to guard on green");
   void drawCards;
   console.log("harry shield: ok");
 }
@@ -385,7 +393,8 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
 // ---------- Game versions: each deals its own roles and deck ----------
 {
   const players = Array.from({ length: 5 }, (_, i) => ({ visitorId: `p${i}`, seatIndex: i, animal: ANIMALS[i] }));
-  for (const v of Object.values(VARIATIONS)) {
+  for (const version of Object.values(VARIATIONS)) {
+    const v = { ...version, ...gameSetup(version.id), id: version.id }; // Custom's deck and roles come from its default rules
     for (const id of v.deck) assert.ok(CARD_DEF_MAP[id] && CARD_DEF_MAP[id].type !== "role", `${v.id} deck has a bad card ${id}`);
     for (const r of v.roles) assert.equal(roleDef(r)?.roleType, r, `${v.id} role ${r} needs a role_${r} card`);
     assert.equal(new Set(v.deck).size, v.deck.length, `${v.id} deck lists a card id twice`);
@@ -411,13 +420,28 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
 // ---------- Custom games: chosen cards, chosen roles, several roles each ----------
 {
   const players = Array.from({ length: 4 }, (_, i) => ({ visitorId: `p${i}`, seatIndex: i, animal: ANIMALS[i] }));
-  const all = ACTION_CHOICES.map(a => a.type);
+  const all = Object.fromEntries(ACTION_CHOICES.map(a => [a.type, 2]));
+  const sorted = (d: string[]) => [...d].sort();
 
-  // Default custom deck: classic actions only, no Demolish / Power Outage / Rewind / Double the Rent
-  const d = createInitialGameState("TEST", players, 60, "custom");
-  const cards = [...d.drawPile, ...d.players.flatMap(p => p.hand)].map(c => CARD_DEF_MAP[c.defId]);
-  for (const t of NON_CLASSIC_ACTIONS) assert.ok(!cards.some(c => c.actionType === t), `${t} is off by default`);
-  assert.ok(cards.some(c => c.actionType === "accio"));
+  // Every template plays exactly like its version; the default is Classic Harry Potter
+  for (const id of ["deal", "prime", "classic", "gg"] as const) {
+    const t = customFrom(id);
+    assert.deepEqual(sorted(customDeck(t)), sorted(VARIATIONS[id].deck), `${id} template deck`);
+    assert.deepEqual(t.roles, VARIATIONS[id].roles);
+    assert.deepEqual(gameSetup("custom", t).rules.wildRentOneTarget, VARIATIONS[id].rules?.wildRentOneTarget);
+  }
+  assert.deepEqual(DEFAULT_CUSTOM_RULES, customFrom("classic"));
+
+  // Card counts: more copies than any deck has get their own ids
+  const many = updateCustomRules(DEFAULT_CUSTOM_RULES, { counts: { accio: 7, money_10: 4, protego: 0, nope: 3, yule_ball: 99 } });
+  const deck = customDeck(many);
+  const n = (t: string) => deck.filter(id => CARD_DEF_MAP[id].actionType === t).length;
+  assert.equal(n("accio"), 7);
+  assert.equal(n("protego"), 0);
+  assert.equal(n("yule_ball"), 10, "capped at 10");
+  assert.equal(deck.filter(id => CARD_DEF_MAP[id].type === "money" && CARD_DEF_MAP[id].value === 10).length, 4);
+  assert.equal(new Set(deck).size, deck.length, "every card id is different");
+  assert.equal(updateCustomRules(DEFAULT_CUSTOM_RULES, { countKey: "reverse", count: 2 }).counts.reverse, 2, "one count per message");
 
   // Random, 3 roles each, all different within a player
   const r = createInitialGameState("TEST", players, 60, "custom", { ...DEFAULT_CUSTOM_RULES, roles: ["harry", "luna", "ganda", "lucha"], rolesPerPlayer: 3 });
@@ -427,15 +451,31 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
     assert.ok(p.roles.every(x => ["harry", "luna", "ganda", "lucha"].includes(x)));
   }
 
-  // Players choose: any number, only from roles in play; bots get one
-  const picks = [["harry", "luna", "draco"], [], ["cedric", "hermione"]] as RoleType[][];
+  // Players choose: their own picks (duplicates across players fine), the rest dealt; bots dealt
+  const picks = [["harry", "luna", "draco"], [], ["harry", "luna"]] as RoleType[][];
   const c = createInitialGameState("TEST",
     [...players.slice(0, 3).map((p, i) => ({ ...p, pickedRoles: picks[i] })), { ...players[3], isBot: true }],
-    60, "custom", { ...DEFAULT_CUSTOM_RULES, roles: ["harry", "luna", "cedric", "hermione"], roleMode: "choose" });
+    60, "custom", { ...DEFAULT_CUSTOM_RULES, roles: ["harry", "luna", "cedric", "hermione"], roleMode: "choose", rolesPerPlayer: 2 });
   assert.deepEqual(c.players[0].roles, ["harry", "luna"], "draco isn't in play");
-  assert.deepEqual(c.players[1].roles, []);
-  assert.deepEqual([...c.players[2].roles].sort(), ["cedric", "hermione"]);
-  assert.equal(c.players[3].roles.length, 1);
+  assert.equal(c.players[1].roles.length, 2, "no picks: dealt at random");
+  assert.deepEqual(c.players[2].roles, ["harry", "luna"], "the same roles as another player");
+  assert.equal(c.players[3].roles.length, 2);
+  const same3 = createInitialGameState("TEST", players.slice(0, 3).map(p => ({ ...p, pickedRoles: ["harry", "luna", "cedric"] as RoleType[] })),
+    60, "custom", { ...DEFAULT_CUSTOM_RULES, roles: ["harry", "luna", "cedric", "hermione"], roleMode: "choose", rolesPerPlayer: 3 });
+  assert.ok(same3.players.every(p => p.roles.join() === "harry,luna,cedric"), "everyone can pick the same three");
+  const halfPicked = createInitialGameState("TEST", [{ ...players[0], pickedRoles: ["harry"] as RoleType[] }, players[1]],
+    60, "custom", { ...DEFAULT_CUSTOM_RULES, roles: ["harry", "luna", "cedric"], roleMode: "choose", rolesPerPlayer: 2 });
+  assert.equal(halfPicked.players[0].roles[0], "harry");
+  assert.equal(new Set(halfPicked.players[0].roles).size, 2, "filled with a different role");
+
+  // Who goes first
+  assert.equal(createInitialGameState("TEST", players, 60, "classic", undefined, "first").currentTurnIndex, 0);
+  const starts = new Set(Array.from({ length: 60 }, () => createInitialGameState("TEST", players, 60, "classic", undefined, "random").currentTurnIndex));
+  assert.ok(starts.size > 1, "random start varies");
+
+  // Sets to win
+  const w = createInitialGameState("TEST", players.slice(0, 2), 60, "custom", { ...DEFAULT_CUSTOM_RULES, setsToWin: 1 });
+  assert.equal(w.rules?.setsToWin, 1);
 
   // Two roles at once: Luna draws 3 and Hermione gets 4 plays
   const both = c.players[2];
@@ -449,7 +489,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   // Bots play every action card in a full custom game
   let wins = 0;
   for (let g = 0; g < 40; g++) {
-    const s = createInitialGameState("TEST", players.slice(0, 2 + (g % 3)), 60, "custom", { ...DEFAULT_CUSTOM_RULES, actions: all, roles: ALL_ROLES, rolesPerPlayer: 2 });
+    const s = createInitialGameState("TEST", players.slice(0, 2 + (g % 3)), 60, "custom", { ...DEFAULT_CUSTOM_RULES, counts: { ...DEFAULT_CUSTOM_RULES.counts, ...all }, roles: ALL_ROLES, rolesPerPlayer: 2 });
     const total = countCards(s);
     s.players.forEach(p => { p.isSleeping = true; p.isBot = true; });
     let steps = 0;
@@ -459,11 +499,17 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.ok(wins > 5, "custom bot games should reach a winner");
 
   // Host settings are cleaned up
-  const u = updateCustomRules(DEFAULT_CUSTOM_RULES, { roles: ["luna", "nobody"], actions: ["double_rent", "x"], rolesPerPlayer: 9, roleMode: "bad" });
+  const u = updateCustomRules(DEFAULT_CUSTOM_RULES, { roles: ["luna", "nobody"], actions: ["double_rent", "x"], rolesPerPlayer: 9, roleMode: "bad", setsToWin: 40, template: "custom" });
   assert.deepEqual(u.roles, ["luna"]);
-  assert.deepEqual(u.actions, ["double_rent"]);
+  assert.equal(u.counts.double_rent, 2, "older saves listed action cards in play");
+  assert.equal(u.counts.accio, 0);
   assert.equal(u.rolesPerPlayer, 1);
   assert.equal(u.roleMode, "random");
+  assert.equal(u.setsToWin, 6);
+  assert.equal(u.template, "classic");
+  const g = updateCustomRules(u, { useTemplate: "gg", setsToWin: 2 });
+  assert.deepEqual(g.roles, VARIATIONS.gg.roles);
+  assert.equal(g.setsToWin, 2);
   console.log("custom games: ok");
 }
 
@@ -521,6 +567,69 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   console.log("lucha: ok");
 }
 
+// ---------- Lucha copies ONE power, even from someone with several ----------
+{
+  const s = setup(3);
+  const [a, b] = s.players;
+  a.roles = ["lucha"]; b.roles = ["harry", "hermione", "luna"]; s.players[2].roles = [];
+  assert.ok(endTurn(s, "p0").success);
+  assert.equal(luchaChoose(s, "p0", "p1").success, false, "must say which of three powers");
+  assert.equal(luchaChoose(s, "p0", "p1", "draco").success, false, "not a power they have");
+  assert.ok(luchaChoose(s, "p0", "p1", "luna").success);
+  assert.deepEqual(a.borrowedRoles, ["luna"]);
+  assert.ok(roleActive(a, "luna") && !roleActive(a, "harry") && !roleActive(a, "hermione"));
+  // Bots copy one power too
+  const t = setup(3);
+  t.players[0].roles = ["lucha"]; t.players[0].isBot = true; t.players[0].isSleeping = true;
+  t.players[1].roles = ["harry", "luna"]; t.players[2].roles = ["hermione"];
+  t.drawnThisTurn = true;
+  assert.ok(endTurn(t, "p0").success);
+  assert.ok(botStep(t, "p0"));
+  assert.equal(t.players[0].borrowedRoles?.length, 1);
+  console.log("lucha one power: ok");
+}
+
+// ---------- Power Outage on several roles cuts just the one the attacker picks ----------
+{
+  const s = setup(2);
+  const [a, b] = s.players;
+  a.roles = ["luna"]; b.roles = ["harry", "hermione"]; b.protectedColor = "red";
+  give(s, b, "properties", "prop_red_1");
+  give(s, a, "hand", "action_silencio_1");
+  assert.ok(playCard(s, "p0", "action_silencio_1").success);
+  assert.equal(chooseTarget(s, "p0", "p1").success, false, "must pick a role");
+  assert.equal(chooseTarget(s, "p0", "p1", "role_draco").success, false, "not one of theirs");
+  assert.ok(chooseTarget(s, "p0", "p1", "role_hermione").success);
+  assert.equal(s.pendingAction?.type, "protego_response", "still blockable with Just Say No");
+  assert.ok(declineProtego(s, "p1").success);
+  assert.ok(b.isSilenced);
+  assert.equal(b.silencedRole, "hermione");
+  assert.ok(!roleActive(b, "hermione"), "Hermione is cut");
+  assert.ok(roleActive(b, "harry"), "Harry still works");
+  // Paying it off brings the role back
+  give(s, b, "bank", "money_10g_1");
+  s.currentTurnIndex = 1; s.drawnThisTurn = true; s.pendingAction = null;
+  assert.ok(paySilencio(s, "p1", ["money_10g_1"]).success);
+  assert.ok(roleActive(b, "hermione") && b.silencedRole === undefined);
+  // One role: no pick needed
+  const t = setup(2);
+  t.players[0].roles = ["luna"]; t.players[1].roles = ["harry"];
+  give(t, t.players[0], "hand", "action_silencio_1");
+  assert.ok(playCard(t, "p0", "action_silencio_1").success);
+  assert.ok(chooseTarget(t, "p0", "p1").success);
+  assert.ok(declineProtego(t, "p1").success);
+  assert.equal(t.players[1].silencedRole, "harry");
+  assert.ok(!roleActive(t.players[1], "harry"));
+  // Cutting Lucha also cuts the power he copied
+  const l = setup(2);
+  l.players[1].roles = ["lucha", "hermione"]; l.players[1].borrowedRoles = ["luna"]; l.players[1].isSilenced = true; l.players[1].silencedRole = "lucha";
+  assert.ok(!roleActive(l.players[1], "luna") && roleActive(l.players[1], "hermione"));
+  // Older games without a picked role: every role is off
+  l.players[1].silencedRole = undefined;
+  assert.ok(!roleActive(l.players[1], "hermione"));
+  console.log("power outage one role: ok");
+}
+
 // ---------- Classic Monopoly Deal: no roles, real deck, Wild Rent hits one player ----------
 {
   const players = Array.from({ length: 3 }, (_, i) => ({ visitorId: `p${i}`, seatIndex: i, animal: ANIMALS[i] }));
@@ -567,7 +676,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
 // ---------- Double the Rent ----------
 {
   const s = createInitialGameState("TEST", Array.from({ length: 3 }, (_, i) => ({ visitorId: `p${i}`, seatIndex: i, animal: ANIMALS[i] })),
-    60, "custom", { ...DEFAULT_CUSTOM_RULES, actions: ["double_rent"] });
+    60, "custom", updateCustomRules(DEFAULT_CUSTOM_RULES, { actions: ["double_rent"] }));
   for (const p of s.players) { s.drawPile.push(...p.hand); p.hand = []; p.roles = []; }
   s.drawnThisTurn = true;
   s.maxActions = 3;
@@ -772,9 +881,8 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   const count = (t: string) => prime.deck.filter(id => CARD_DEF_MAP[id].actionType === t).length;
   assert.equal(count("bank_robber"), 1, "exactly one Bank Robber");
   assert.equal(count("protego"), 4, "four Just Say No");
-  assert.ok(!ACTION_CHOICES.find(a => a.type === "protego" && a.copies !== 3), "Custom keeps 3 Just Say No");
   for (const t of ["hand_seven", "hand_steal", "chargeback", "reverse", "destroy", "bank_robber"] as const) {
-    assert.ok(NON_CLASSIC_ACTIONS.includes(t), `${t} is off by default in Custom`);
+    assert.equal(DEFAULT_CUSTOM_RULES.counts[t], 0, `${t} is off by default in Custom`);
   }
 
   const primeSetup = (n = 3) => {
@@ -901,6 +1009,21 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
     assert.ok(declineProtego(s, "p0").success);
     assert.ok(b.properties.some(x => x.defId === "prop_green_1") && b.properties.some(x => x.defId === "prop_brown_1"));
   }
+  // Reverse on Power Outage: the reverser picks which of the attacker's roles to cut
+  {
+    const s = primeSetup(2);
+    const [a, b] = s.players;
+    a.roles = ["harry", "luna"]; b.roles = ["draco"];
+    a.hand.push({ defId: "action_silencio_1" }); give(s, b, "hand", "action_reverse_1"); // Prime has no Power Outage
+    assert.ok(playCard(s, "p0", "action_silencio_1").success);
+    assert.ok(chooseTarget(s, "p0", "p1").success);
+    assert.ok(playReverse(s, "p1").success);
+    assert.equal(s.pendingAction?.type, "choose_silencio");
+    assert.ok(chooseTarget(s, "p1", "p0", "role_luna").success);
+    assert.ok(declineProtego(s, "p0").success);
+    assert.equal(a.silencedRole, "luna");
+    assert.ok(roleActive(a, "harry") && !roleActive(a, "luna") && roleActive(b, "draco"));
+  }
   // Reverse with nothing to turn back works as a Just Say No
   {
     const s = primeSetup(2);
@@ -966,6 +1089,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.equal(calculateRent(a, "orange"), 3);
   assert.ok(endTurn(s, "p0").success);
   assert.equal(s.pendingAction?.type, "tharki_shortcut");
+  assert.equal(tharkiShortcutColor(s, "p0", "brown").success, false, "brown already needs only 2");
   assert.ok(tharkiShortcutColor(s, "p0", "orange").success);
   assert.equal(a.shortcutColor, "orange");
   assert.equal(calculateRent(a, "orange"), 5, "a Shortcut set earns full-set rent");
@@ -995,16 +1119,13 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   // Silenced Tharki loses the Shortcut's effect
   a.shortcutColor = "orange"; a.isSilenced = true;
   assert.equal(calculateRent(a, "orange"), 3);
-  // A 2-card colour on Shortcut is complete with a single card
+  // 2-card colours can't take a Shortcut, and an old one there does nothing
   a.isSilenced = false; a.shortcutColor = "brown";
-  assert.equal(calculateRent(a, "brown"), 2, "one brown on Shortcut earns full-set rent");
-  const one = setup(2);
-  const solo = one.players[0]; solo.roles = ["tharki"]; one.players[1].roles = [];
-  for (const id of ["prop_brown_1", "prop_darkblue_1", "prop_red_1", "prop_red_2", "prop_red_3", "prop_orange_1", "prop_orange_2", "prop_orange_3"]) give(one, solo, "properties", id);
-  assert.ok(endTurn(one, "p0").success);
-  assert.equal(one.status, "playing");
-  assert.ok(tharkiShortcutColor(one, "p0", "dark_blue").success);
-  assert.equal(one.status, "finished", "one dark blue on Shortcut completes the third set");
+  assert.equal(calculateRent(a, "brown"), 1, "one brown on an old Shortcut is still one of two");
+  a.shortcutColor = "orange";
+  s.currentTurnIndex = 0; s.pendingAction = null; s.drawnThisTurn = true;
+  assert.ok(endTurn(s, "p0").success);
+  assert.equal(tharkiShortcutColor(s, "p0", "brown").success, false, "brown needs only 2");
   console.log("tharki: ok");
 }
 

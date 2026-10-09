@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { GameCard } from "@/components/GameCard";
 import { useGame } from "./context";
 import {
-  groupSets, SET_SIZES, tileFill, valueOf, sumValue, label, fillOf, roleName, roleNames, roleInfo, borrowedText, shieldOf, setSizeFor, shortcutOf, friendName, rentFor, sparedBy, nameOf, otherColor, completeSets, looseWilds, colorOnTable, RAINBOW,
+  groupSets, SET_SIZES, tileFill, valueOf, sumValue, label, fillOf, roleName, roleNames, roleInfo, borrowedText, roleCut, allRolesCut, outageLabel, shieldOf, setSizeFor, shortcutOf, friendName, rentFor, sparedBy, nameOf, otherColor, completeSets, looseWilds, colorOnTable, RAINBOW,
   CARD_DEF_MAP, canTake, isComplete, RENT_TABLE, STACK_STEP,
 } from "./helpers";
 
@@ -123,7 +123,7 @@ export function OpponentSeat({ p, onOpen }: { p: PlayerState; onOpen: () => void
       <div className="hp-opp-top">
         <TimerAvatar p={p} />
         <span className="nm">{p.animal.name}</span>
-        {p.roles.length > 0 && <span className={`hp-role ${p.isSilenced ? "off" : ""}`} title={`${p.roles.map(r => roleInfo(r)?.power ?? "").join(" ")}${p.isSilenced ? " (power off)" : ""}`}>{roleNames(p, true)}</span>}
+        {p.roles.length > 0 && <span className={`hp-role ${allRolesCut(p) ? "off" : ""}`} title={`${p.roles.map(r => roleInfo(r)?.power ?? "").join(" ")}${p.isSilenced ? ` (${outageLabel(p).toLowerCase()})` : ""}`}>{roleNames(p, true)}</span>}
         <SeatChips p={p} target={target} />
         <span className="hand">Hand <b>{p.hand.length}</b></span>
       </div>
@@ -131,7 +131,7 @@ export function OpponentSeat({ p, onOpen }: { p: PlayerState; onOpen: () => void
       <div className="hp-opp-bank">
         <span>Bank <b>{sumValue(p.bank)}M</b></span>
         <span className="hp-coins">{coins.map(c => <span key={c.defId} className="hp-cn">{valueOf(c)}</span>)}</span>
-        <span className="worth">Sets {completeSets(p)}/3 · Property {sumValue(p.properties)}M</span>
+        <span className="worth">Sets {completeSets(p)}/{s.rules?.setsToWin ?? 3} · Property {sumValue(p.properties)}M</span>
       </div>
     </button>
   );
@@ -167,12 +167,12 @@ export function Opponents({ full }: { full: boolean }) {
                   <div className="hp-rolec">
                     {shown.roles.map(r => (
                       <span key={r} style={{ display: "grid", gap: 2 }}>
-                        <b style={shown.isSilenced ? { textDecoration: "line-through" } : undefined}>{roleName(r)}</b>
+                        <b style={roleCut(shown, r) ? { textDecoration: "line-through" } : undefined}>{roleName(r)}</b>
                         <span>{roleInfo(r)?.power}</span>
                       </span>
                     ))}
                     {borrowedText(s, shown) && <span>{borrowedText(s, shown)}.</span>}
-                    {shown.isSilenced && <span>Their power is switched off right now.</span>}
+                    {shown.isSilenced && <span>{outageLabel(shown) === "Power off" ? "Their power is" : `Their ${roleName(shown.silencedRole)} power is`} switched off right now.</span>}
                     {shieldOf(shown) && <span>Shield is on {label(shieldOf(shown)!)}.</span>}
                     {shortcutOf(shown) && <span>Shortcut is on {label(shortcutOf(shown)!)}: {setSizeFor(shown, shortcutOf(shown)!)} cards make a full set.</span>}
                     {friendName(s, shown) && <span>Friends with {friendName(s, shown)} this round.</span>}
@@ -202,7 +202,7 @@ function SeatChips({ p, target }: { p: PlayerState; target: boolean }) {
   const late = s.waitingOn === p.visitorId && s.turnTimer <= 0 && !p.isSleeping;
   return (
     <>
-      {p.isSilenced && <span className="hp-chip late">Power off</span>}
+      {p.isSilenced && <span className="hp-chip late">{outageLabel(p)}</span>}
       {shieldOf(p) && <span className="hp-chip gold" title={`${label(shieldOf(p)!)} is shielded by Harry's charm`}>🛡 {label(shieldOf(p)!)}</span>}
       {shortcutOf(p) && <span className="hp-chip gold" title={`${label(shortcutOf(p)!)} needs one fewer card (Tharki's Shortcut)`}>✂ {label(shortcutOf(p)!)}</span>}
       {friendName(s, p) && <span className="hp-chip gold" title={`${friendName(s, p)} can't act against ${p.animal.name} this round`}>🤝 {friendName(s, p)}</span>}
@@ -239,13 +239,13 @@ function OpponentRow({ p }: { p: PlayerState }) {
       <div className="hp-zone-head">
         <TimerAvatar p={p} />
         <span className="nm">{p.animal.name}</span>
-        {p.roles.length > 0 && <span className={`hp-role ${p.isSilenced ? "off" : ""}`}>{roleNames(p)}</span>}
+        {p.roles.length > 0 && <span className={`hp-role ${allRolesCut(p) ? "off" : ""}`}>{roleNames(p)}</span>}
         <SeatChips p={p} target={target} />
         <span className="hand">Hand <b>{p.hand.length}</b></span>
       </div>
       <div className="hp-mine">
         <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
-          <div className="hp-label">Sets · {completeSets(p)} of 3 complete</div>
+          <div className="hp-label">Sets · {completeSets(p)} of {s.rules?.setsToWin ?? 3} complete</div>
           <div className="hp-sets">
             {sets.map(({ color, cards }) => {
               const n = cards.length;
@@ -319,13 +319,13 @@ function OpponentRow({ p }: { p: PlayerState }) {
             <div className="hp-myrole">
               {p.roles.map(r => (
                 <div key={r} style={{ display: "grid", gap: 2 }}>
-                  <b style={p.isSilenced ? { textDecoration: "line-through" } : undefined}>{roleName(r)}</b>
+                  <b style={roleCut(p, r) ? { textDecoration: "line-through" } : undefined}>{roleName(r)}</b>
                   <span>{roleInfo(r)?.power}</span>
                 </div>
               ))}
               {borrowedText(s, p) && <span>{borrowedText(s, p)}.</span>}
               {friendName(s, p) && <span>Friends with {friendName(s, p)} this round.</span>}
-              {p.isSilenced && <span>Their power is switched off right now.</span>}
+              {p.isSilenced && <span>{outageLabel(p) === "Power off" ? "Their power is" : `Their ${roleName(p.silencedRole)} power is`} switched off right now.</span>}
             </div>
           )}
         </div>

@@ -6,7 +6,7 @@
  */
 import { DurableObject } from "cloudflare:workers";
 import { v4 as uuidv4 } from "uuid";
-import type { GameState, WSMessage, AnimalProfile, VariationId, CustomRules, RoleType, PlayerState } from "../shared/schema";
+import type { GameState, WSMessage, AnimalProfile, VariationId, CustomRules, RoleType, PlayerState, StartSeat, ChatMessage } from "../shared/schema";
 import { ANIMALS, freshTurnTimer, inDrawStep } from "../shared/schema";
 import { DEFAULT_VARIATION, DEFAULT_CUSTOM_RULES, isVariationId, updateCustomRules } from "../shared/variations";
 import {
@@ -59,8 +59,10 @@ interface Room {
   gameSpeed: number;
   variation: VariationId;
   custom: CustomRules; // the host's settings for a Custom game
+  startSeat: StartSeat; // who takes the first turn
   clients: Map<string, RoomClient>;
   gameState: GameState | null;
+  chat: ChatMessage[]; // the room's chat, shared by the lobby, players and spectators across games
   timerSetAt: number; // when gameState.turnTimer was last brought up to date
   lastActivity: number;
   // Not persisted: how to reach the room's open sockets.
@@ -147,7 +149,7 @@ function spectatorsOf(room: Room): AnimalProfile[] {
 }
 
 function gameViewFor(room: Room, visitorId: string, spectators = spectatorsOf(room)): GameState {
-  return sanitizeStateForPlayer({ ...room.gameState!, spectators }, visitorId);
+  return sanitizeStateForPlayer({ ...room.gameState!, spectators, chatMessages: room.chat }, visitorId);
 }
 
 function broadcastGameState(room: Room) {
@@ -185,9 +187,11 @@ function getLobbyState(room: Room): any {
     gameSpeed: room.gameSpeed,
     variation: room.variation,
     custom: room.custom,
+    startSeat: room.startSeat,
     seats,
     spectators,
     takenAnimals: [...takenAnimals(room)],
+    chatMessages: room.chat,
     status: room.gameState ? "playing" : "lobby",
   };
 }
@@ -308,10 +312,18 @@ function handleSetCustomRules(room: Room, client: RoomClient, payload: any) {
   if (room.gameState) return sendError(room, client, "Game in progress");
 
   room.custom = updateCustomRules(room.custom, payload ?? {});
-  // Drop picks for roles that are no longer in play
+  // Drop picks for roles that are no longer in play, or past the number each player gets
   for (const c of room.clients.values()) {
-    if (c.pickedRoles) c.pickedRoles = c.pickedRoles.filter(r => room.custom.roles.includes(r));
+    if (c.pickedRoles) c.pickedRoles = c.pickedRoles.filter(r => room.custom.roles.includes(r)).slice(-room.custom.rolesPerPlayer);
   }
+  broadcastLobbyState(room);
+}
+
+function handleSetStartSeat(room: Room, client: RoomClient, payload: any) {
+  if (client.visitorId !== room.hostVisitorId) return sendError(room, client, "Only the host can change who starts");
+  if (room.gameState) return sendError(room, client, "Game in progress");
+  if (payload?.startSeat !== "random" && payload?.startSeat !== "first") return sendError(room, client, "Invalid choice");
+  room.startSeat = payload.startSeat;
   broadcastLobbyState(room);
 }
 
@@ -320,7 +332,8 @@ function handlePickRoles(room: Room, client: RoomClient, payload: any) {
   if (client.seatIndex === null) return sendError(room, client, "Take a seat to pick roles");
   const roles = payload?.roles;
   if (!Array.isArray(roles)) return sendError(room, client, "Invalid roles");
-  client.pickedRoles = room.custom.roles.filter(r => roles.includes(r));
+  // Picks come in the order they were made; past the limit the oldest ones go
+  client.pickedRoles = roles.filter((r, i) => room.custom.roles.includes(r) && roles.indexOf(r) === i).slice(-room.custom.rolesPerPlayer);
   broadcastLobbyState(room);
 }
 
@@ -424,7 +437,7 @@ function handleStartGame(room: Room, client: RoomClient) {
   // Sort by seat index
   seatedPlayers.sort((a, b) => a.seatIndex - b.seatIndex);
 
-  room.gameState = createInitialGameState(room.code, seatedPlayers, room.gameSpeed, room.variation, room.custom);
+  room.gameState = createInitialGameState(room.code, seatedPlayers, room.gameSpeed, room.variation, room.custom, room.startSeat);
   room.timerSetAt = Date.now();
   broadcastGameState(room);
 }
@@ -550,12 +563,14 @@ function handleDiscardCards(room: Room, client: RoomClient, payload: any) {
   broadcastGameState(room);
 }
 
-function handleSendChat(room: Room, client: RoomClient, payload: any) {
-  if (!room.gameState) return;
-  const { message } = payload || {};
-  if (!message || typeof message !== "string") return;
+const MAX_CHAT_MESSAGES = 50;
 
-  const chatMsg = {
+/** Anyone in the room can chat: people in the lobby, players, and spectators watching a game. */
+function handleSendChat(room: Room, client: RoomClient, payload: any) {
+  const message = typeof payload?.message === "string" ? payload.message.trim() : "";
+  if (!message) return;
+
+  const chatMsg: ChatMessage = {
     id: uuidv4(),
     timestamp: Date.now(),
     playerEmoji: client.animal.emoji,
@@ -564,10 +579,8 @@ function handleSendChat(room: Room, client: RoomClient, payload: any) {
     message: message.slice(0, 200), // Limit length
   };
 
-  room.gameState.chatMessages.push(chatMsg);
-  if (room.gameState.chatMessages.length > 50) {
-    room.gameState.chatMessages = room.gameState.chatMessages.slice(-50);
-  }
+  room.chat.push(chatMsg);
+  if (room.chat.length > MAX_CHAT_MESSAGES) room.chat = room.chat.slice(-MAX_CHAT_MESSAGES);
 
   broadcastToRoom(room, { type: "chat_message", payload: chatMsg });
 }
@@ -700,6 +713,7 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
     case "set_variation": return handleSetVariation(room, client, payload);
     case "set_custom_rules": return handleSetCustomRules(room, client, payload);
     case "pick_roles": return handlePickRoles(room, client, payload);
+    case "set_start_seat": return handleSetStartSeat(room, client, payload);
     case "pick_animal": return handlePickAnimal(room, client, payload);
     case "set_name": return handleSetName(room, client, payload);
     case "new_game": return handleNewGame(room, client);
@@ -756,7 +770,8 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
     }
     case "lucha_choose": {
       if (!room.gameState) return;
-      const result = luchaChoose(room.gameState, client.visitorId, payload?.targetPlayerId);
+      const role = typeof payload?.role === "string" ? payload.role as RoleType : undefined;
+      const result = luchaChoose(room.gameState, client.visitorId, payload?.targetPlayerId, role);
       if (!result.success) return sendError(room, client, result.error!);
       return broadcastGameState(room);
     }
@@ -812,7 +827,10 @@ export class GameRoom extends DurableObject<Env> {
       moveBonuses: stored.moveBonuses ?? 0,
       variation: isVariationId(stored.variation) ? stored.variation : DEFAULT_VARIATION,
       custom: stored.custom ? updateCustomRules(DEFAULT_CUSTOM_RULES, stored.custom as any) : DEFAULT_CUSTOM_RULES,
+      startSeat: stored.startSeat === "first" ? "first" : "random",
       gameState: stored.gameState && withRoleLists(stored.gameState),
+      // Rooms saved before the room-wide chat kept it in the game
+      chat: stored.chat ?? stored.gameState?.chatMessages ?? [],
       finishedAt: stored.finishedAt ?? null,
       dropDeadlines: stored.dropDeadlines ?? {},
       heartbeatDueAt: stored.heartbeatDueAt ?? null,
@@ -830,8 +848,10 @@ export class GameRoom extends DurableObject<Env> {
       gameSpeed: 60,
       variation: DEFAULT_VARIATION,
       custom: DEFAULT_CUSTOM_RULES,
+      startSeat: "random",
       clients: [],
       gameState: null,
+      chat: [],
       lastWaitingOn: null,
       lastDrawStep: false,
       botDueAt: null,

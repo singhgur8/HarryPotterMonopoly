@@ -50,14 +50,23 @@ export type VariationId = "deal" | "prime" | "classic" | "gg" | "vegas" | "custo
 export interface GameRules {
   wildRentOneTarget?: boolean; // Wild Rent charges one player you pick, not everyone (real Monopoly Deal)
   vegas?: boolean;             // Vegas: every turn starts with a gamble (dice, duel or coin-toss bet)
+  setsToWin?: number;          // complete sets needed to win (missing = 3)
 }
+
+// Who takes the first turn: a random player, or whoever sits in the first seat
+export type StartSeat = "random" | "first";
+
+// Versions a Custom game can start from
+export type TemplateId = Exclude<VariationId, "custom">;
 
 // What the host sets up for a Custom game
 export interface CustomRules {
+  template: TemplateId;            // version it started from: its properties, wilds, rent cards and rule switches
   roles: RoleType[];               // roles in play
-  actions: ActionType[];           // action cards in the deck (all copies of each)
   roleMode: "random" | "choose";   // deal roles at random, or each player picks theirs
-  rolesPerPlayer: number;          // how many roles each player is dealt in random mode
+  rolesPerPlayer: number;          // how many roles each player gets
+  counts: Record<string, number>;  // copies of each action card (by action) and money card (money_<value>)
+  setsToWin: number;               // complete sets needed to win
 }
 
 // Card types
@@ -129,6 +138,7 @@ export interface PlayerState {
   isConnected: boolean;
   protectedColor?: PropertyColor;  // Harry's power
   isSilenced: boolean;             // Silencio debuff active
+  silencedRole?: RoleType;         // Power Outage: the one role it cut (unset = every role, as in older games)
   borrowedRoles?: RoleType[];      // Lucha: the powers copied at the end of the last turn
   borrowedFrom?: string;           // Lucha: whose powers those are (can't pick them twice in a row)
   shortcutColor?: PropertyColor;   // Tharki: the colour that needs one fewer card for a full set
@@ -306,6 +316,7 @@ export type WSMessageType =
   | "set_game_speed"
   | "set_variation"
   | "set_custom_rules"
+  | "set_start_seat"
   | "pick_roles"
   | "pick_animal"
   | "set_name"
