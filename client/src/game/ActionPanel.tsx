@@ -10,7 +10,7 @@ import { CardInfo, DiscardLink, DiscardPile } from "./DiscardPile";
 import {
   CARD_DEF_MAP, COLORS, label, fillOf, valueOf, sumValue, nameOf, groupSets, canTake, isComplete, shieldOf, roleName, roleNames,
   payableCards, playerName, waitingText, isPayment, hasProtego, hasAction, drawCount, tileFill, colorOnTable, looseWilds, cardBlurb, outOfMoves,
-  sparedBy, setSizeFor,
+  sparedBy, setSizeFor, canShortcut, outageLabel,
   type PaySelection,
 } from "./helpers";
 
@@ -141,7 +141,7 @@ function TargetPicker() {
     choose_swap: own ? "Forced Deal: now pick the property you want in return." : "Forced Deal: first pick one of your properties to give away.",
     choose_steal_set: "Deal Breaker: pick a complete set to take.",
     choose_reducto: "Demolish: pick a property to destroy. Bank cards are safe.",
-    choose_silencio: "Power Outage: pick who loses their role power.",
+    choose_silencio: "Power Outage: pick who loses their role power. Someone with several roles loses the one you pick.",
     choose_goblin: "Debt Collector: pick who owes you 5M.",
     choose_rent_target: `Wild Rent: pick who pays you ${p.amount ?? 0}M rent.`,
     choose_destroy: "Destroy: pick a property to discard, even from a complete set.",
@@ -174,7 +174,12 @@ function TargetPicker() {
             </button>
           )) : <span className="hp-muted">No complete sets you can take</span>;
         } else if (p.type === "choose_silencio") {
-          body = <button className="hp-btn gold" disabled={o.isSilenced} onClick={() => pick(o.visitorId)}>{o.isSilenced ? "Power already off" : `Cut ${o.animal.name}'s power`}</button>;
+          // Several roles: pick which one goes dark (the role card id rides in targetCardDefId)
+          body = o.isSilenced ? <button className="hp-btn gold" disabled>Power already off</button>
+            : o.roles.length > 1 ? o.roles.map(r => (
+              <button key={r} className="hp-btn gold" onClick={() => pick(o.visitorId, `role_${r}`)} data-testid={`cut-${o.seatIndex}-${r}`}>Cut {roleName(r)}</button>
+            ))
+            : <button className="hp-btn gold" onClick={() => pick(o.visitorId)}>Cut {o.animal.name}'s power</button>;
         } else if (p.type === "choose_rent_target") {
           body = <button className="hp-btn gold" onClick={() => pick(o.visitorId)}>Charge {o.animal.name} {p.amount}M (bank {sumValue(o.bank)}M)</button>;
         } else if (p.type === "choose_hand_steal") {
@@ -188,7 +193,7 @@ function TargetPicker() {
         }
         return (
           <div key={o.visitorId} className="hp-target">
-            <div className="hp-row"><span>{o.animal.emoji}</span><b>{o.animal.name}</b><span className="hp-muted" style={{ fontSize: 12.5 }}>{o.roles.length ? `· ${o.isSilenced ? "power off" : roleNames(o)}` : ""}</span></div>
+            <div className="hp-row"><span>{o.animal.emoji}</span><b>{o.animal.name}</b><span className="hp-muted" style={{ fontSize: 12.5 }}>{o.roles.length ? `· ${o.isSilenced ? outageLabel(o).toLowerCase() : roleNames(o)}` : ""}</span></div>
             <div className="hp-row">{body}</div>
           </div>
         );
@@ -378,8 +383,10 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
         break;
       }
       case "harry_protect": {
+        // Only colours on the table right now; a shield on a colour that's gone drops
         const owned = groupSets(me.properties).map(g => g.color);
-        const current = me.protectedColor;
+        const gone = me.protectedColor && !owned.includes(me.protectedColor) ? me.protectedColor : undefined;
+        const current = gone ? undefined : me.protectedColor;
         const moveTo = owned.filter(c => c !== current);
         prompt = (
           <div className="hp-prompt wait">
@@ -387,7 +394,7 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
               <b>Harry's charm.</b>{" "}
               {current
                 ? <>Your shield is on {label(current)}. Keep it there or move it? It stays until you move it.</>
-                : <>Shield one colour. It can't be stolen or charged rent, and it stays until you move it.</>}
+                : <>{gone ? <>You no longer have any {label(gone)}, so your shield comes off it. </> : null}Shield one colour. It can't be stolen or charged rent, and it stays until you move it.</>}
             </p></div>
             <div className="hp-row">
               {current && (
@@ -442,21 +449,31 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
         const blocked = others.length > 1 ? me.borrowedFrom : undefined;
         prompt = (
           <div className="hp-prompt wait">
-            <div className="head"><p><b>Lucha's choice.</b> Whose power do you copy for your next turn?{blocked ? ` You copied ${playerName(s, blocked)} last time, so pick someone else.` : ""}</p></div>
+            <div className="head"><p><b>Lucha's choice.</b> Which one power do you copy for your next turn?{blocked ? ` You copied ${playerName(s, blocked)} last time, so pick someone else.` : ""}</p></div>
             <div className="hp-row">
-              {others.map(o => (
-                <button key={o.visitorId} className="hp-btn ghost" disabled={o.visitorId === blocked} onClick={() => send("lucha_choose", { targetPlayerId: o.visitorId })} data-testid={`lucha-copy-${o.seatIndex}`}>
-                  {o.animal.emoji} {o.animal.name} · {o.roles.filter(r => r !== "lucha").map(r => roleName(r)).join(" + ") || "no power"}
-                </button>
-              ))}
+              {/* One button per power: Lucha copies a single role, even from someone with several */}
+              {others.flatMap(o => {
+                const powers = o.roles.filter(r => r !== "lucha");
+                if (!powers.length) return [(
+                  <button key={o.visitorId} className="hp-btn ghost" disabled={o.visitorId === blocked} onClick={() => send("lucha_choose", { targetPlayerId: o.visitorId })} data-testid={`lucha-copy-${o.seatIndex}`}>
+                    {o.animal.emoji} {o.animal.name} · no power
+                  </button>
+                )];
+                return powers.map(r => (
+                  <button key={`${o.visitorId}-${r}`} className="hp-btn ghost" disabled={o.visitorId === blocked} onClick={() => send("lucha_choose", { targetPlayerId: o.visitorId, role: r })} data-testid={powers.length > 1 ? `lucha-copy-${o.seatIndex}-${r}` : `lucha-copy-${o.seatIndex}`}>
+                    {o.animal.emoji} {o.animal.name} · {roleName(r)}
+                  </button>
+                ));
+              })}
             </div>
           </div>
         );
         break;
       }
       case "tharki_shortcut": {
-        const owned = groupSets(me.properties).map(g => g.color);
-        const current = me.shortcutColor;
+        const owned = groupSets(me.properties).map(g => g.color).filter(canShortcut);
+        const gone = me.shortcutColor && !owned.includes(me.shortcutColor) ? me.shortcutColor : undefined;
+        const current = gone ? undefined : me.shortcutColor;
         const moveTo = owned.filter(c => c !== current);
         const need = (c: PropertyColor) => `${setSizeFor({ ...me, shortcutColor: c }, c)} cards`;
         prompt = (
@@ -465,7 +482,7 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
               <b>Tharki's Shortcut.</b>{" "}
               {current
                 ? <>Your Shortcut is on {label(current)}, so it needs {need(current)} for a full set. Keep it there or move it?</>
-                : <>Pick one colour to need one fewer card for a full set. It stays until you move it.</>}
+                : <>{gone ? <>Your Shortcut comes off {label(gone)}. </> : null}Pick one colour of 3 or more cards to need one fewer card for a full set. It stays until you move it.</>}
             </p></div>
             <div className="hp-row">
               {current && (

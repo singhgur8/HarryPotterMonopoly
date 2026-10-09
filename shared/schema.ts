@@ -126,6 +126,7 @@ export interface PlayerState {
   isConnected: boolean;
   protectedColor?: PropertyColor;  // Harry's power
   isSilenced: boolean;             // Silencio debuff active
+  silencedRole?: RoleType;         // Power Outage: the one role it cut (unset = every role, as in older games)
   borrowedRoles?: RoleType[];      // Lucha: the powers copied at the end of the last turn
   borrowedFrom?: string;           // Lucha: whose powers those are (can't pick them twice in a row)
   shortcutColor?: PropertyColor;   // Tharki: the colour that needs one fewer card for a full set

@@ -297,6 +297,14 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.ok(endTurn(s, "p0").success);
   assert.ok(harryProtectColor(s, "p0", null).success);
   assert.equal(a.protectedColor, undefined, "dropped");
+  // Only colours on his table: not one he has never had
+  s.currentTurnIndex = 0; s.drawnThisTurn = true; s.pendingAction = null;
+  assert.ok(endTurn(s, "p0").success);
+  assert.equal(harryProtectColor(s, "p0", "green").success, false, "no green on his table");
+  // A shield left on a colour he no longer has comes off when he keeps it
+  a.protectedColor = "green";
+  assert.ok(harryProtectColor(s, "p0").success);
+  assert.equal(a.protectedColor, undefined, "nothing to guard on green");
   void drawCards;
   console.log("harry shield: ok");
 }
@@ -518,6 +526,69 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   a.isSilenced = true;
   assert.ok(!roleActive(a, "luna"));
   console.log("lucha: ok");
+}
+
+// ---------- Lucha copies ONE power, even from someone with several ----------
+{
+  const s = setup(3);
+  const [a, b] = s.players;
+  a.roles = ["lucha"]; b.roles = ["harry", "hermione", "luna"]; s.players[2].roles = [];
+  assert.ok(endTurn(s, "p0").success);
+  assert.equal(luchaChoose(s, "p0", "p1").success, false, "must say which of three powers");
+  assert.equal(luchaChoose(s, "p0", "p1", "draco").success, false, "not a power they have");
+  assert.ok(luchaChoose(s, "p0", "p1", "luna").success);
+  assert.deepEqual(a.borrowedRoles, ["luna"]);
+  assert.ok(roleActive(a, "luna") && !roleActive(a, "harry") && !roleActive(a, "hermione"));
+  // Bots copy one power too
+  const t = setup(3);
+  t.players[0].roles = ["lucha"]; t.players[0].isBot = true; t.players[0].isSleeping = true;
+  t.players[1].roles = ["harry", "luna"]; t.players[2].roles = ["hermione"];
+  t.drawnThisTurn = true;
+  assert.ok(endTurn(t, "p0").success);
+  assert.ok(botStep(t, "p0"));
+  assert.equal(t.players[0].borrowedRoles?.length, 1);
+  console.log("lucha one power: ok");
+}
+
+// ---------- Power Outage on several roles cuts just the one the attacker picks ----------
+{
+  const s = setup(2);
+  const [a, b] = s.players;
+  a.roles = ["luna"]; b.roles = ["harry", "hermione"]; b.protectedColor = "red";
+  give(s, b, "properties", "prop_red_1");
+  give(s, a, "hand", "action_silencio_1");
+  assert.ok(playCard(s, "p0", "action_silencio_1").success);
+  assert.equal(chooseTarget(s, "p0", "p1").success, false, "must pick a role");
+  assert.equal(chooseTarget(s, "p0", "p1", "role_draco").success, false, "not one of theirs");
+  assert.ok(chooseTarget(s, "p0", "p1", "role_hermione").success);
+  assert.equal(s.pendingAction?.type, "protego_response", "still blockable with Just Say No");
+  assert.ok(declineProtego(s, "p1").success);
+  assert.ok(b.isSilenced);
+  assert.equal(b.silencedRole, "hermione");
+  assert.ok(!roleActive(b, "hermione"), "Hermione is cut");
+  assert.ok(roleActive(b, "harry"), "Harry still works");
+  // Paying it off brings the role back
+  give(s, b, "bank", "money_10g_1");
+  s.currentTurnIndex = 1; s.drawnThisTurn = true; s.pendingAction = null;
+  assert.ok(paySilencio(s, "p1", ["money_10g_1"]).success);
+  assert.ok(roleActive(b, "hermione") && b.silencedRole === undefined);
+  // One role: no pick needed
+  const t = setup(2);
+  t.players[0].roles = ["luna"]; t.players[1].roles = ["harry"];
+  give(t, t.players[0], "hand", "action_silencio_1");
+  assert.ok(playCard(t, "p0", "action_silencio_1").success);
+  assert.ok(chooseTarget(t, "p0", "p1").success);
+  assert.ok(declineProtego(t, "p1").success);
+  assert.equal(t.players[1].silencedRole, "harry");
+  assert.ok(!roleActive(t.players[1], "harry"));
+  // Cutting Lucha also cuts the power he copied
+  const l = setup(2);
+  l.players[1].roles = ["lucha", "hermione"]; l.players[1].borrowedRoles = ["luna"]; l.players[1].isSilenced = true; l.players[1].silencedRole = "lucha";
+  assert.ok(!roleActive(l.players[1], "luna") && roleActive(l.players[1], "hermione"));
+  // Older games without a picked role: every role is off
+  l.players[1].silencedRole = undefined;
+  assert.ok(!roleActive(l.players[1], "hermione"));
+  console.log("power outage one role: ok");
 }
 
 // ---------- Classic Monopoly Deal: no roles, real deck, Wild Rent hits one player ----------
@@ -900,6 +971,21 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
     assert.ok(declineProtego(s, "p0").success);
     assert.ok(b.properties.some(x => x.defId === "prop_green_1") && b.properties.some(x => x.defId === "prop_brown_1"));
   }
+  // Reverse on Power Outage: the reverser picks which of the attacker's roles to cut
+  {
+    const s = primeSetup(2);
+    const [a, b] = s.players;
+    a.roles = ["harry", "luna"]; b.roles = ["draco"];
+    a.hand.push({ defId: "action_silencio_1" }); give(s, b, "hand", "action_reverse_1"); // Prime has no Power Outage
+    assert.ok(playCard(s, "p0", "action_silencio_1").success);
+    assert.ok(chooseTarget(s, "p0", "p1").success);
+    assert.ok(playReverse(s, "p1").success);
+    assert.equal(s.pendingAction?.type, "choose_silencio");
+    assert.ok(chooseTarget(s, "p1", "p0", "role_luna").success);
+    assert.ok(declineProtego(s, "p0").success);
+    assert.equal(a.silencedRole, "luna");
+    assert.ok(roleActive(a, "harry") && !roleActive(a, "luna") && roleActive(b, "draco"));
+  }
   // Reverse with nothing to turn back works as a Just Say No
   {
     const s = primeSetup(2);
@@ -965,6 +1051,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.equal(calculateRent(a, "orange"), 3);
   assert.ok(endTurn(s, "p0").success);
   assert.equal(s.pendingAction?.type, "tharki_shortcut");
+  assert.equal(tharkiShortcutColor(s, "p0", "brown").success, false, "brown already needs only 2");
   assert.ok(tharkiShortcutColor(s, "p0", "orange").success);
   assert.equal(a.shortcutColor, "orange");
   assert.equal(calculateRent(a, "orange"), 5, "a Shortcut set earns full-set rent");
@@ -994,16 +1081,13 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   // Silenced Tharki loses the Shortcut's effect
   a.shortcutColor = "orange"; a.isSilenced = true;
   assert.equal(calculateRent(a, "orange"), 3);
-  // A 2-card colour on Shortcut is complete with a single card
+  // 2-card colours can't take a Shortcut, and an old one there does nothing
   a.isSilenced = false; a.shortcutColor = "brown";
-  assert.equal(calculateRent(a, "brown"), 2, "one brown on Shortcut earns full-set rent");
-  const one = setup(2);
-  const solo = one.players[0]; solo.roles = ["tharki"]; one.players[1].roles = [];
-  for (const id of ["prop_brown_1", "prop_darkblue_1", "prop_red_1", "prop_red_2", "prop_red_3", "prop_orange_1", "prop_orange_2", "prop_orange_3"]) give(one, solo, "properties", id);
-  assert.ok(endTurn(one, "p0").success);
-  assert.equal(one.status, "playing");
-  assert.ok(tharkiShortcutColor(one, "p0", "dark_blue").success);
-  assert.equal(one.status, "finished", "one dark blue on Shortcut completes the third set");
+  assert.equal(calculateRent(a, "brown"), 1, "one brown on an old Shortcut is still one of two");
+  a.shortcutColor = "orange";
+  s.currentTurnIndex = 0; s.pendingAction = null; s.drawnThisTurn = true;
+  assert.ok(endTurn(s, "p0").success);
+  assert.equal(tharkiShortcutColor(s, "p0", "brown").success, false, "brown needs only 2");
   console.log("tharki: ok");
 }
 

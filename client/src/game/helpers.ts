@@ -1,9 +1,9 @@
 import type { GameCard, GameRules, GameState, PlayerState, PropertyColor, PendingAction, RoleType } from "@shared/schema";
 import { SET_SIZES, RENT_TABLE, SET_STYLE, PROPERTY_COLORS } from "@shared/schema";
 import { CARD_DEF_MAP, getEffectiveColor, colorOnTable, isAnyColourWild, roleDef } from "@shared/cardDefs";
-import { roleActive, setSizeFor, shortcutOf, sparedBy, friendOf, chargeOwedBy } from "@shared/rolePowers";
+import { roleActive, setSizeFor, shortcutOf, sparedBy, friendOf, chargeOwedBy, canShortcut, roleCut } from "@shared/rolePowers";
 
-export { roleActive, setSizeFor, shortcutOf, sparedBy, friendOf, chargeOwedBy };
+export { roleActive, setSizeFor, shortcutOf, sparedBy, friendOf, chargeOwedBy, canShortcut, roleCut };
 
 export const COLORS = PROPERTY_COLORS as readonly PropertyColor[];
 export const label = (c: PropertyColor) => SET_STYLE[c].label;
@@ -23,6 +23,11 @@ export const roleName = (r?: string) => (r ? roleInfo(r)?.name ?? r : "");
 /** A player's roles joined for a label, e.g. "Harry Potter + Luna Lovegood". */
 export const roleNames = (p: PlayerState, short = false) =>
   (p.roles ?? []).map(r => short ? roleName(r).split(" ")[0] : roleName(r)).join(" + ");
+/** True when Power Outage has every one of this player's roles switched off (greys out their role label). */
+export const allRolesCut = (p: PlayerState) => p.isSilenced && (p.roles ?? []).every(r => roleCut(p, r));
+/** What Power Outage cut, for a chip: "Power off", or "Harry Potter off" when they have other roles still working. */
+export const outageLabel = (p: PlayerState) =>
+  !p.isSilenced ? "" : p.silencedRole && (p.roles ?? []).length > 1 ? `${roleName(p.silencedRole)} off` : "Power off";
 
 /** Properties grouped by the colour they currently count as, in board order. */
 export function groupSets(properties: GameCard[]): { color: PropertyColor; cards: GameCard[] }[] {

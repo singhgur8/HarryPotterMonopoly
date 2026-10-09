@@ -223,7 +223,7 @@ const actionCards: CardDef[] = [
     name: "Power Outage",
     value: 5,
     actionType: "silencio" as const,
-    text: "Switch off a player's role power. On their turn, after drawing, they can pay 10M to switch it back on (not a play).",
+    text: "Switch off a player's role power (one role of your choice if they have several). On their turn, after drawing, they can pay 10M to switch it back on (not a play).",
     target: "one" as const,
   })),
   // 2x Rewind (was Time-Turner)
@@ -352,7 +352,7 @@ const roleCards: CardDef[] = [
     name: "Lucha",
     value: 0,
     roleType: "lucha",
-    text: "At the end of each turn, copy another player's role power for your next turn. Pick someone new each time, unless it's one on one.",
+    text: "At the end of each turn, copy one role power from another player for your next turn (just one, even if they have several). Pick someone new each time, unless it's one on one.",
   },
   {
     id: "role_gandu",
@@ -368,7 +368,7 @@ const roleCards: CardDef[] = [
     name: "Tharki",
     value: 0,
     roleType: "tharki",
-    text: "Shortcut one colour: its set is complete with one fewer card. It stays until you move it at the end of one of your turns.",
+    text: "Shortcut one colour that needs 3 or more cards: its set is complete with one fewer card. 2-card colours (brown, dark blue, utility) can't be shortcut. It stays until you move it at the end of one of your turns.",
   },
   {
     id: "role_kanjar",

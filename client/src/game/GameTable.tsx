@@ -8,7 +8,7 @@ import { ActionPanel } from "./ActionPanel";
 import { MyArea } from "./MyArea";
 import { HandDock } from "./HandDock";
 import { usePhone, useTableView } from "./useMedia";
-import { isPayment, canEndOutage, roleNames } from "./helpers";
+import { isPayment, canEndOutage, roleNames, allRolesCut } from "./helpers";
 import { useGameSounds } from "./sounds";
 import { HomeButton } from "./Brand";
 import {
@@ -202,7 +202,7 @@ export function GameTable() {
         {!connected && <span className="hp-chip late">Reconnecting…</span>}
         <span style={{ flex: 1 }} />
         {me
-          ? <span className="hp-muted hp-desk-only" style={{ fontSize: 13 }}>You are {me.animal.emoji} {me.animal.name}{me.roles.length > 0 && <> <span className={`hp-role ${me.isSilenced ? "off" : ""}`}>{roleNames(me)}</span></>}</span>
+          ? <span className="hp-muted hp-desk-only" style={{ fontSize: 13 }}>You are {me.animal.emoji} {me.animal.name}{me.roles.length > 0 && <> <span className={`hp-role ${allRolesCut(me) ? "off" : ""}`}>{roleNames(me)}</span></>}</span>
           : <span className="hp-chip solid" data-testid="chip-spectating">👀 Watching</span>}
         {watchers > (me ? 0 : 1) && (
           <span className="hp-muted" style={{ fontSize: 13 }} title={(s.spectators || []).map(a => `${a.emoji} ${a.name}`).join(", ")}>
