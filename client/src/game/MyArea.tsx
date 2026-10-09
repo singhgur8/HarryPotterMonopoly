@@ -37,7 +37,7 @@ export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
   const area = (
     <div className={`hp-mine ${pay.active ? "paying" : ""}`}>
       <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
-        <div className="hp-label">My sets · {completeSets(me)} of 3 complete{pay.active && <span className="hp-chip solid" style={{ marginLeft: 8 }}>Tap cards to pay with them</span>}</div>
+        <div className="hp-label">My sets · {completeSets(me)} of {s.rules?.setsToWin ?? 3} complete{pay.active && <span className="hp-chip solid" style={{ marginLeft: 8 }}>Tap cards to pay with them</span>}</div>
         <div className="hp-sets">
           {sets.map(({ color, cards }) => {
             const n = cards.length;

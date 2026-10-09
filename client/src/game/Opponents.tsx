@@ -131,7 +131,7 @@ export function OpponentSeat({ p, onOpen }: { p: PlayerState; onOpen: () => void
       <div className="hp-opp-bank">
         <span>Bank <b>{sumValue(p.bank)}M</b></span>
         <span className="hp-coins">{coins.map(c => <span key={c.defId} className="hp-cn">{valueOf(c)}</span>)}</span>
-        <span className="worth">Sets {completeSets(p)}/3 · Property {sumValue(p.properties)}M</span>
+        <span className="worth">Sets {completeSets(p)}/{s.rules?.setsToWin ?? 3} · Property {sumValue(p.properties)}M</span>
       </div>
     </button>
   );
@@ -245,7 +245,7 @@ function OpponentRow({ p }: { p: PlayerState }) {
       </div>
       <div className="hp-mine">
         <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
-          <div className="hp-label">Sets · {completeSets(p)} of 3 complete</div>
+          <div className="hp-label">Sets · {completeSets(p)} of {s.rules?.setsToWin ?? 3} complete</div>
           <div className="hp-sets">
             {sets.map(({ color, cards }) => {
               const n = cards.length;
