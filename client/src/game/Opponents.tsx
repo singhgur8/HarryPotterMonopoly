@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { GameCard as Card, PlayerState, PropertyColor } from "@shared/schema";
-import { inDrawStep, freshTurnTimer } from "@shared/schema";
+import { freshTurnTimer } from "@shared/schema";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { GameCard } from "@/components/GameCard";
 import { useGame } from "./context";
@@ -13,7 +13,7 @@ import {
 export function TimerAvatar({ p }: { p: PlayerState }) {
   const { s } = useGame();
   if (s.status !== "playing" || s.waitingOn !== p.visitorId || p.isSleeping) return <span className="hp-ava">{p.animal.emoji}</span>;
-  const total = inDrawStep(s) ? freshTurnTimer(s) : s.gameSpeed;
+  const total = freshTurnTimer(s);
   const frac = Math.max(0, Math.min(1, s.turnTimer / total));
   const low = s.turnTimer <= 10;
   return (

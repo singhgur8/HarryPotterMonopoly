@@ -184,9 +184,27 @@ export function inDrawStep(state: Pick<GameState, "status" | "drawnThisTurn" | "
   return state.status === "playing" && !state.drawnThisTurn && !state.pendingAction;
 }
 
+// Once the current player has used up their plays, whatever they can still do
+// (flip wilds, move Harry's shield, end the turn) gets at most this long.
+// Nothing ends the turn at 0; the others can then hand it to the bot.
+export const PLAYS_USED_UP_SECONDS = 20;
+
+type TimerState = Pick<GameState, "status" | "drawnThisTurn" | "pendingAction" | "gameSpeed" | "actionsUsed" | "maxActions" | "freePlayCardId" | "players" | "currentTurnIndex">;
+
+/** True once the current player has drawn and has no plays (or no cards) left. */
+export function playsUsedUp(state: Omit<TimerState, "gameSpeed">): boolean {
+  if (state.status !== "playing" || !state.drawnThisTurn || state.pendingAction || state.freePlayCardId) return false;
+  return state.actionsUsed >= state.maxActions || (state.players[state.currentTurnIndex]?.hand.length ?? 0) === 0;
+}
+
+/** Most seconds the clock may show right now. */
+export function turnTimeLimit(state: TimerState): number {
+  return playsUsedUp(state) ? Math.min(PLAYS_USED_UP_SECONDS, state.gameSpeed) : state.gameSpeed;
+}
+
 /** Seconds on the clock when the game starts waiting on the next step. */
-export function freshTurnTimer(state: Pick<GameState, "status" | "drawnThisTurn" | "pendingAction" | "gameSpeed">): number {
-  return inDrawStep(state) ? DRAW_SECONDS : state.gameSpeed;
+export function freshTurnTimer(state: TimerState): number {
+  return inDrawStep(state) ? DRAW_SECONDS : turnTimeLimit(state);
 }
 
 // Pending action types (things that require a response from another player)
