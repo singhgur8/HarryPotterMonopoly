@@ -80,7 +80,8 @@ export function useGameSocket(roomCode: string | null) {
               if (!prev) return prev;
               return {
                 ...prev,
-                chatMessages: [...(prev.chatMessages || []), msg.payload],
+                // Same cap as the server keeps
+                chatMessages: [...(prev.chatMessages || []), msg.payload].slice(-50),
               };
             });
             break;
