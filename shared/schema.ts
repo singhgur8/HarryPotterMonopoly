@@ -44,11 +44,12 @@ export const RENT_TABLE: Record<PropertyColor, number[]> = {
 };
 
 // Versions of the game the host can pick in the lobby (see shared/variations.ts)
-export type VariationId = "deal" | "prime" | "classic" | "gg" | "custom";
+export type VariationId = "deal" | "prime" | "classic" | "gg" | "vegas" | "custom";
 
 // Rule switches that differ between versions of the game
 export interface GameRules {
   wildRentOneTarget?: boolean; // Wild Rent charges one player you pick, not everyone (real Monopoly Deal)
+  vegas?: boolean;             // Vegas: every turn starts with a gamble (dice, duel or coin-toss bet)
   setsToWin?: number;          // complete sets needed to win (missing = 3)
 }
 
@@ -76,7 +77,9 @@ export type ActionType =
   | "protego" | "gringotts_goblin" | "yule_ball"
   | "reducto" | "silencio" | "time_turner" | "double_rent"
   // Prime edition
-  | "hand_seven" | "hand_steal" | "chargeback" | "reverse" | "destroy" | "bank_robber";
+  | "hand_seven" | "hand_steal" | "chargeback" | "reverse" | "destroy" | "bank_robber"
+  // Vegas
+  | "guess_draw" | "all_in";
 
 export type RoleType =
   // Classic Harry Potter
@@ -191,6 +194,7 @@ export type PendingActionType =
   | "pay_rent"           // Player must pay rent
   | "pay_debt"           // Gringotts Goblin debt
   | "pay_birthday"       // Yule Ball payment
+  | "pay_poker"          // All In: each player stakes the poorest player's worth into the pot
   | "choose_steal"       // Accio: attacker picks property to steal
   | "choose_swap"        // Confundus: attacker picks properties to swap  
   | "choose_steal_set"   // Expelliarmus: attacker picks set to steal
@@ -209,7 +213,10 @@ export type PendingActionType =
   | "tharki_shortcut"    // Tharki keeps, moves or drops his Shortcut at end of turn
   | "kanjar_friend"      // Kanjar picks his friend for the next round at end of turn
   | "time_turner_play"   // Must play the Time-Turner drawn card immediately
-  | "discard_excess";    // Must discard down to 7 cards
+  | "discard_excess"     // Must discard down to 7 cards
+  | "vegas_gamble"       // Vegas: the current player picks their start-of-turn gamble
+  | "vegas_duel"         // Vegas: a dice duel aimed at another player (waits on their Just Say No answer)
+  | "guess_draw";        // Guess and Draw: guess the top card's kind until a guess is wrong
 
 export interface PendingAction {
   type: PendingActionType;
@@ -225,6 +232,26 @@ export interface PaymentResult {
   playerId: string;
   outcome: "paid" | "nothing" | "blocked" | "shielded" | "friend";
   amount: number;
+}
+
+// Vegas: the last dice roll, coin toss or card guess, so every screen can animate it
+export type GuessKind = "property" | "cash" | "action";
+export interface GambleRoll {
+  id: string;                                   // new for every roll, so screens animate each one once
+  kind: "dice" | "duel" | "coin" | "guess" | "poker";
+  playerId: string;                             // who gambled
+  rolls?: { playerId: string; dice: number[] }[];
+  coin?: "heads" | "tails";
+  defId?: string;                               // Guess and Draw: the card turned over
+  guess?: GuessKind;
+  result: string;                               // one sentence on what happened
+}
+
+// Vegas All In: the pot while everyone stakes
+export interface PokerPot {
+  stake: number;
+  pot: GameCard[];
+  players: string[];   // who has staked something so far
 }
 
 // Event log entry
@@ -271,6 +298,9 @@ export interface GameState {
   freePlayCardId?: string | null; // Card taken with the Time-Turner, played next for free
   rules?: GameRules;           // Rule switches for this version (missing = Harry Potter rules)
   rentMultiplier?: number;     // Double the Rent played this turn: the next rent is multiplied by this
+  gamble?: GambleRoll | null;  // Vegas: the latest roll, toss or guess
+  extraTurnFor?: string | null; // Vegas: this player goes again when their turn ends
+  poker?: PokerPot | null;     // Vegas: an All In in progress
   // Sent to clients only
   drawPileCount?: number;
   waitingOn?: string | null;   // Player the game needs input from next
@@ -319,6 +349,8 @@ export type WSMessageType =
   | "time_turner_choose"
   | "cancel_action"
   | "forfeit"
+  | "vegas_gamble"
+  | "guess_card"
   // Server -> Client
   | "game_state"
   | "error"

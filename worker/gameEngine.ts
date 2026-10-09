@@ -5,7 +5,7 @@
 import { v4 as uuidv4 } from "uuid";
 import type {
   GameState, PlayerState, GameCard, PendingAction, PaymentResult,
-  PropertyColor, RoleType, AnimalProfile, VariationId, CustomRules, StartSeat,
+  PropertyColor, RoleType, AnimalProfile, VariationId, CustomRules, StartSeat, GambleRoll, GuessKind,
 } from "../shared/schema";
 import { SET_SIZES, RENT_TABLE, PROPERTY_COLORS, freshTurnTimer } from "../shared/schema";
 import { CARD_DEF_MAP, getEffectiveColor, countCompleteSets, colorOnTable, isAnyColourWild } from "../shared/cardDefs";
@@ -21,7 +21,7 @@ type Result = { success: boolean; error?: string };
 const ok: Result = { success: true };
 const fail = (error: string): Result => ({ success: false, error });
 
-const PAYMENT_TYPES = ["pay_rent", "pay_debt", "pay_birthday"];
+const PAYMENT_TYPES = ["pay_rent", "pay_debt", "pay_birthday", "pay_poker"];
 const COLOR_LABEL: Record<PropertyColor, string> = {
   brown: "Brown", light_blue: "Light Blue", pink: "Pink", orange: "Orange", red: "Red",
   yellow: "Yellow", green: "Green", dark_blue: "Dark Blue", transport: "Railroad", utility: "Utility",
@@ -219,6 +219,7 @@ export function createInitialGameState(
   }
 
   state.maxActions = maxActionsFor(getCurrentPlayer(state)!);
+  if (state.rules?.vegas) askGamble(state, getCurrentPlayer(state)!);
   state.turnTimer = freshTurnTimer(state);
   addEvent(state, "⚡", "System", "#FFD700", "The game begins! Wands at the ready...");
   return state;
@@ -478,7 +479,7 @@ function playRentCard(state: GameState, player: PlayerState, cardDefId: string, 
 
 // Set up a queue of payers. Skips anyone Harry's shield protects from this rent.
 // `resume` is a payment queue this one interrupted (Chargeback, Reverse); it carries on afterwards.
-function startPayments(state: GameState, type: "pay_rent" | "pay_debt" | "pay_birthday", sourceId: string, targets: string[], amount: number, cardDefId: string, rentColor?: PropertyColor, resume?: PendingAction) {
+function startPayments(state: GameState, type: "pay_rent" | "pay_debt" | "pay_birthday" | "pay_poker", sourceId: string, targets: string[], amount: number, cardDefId: string, rentColor?: PropertyColor, resume?: PendingAction) {
   const payment: PendingAction = {
     type,
     sourcePlayerId: sourceId,
@@ -507,14 +508,15 @@ function nextPayer(state: GameState, payment: PendingAction) {
       data.results.push({ playerId: nextId, outcome: "friend", amount: 0 });
       continue;
     }
-    // Each payer's amount starts from the full charge (Gandu pays half of any charge)
+    // Each payer's amount starts from the full charge (Gandu pays half of any charge, but stakes in full)
     const base: number = data.baseAmount ?? payment.amount ?? 0;
-    const amount = chargeOwedBy(next, base);
+    const amount = payment.type === "pay_poker" ? base : chargeOwedBy(next, base);
     if (amount < base) log(state, next, `pays half as Gandu: ${amount}M instead of ${base}M`);
     state.pendingAction = { ...payment, amount, targetPlayerId: nextId, data: { ...data } };
     return;
   }
   state.pendingAction = null;
+  if (payment.type === "pay_poker") settlePoker(state);
   if (data.resume) nextPayer(state, data.resume);
 }
 
@@ -640,6 +642,21 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
     case "bank_robber":
       if (!others.some(o => o.bank.length > 0)) return fail("No one has money in their bank");
       return choose("choose_bank_robber", "played Bank Robber and is choosing whose bank to rob");
+
+    case "guess_draw":
+      if (state.drawPile.length + state.discardPile.length === 0) return fail("There are no cards left to draw");
+      return choose("guess_draw", "played Guess and Draw");
+
+    case "all_in": {
+      // The stake is what the poorest player has on the table
+      const stake = Math.min(...state.players.map(worth));
+      if (stake <= 0) return fail("Someone has nothing in their bank or properties, so there's nothing to stake");
+      discardIt();
+      state.poker = { stake, pot: [], players: [] };
+      log(state, player, `went All In. Everyone stakes ${stake}M, what the poorest player has on the table`, def.id);
+      startPayments(state, "pay_poker", player.visitorId, [player.visitorId, ...others.map(o => o.visitorId)], stake, cardDefId);
+      return ok;
+    }
 
     case "protego": case "chargeback": case "reverse":
       // These answer an attack; on your own turn they can only be banked
@@ -770,7 +787,11 @@ function advanceTurn(state: GameState) {
   const currentPlayer = getCurrentPlayer(state);
   if (currentPlayer) log(state, currentPlayer, "ended their turn");
 
-  state.currentTurnIndex = (state.currentTurnIndex + 1) % state.players.length;
+  // Vegas: a roll of 4 to 6 earns the same player another turn
+  const again = !!currentPlayer && state.extraTurnFor === currentPlayer.visitorId;
+  state.extraTurnFor = null;
+  if (again) log(state, currentPlayer!, "takes their extra turn");
+  else state.currentTurnIndex = (state.currentTurnIndex + 1) % state.players.length;
   beginTurn(state);
 }
 
@@ -786,11 +807,18 @@ function beginTurn(state: GameState) {
   state.maxActions = maxActionsFor(next);
   log(state, next, "starts their turn");
 
-  const options = drawOptions(state, next);
-  if (options.discard || options.opponent) {
-    state.pendingAction = { type: "cedric_draw_choice", sourcePlayerId: next.visitorId, targetPlayerId: next.visitorId, data: options };
-  }
+  // Vegas: the gamble comes first, then the draw
+  if (state.rules?.vegas) askGamble(state, next);
+  else openDrawChoice(state, next);
   state.turnTimer = freshTurnTimer(state);
+}
+
+// Cedric and Ganda choose where to draw from; everyone else just draws
+function openDrawChoice(state: GameState, player: PlayerState) {
+  const options = drawOptions(state, player);
+  if (options.discard || options.opponent) {
+    state.pendingAction = { type: "cedric_draw_choice", sourcePlayerId: player.visitorId, targetPlayerId: player.visitorId, data: options };
+  }
 }
 
 // ========== FLIP WILD ==========
@@ -857,12 +885,21 @@ export function payWithCards(state: GameState, visitorId: string, cardDefIds: st
     }
   }
 
+  // All In stakes go into the pot; everything else goes to whoever charged
+  const poker = pending.type === "pay_poker" ? state.poker : null;
   for (const card of chosen) {
-    if (removeCard(player.bank, card.defId)) source.bank.push(card);
-    else if (removeCard(player.properties, card.defId)) source.properties.push(card);
+    const fromBank = removeCard(player.bank, card.defId);
+    const taken = fromBank ?? removeCard(player.properties, card.defId);
+    if (!taken) continue;
+    if (poker) poker.pot.push(taken);
+    else if (fromBank) source.bank.push(taken);
+    else source.properties.push(taken);
   }
 
-  if (chosen.length === 0) log(state, player, `had nothing to pay ${source.animal.name} with`);
+  if (poker) {
+    if (chosen.length > 0 && !poker.players.includes(visitorId)) poker.players.push(visitorId);
+    log(state, player, chosen.length ? `staked ${paid}M in the All In pot` : "had nothing to stake");
+  } else if (chosen.length === 0) log(state, player, `had nothing to pay ${source.animal.name} with`);
   else log(state, player, `paid ${source.animal.name} ${paid}M`);
   pending.data = pending.data ?? { remainingTargets: [], results: [] };
   pending.data.results = [...(pending.data.results ?? []), { playerId: visitorId, outcome: chosen.length ? "paid" : "nothing", amount: paid }];
@@ -912,6 +949,7 @@ function blockWith(state: GameState, visitorId: string, actionType: "protego" | 
     original = pending.data.originalAction;
     blocks = pending.data.blocks ?? 0;
   } else if (PAYMENT_TYPES.includes(pending.type)) {
+    if (pending.sourcePlayerId === visitorId) return fail("It's your own All In");
     original = pending;
     blocks = 0;
   } else {
@@ -965,6 +1003,7 @@ function discardFromHand(state: GameState, player: PlayerState, actionType: stri
 export function playChargeback(state: GameState, visitorId: string): Result {
   const original = attackOn(state, visitorId);
   if (!original || !PAYMENT_TYPES.includes(original.type)) return fail("Chargeback answers a charge against you");
+  if (original.type === "pay_poker") return fail("Chargeback can't answer All In. Use Just Say No to sit it out");
   const player = getPlayer(state, visitorId)!;
   const card = discardFromHand(state, player, "chargeback");
   if (!card) return fail("You don't have a Chargeback");
@@ -1015,7 +1054,7 @@ function reversePlan(state: GameState, original: PendingAction, me: PlayerState,
 
   if (PAYMENT_TYPES.includes(original.type)) {
     const amount = original.amount ?? 0;
-    if (amount <= 0) return null;
+    if (amount <= 0 || original.type === "pay_poker") return null; // All In can only be sat out
     return cardDefId => {
       original.data.results = [...(original.data.results ?? []), { playerId: me.visitorId, outcome: "blocked", amount: 0 }];
       startPayments(state, "pay_debt", me.visitorId, [attacker.visitorId], amount, cardDefId, undefined, original);
@@ -1047,6 +1086,9 @@ function resolveProtego(state: GameState, original: PendingAction, blocks: numbe
     nextPayer(state, original);
   } else {
     state.pendingAction = null;
+    // A blocked Vegas duel: the challenger carries on to their draw
+    const challenger = getPlayer(state, original.sourcePlayerId);
+    if (original.type === "vegas_duel" && challenger) openDrawChoice(state, challenger);
   }
 }
 
@@ -1126,6 +1168,9 @@ function executeAction(state: GameState, action: PendingAction) {
       log(state, attacker, `used Bank Robber to take ${target.animal.name}'s whole bank (${totalValue(cash)}M)`);
       return;
     }
+    case "vegas_duel":
+      runDuel(state, attacker, target);
+      return;
     case "choose_silencio": {
       target.isSilenced = true;
       // From a Reverse on someone with one role (or none) there's no pick to make
@@ -1481,6 +1526,8 @@ export function forfeit(state: GameState, visitorId: string): Result {
   addEvent(state, "🏳️", player.animal.name, player.animal.colorClass,
     `forfeited. Their ${returned.length} cards were shuffled back into the draw pile`);
 
+  state.extraTurnFor = null;
+  if (state.poker) state.poker.players = state.poker.players.filter(id => id !== visitorId);
   const left = state.players;
   // One on one, Kanjar's friend would be everyone, so friendships end
   if (left.length < KANJAR_MIN_PLAYERS) for (const p of left) p.friendId = undefined;
@@ -1497,6 +1544,8 @@ export function forfeit(state: GameState, visitorId: string): Result {
     if (winner) addEvent(state, "🏆", winner.animal.name, winner.animal.colorClass,
       left.length === 1 ? "won the game. Everyone else forfeited!" : "won the game as the bot closest to winning");
   }
+  // An All In whose staking was cut short is settled with whoever staked
+  if (state.status === "playing" && state.poker && !pokerRunning(state)) settlePoker(state);
   return ok;
 }
 
@@ -1587,7 +1636,13 @@ export function botStep(state: GameState): boolean {
         log(state, bot, "'s action was dropped while they were asleep");
         state.pendingAction = null;
         return true;
-      case "pay_rent": case "pay_debt": case "pay_birthday":
+      case "vegas_gamble":
+        // The bot always rolls the dice: it never aims a duel or bets for a player
+        return vegasGamble(state, id, "dice").success;
+      case "guess_draw":
+        // Action is the most common kind of card in the deck
+        return guessCard(state, id, "action").success;
+      case "pay_rent": case "pay_debt": case "pay_birthday": case "pay_poker":
         return payWithCards(state, id, botPayment(state, bot, pending.amount ?? 0)).success
           || payWithCards(state, id, payableCards(bot).map(c => c.defId)).success;
       case "protego_response":
@@ -1684,11 +1739,194 @@ function botAttack(state: GameState, bot: PlayerState): boolean {
       const best = [...colors].sort((a, b) => calculateRent(bot, b) - calculateRent(bot, a))[0];
       if (best && calculateRent(bot, best) > 0 && playCard(state, id, card.defId, false, best).success) return true;
     }
-    if (def?.type === "action" && ["yule_ball", "gringotts_goblin", "felix_felicis", "double_rent", "hand_seven"].includes(def.actionType!)) {
+    if (def?.type === "action" && ["yule_ball", "gringotts_goblin", "felix_felicis", "double_rent", "hand_seven", "guess_draw", "all_in"].includes(def.actionType!)) {
       if (playCard(state, id, card.defId).success) return true;
     }
   }
   return false;
+}
+
+// ========== VEGAS ==========
+// Every turn starts with a gamble the player picks:
+// - Dice: 3 keeps the turn, 1 or 2 loses it, 4 to 6 adds an extra turn after this one.
+// - Duel: pick a player; you both roll a die and the higher roll takes a random
+//   card from the other's hand (a tie does nothing). They can Just Say No.
+// - Bet: stake money from your bank on a coin toss. Heads, the house pays you the
+//   same again (money cards from the discard pile, then the deck); tails, it's discarded.
+
+const rollDie = () => 1 + Math.floor(Math.random() * 6);
+
+function showGamble(state: GameState, roll: Omit<GambleRoll, "id">) {
+  state.gamble = { id: uuidv4(), ...roll };
+}
+
+function askGamble(state: GameState, player: PlayerState) {
+  state.pendingAction = { type: "vegas_gamble", sourcePlayerId: player.visitorId, targetPlayerId: player.visitorId };
+}
+
+export function vegasGamble(state: GameState, visitorId: string, choice: string, targetId?: string, cardDefIds?: string[]): Result {
+  const pending = state.pendingAction;
+  if (!pending || pending.type !== "vegas_gamble" || pending.targetPlayerId !== visitorId) return fail("Nothing to gamble on right now");
+  const player = getPlayer(state, visitorId)!;
+
+  if (choice === "dice") {
+    const roll = rollDie();
+    state.pendingAction = null;
+    if (roll < 3) {
+      const result = `rolled ${roll} and loses this turn`;
+      log(state, player, result);
+      showGamble(state, { kind: "dice", playerId: visitorId, rolls: [{ playerId: visitorId, dice: [roll] }], result });
+      return nextEndOfTurnChoice(state, visitorId);
+    }
+    const result = roll === 3 ? "rolled 3 and keeps their turn" : `rolled ${roll} and gets an extra turn after this one`;
+    if (roll > 3) state.extraTurnFor = visitorId;
+    log(state, player, result);
+    showGamble(state, { kind: "dice", playerId: visitorId, rolls: [{ playerId: visitorId, dice: [roll] }], result });
+    openDrawChoice(state, player);
+    return ok;
+  }
+
+  if (choice === "duel") {
+    const target = getPlayer(state, targetId ?? "");
+    if (!target || target === player) return fail("Pick another player to duel");
+    if (sparedBy(player, target)) return fail(friendError(target));
+    log(state, player, `challenges ${target.animal.name} to a dice duel`);
+    offerProtego(state, { type: "vegas_duel", sourcePlayerId: visitorId, targetPlayerId: target.visitorId, data: {} });
+    return ok;
+  }
+
+  if (choice === "bet") {
+    const ids = Array.from(new Set(cardDefIds ?? []));
+    if (ids.length === 0) return fail("Pick the money from your bank you want to bet");
+    if (!ids.every(id => player.bank.some(c => c.defId === id))) return fail("You can only bet money from your bank");
+    const stake = ids.map(id => removeCard(player.bank, id)!);
+    const bet = totalValue(stake);
+    const heads = Math.random() < 0.5;
+    let result: string;
+    if (heads) {
+      const won = housePays(state, bet);
+      player.bank.push(...stake, ...won);
+      const paid = totalValue(won);
+      result = paid >= bet ? `bet ${bet}M, tossed heads and won ${paid}M` : `bet ${bet}M and tossed heads, but the house only had ${paid}M to pay`;
+    } else {
+      state.discardPile.push(...stake);
+      result = `bet ${bet}M, tossed tails and lost it`;
+    }
+    state.pendingAction = null;
+    log(state, player, result);
+    showGamble(state, { kind: "coin", playerId: visitorId, coin: heads ? "heads" : "tails", result });
+    openDrawChoice(state, player);
+    return ok;
+  }
+  return fail("Pick a gamble: dice, duel or bet");
+}
+
+/** The house pays a winning bet with money cards from the discard pile first, then the deck. */
+function housePays(state: GameState, amount: number): GameCard[] {
+  const money = (pile: GameCard[], keep: number) => pile.filter(c => CARD_DEF_MAP[c.defId]?.type === "money").map(c => ({ id: c.defId, value: cardValue(c), keep }));
+  const options = [...money(state.discardPile, 0), ...money(state.drawPile, 1)];
+  const ids = cheapestCover(options, amount) ?? options.map(o => o.id);
+  return ids.map(id => removeCard(state.discardPile, id) ?? removeCard(state.drawPile, id)!);
+}
+
+function runDuel(state: GameState, challenger: PlayerState, rival: PlayerState) {
+  const a = rollDie(), b = rollDie();
+  const rolls = [{ playerId: challenger.visitorId, dice: [a] }, { playerId: rival.visitorId, dice: [b] }];
+  let result: string;
+  if (a === b) {
+    result = `and ${rival.animal.name} both rolled ${a}. The duel is a draw`;
+  } else {
+    const [winner, loser] = a > b ? [challenger, rival] : [rival, challenger];
+    const score = `${Math.max(a, b)} to ${Math.min(a, b)}`;
+    if (loser.hand.length === 0) {
+      result = winner === challenger ? `beat ${rival.animal.name} ${score}, but their hand is empty` : `lost to ${rival.animal.name} ${score}, but has no cards to give`;
+    } else {
+      winner.hand.push(loser.hand.splice(Math.floor(Math.random() * loser.hand.length), 1)[0]);
+      result = winner === challenger ? `beat ${rival.animal.name} ${score} and took a random card from their hand` : `lost to ${rival.animal.name} ${score}, who took a random card from their hand`;
+    }
+  }
+  log(state, challenger, result);
+  showGamble(state, { kind: "duel", playerId: challenger.visitorId, rolls, result });
+  openDrawChoice(state, challenger);
+}
+
+/** What a card counts as for Guess and Draw: properties and wilds, cash, or actions and rent. */
+export function guessKindOf(defId: string): GuessKind {
+  const type = CARD_DEF_MAP[defId]?.type;
+  return type === "property" || type === "wild" ? "property" : type === "money" ? "cash" : "action";
+}
+
+const GUESS_LABEL: Record<GuessKind, string> = { property: "Property", cash: "Cash", action: "Action" };
+
+export function guessCard(state: GameState, visitorId: string, guess: string): Result {
+  const pending = state.pendingAction;
+  if (!pending || pending.type !== "guess_draw" || pending.targetPlayerId !== visitorId) return fail("Nothing to guess right now");
+  if (!(guess in GUESS_LABEL)) return fail("Guess Property, Cash or Action");
+  const player = getPlayer(state, visitorId)!;
+  const card = drawFromPile(state);
+  if (!card) {
+    state.pendingAction = null;
+    log(state, player, "has no cards left to guess");
+    return ok;
+  }
+  const kind = guessKindOf(card.defId);
+  const right = kind === guess;
+  const result = right
+    ? `guessed ${GUESS_LABEL[kind]} and was right: keeps ${cardTag(undefined, card.defId)}`
+    : `guessed ${GUESS_LABEL[guess as GuessKind]}, but it was ${cardTag(undefined, card.defId)} (${GUESS_LABEL[kind]}). It's discarded`;
+  log(state, player, result, card.defId);
+  showGamble(state, { kind: "guess", playerId: visitorId, defId: card.defId, guess: guess as GuessKind, result });
+  const history = [...(pending.data?.history ?? []), { defId: card.defId, guess, right }];
+  if (right) {
+    player.hand.push(card);
+    const more = state.drawPile.length + state.discardPile.length > 0;
+    state.pendingAction = more ? { ...pending, data: { ...pending.data, history } } : null;
+  } else {
+    state.discardPile.push(card);
+    state.pendingAction = null;
+  }
+  return ok;
+}
+
+/** True while an All In is still collecting stakes (or waiting on a Just Say No about one). */
+function pokerRunning(state: GameState): boolean {
+  const p = state.pendingAction;
+  return !!p && (p.type === "pay_poker" || (p.type === "protego_response" && p.data?.originalAction?.type === "pay_poker"));
+}
+
+/** Everyone who staked rolls two dice; ties roll again. The highest roll takes the whole pot. */
+function settlePoker(state: GameState) {
+  const poker = state.poker;
+  state.poker = null;
+  if (!poker || poker.pot.length === 0) return;
+  const contenders = poker.players.map(id => getPlayer(state, id)).filter((p): p is PlayerState => !!p);
+  if (contenders.length === 0) {
+    state.discardPile.push(...poker.pot);
+    return;
+  }
+  let rolls: { playerId: string; dice: number[] }[] = [];
+  let left = contenders;
+  let ties = 0;
+  while (left.length > 1) {
+    rolls = left.map(p => ({ playerId: p.visitorId, dice: [rollDie(), rollDie()] }));
+    const best = Math.max(...rolls.map(r => r.dice[0] + r.dice[1]));
+    left = left.filter((_, i) => rolls[i].dice[0] + rolls[i].dice[1] === best);
+    if (left.length > 1) ties++;
+  }
+  const winner = left[0];
+  for (const card of poker.pot) {
+    const type = CARD_DEF_MAP[card.defId]?.type;
+    if (type === "property" || type === "wild") winner.properties.push(card);
+    else winner.bank.push(card);
+  }
+  settleWilds(state);
+  const total = totalValue(poker.pot);
+  const result = contenders.length === 1
+    ? `was the only one in the All In and takes back the ${total}M pot`
+    : `rolled highest${ties ? ` after ${ties} tie${ties === 1 ? "" : "s"}` : ""} and wins the ${total}M All In pot`;
+  log(state, winner, result);
+  showGamble(state, { kind: "poker", playerId: winner.visitorId, rolls, result });
+  checkWinCondition(state, winner.visitorId);
 }
 
 // ========== WIN CONDITION ==========

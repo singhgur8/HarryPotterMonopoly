@@ -125,6 +125,9 @@ export function waitingText(s: GameState, meId: string): string {
   switch (p.type) {
     case "pay_rent": return `Waiting on ${who} to pay ${p.amount}M rent`;
     case "pay_birthday": return `Waiting on ${who} to pay 2M for It's My Birthday`;
+    case "pay_poker": return `Waiting on ${who} to stake ${p.amount}M for All In`;
+    case "vegas_gamble": return `Waiting on ${who} to pick a gamble`;
+    case "guess_draw": return `Waiting on ${who} to guess the next card`;
     case "pay_debt": return CARD_DEF_MAP[p.cardDefId ?? ""]?.actionType === "gringotts_goblin"
       ? `Waiting on ${who} to pay the Debt Collector 5M` : `Waiting on ${who} to pay ${p.amount}M for ${card}`;
     case "protego_response": return `Waiting on ${who} to decide on Just Say No`;
@@ -142,7 +145,7 @@ export function waitingText(s: GameState, meId: string): string {
 /** Shared selection for paying: chips in the panel and cards on my table. */
 export type PaySelection = { active: boolean; picked: string[]; toggle: (id: string) => void; set: (ids: string[]) => void };
 
-export const isPayment = (p: PendingAction | null) => !!p && ["pay_rent", "pay_debt", "pay_birthday"].includes(p.type);
+export const isPayment = (p: PendingAction | null) => !!p && ["pay_rent", "pay_debt", "pay_birthday", "pay_poker"].includes(p.type);
 
 export function hasProtego(p: PlayerState) {
   return hasAction(p, "protego");
@@ -197,6 +200,7 @@ export function usefulToPlay(s: GameState, me: PlayerState, defId: string): bool
         case "time_turner": return s.discardPile.some(c => CARD_DEF_MAP[c.defId]?.actionType !== "time_turner");
         case "protego": case "chargeback": case "reverse": return false; // they answer attacks; on your turn they can just be banked
         case "hand_seven": return me.hand.length - 1 < 7;
+        case "all_in": return s.players.every(p => sumValue([...p.bank, ...p.properties]) > 0);
         case "hand_steal": return others.some(o => o.hand.length > 0);
         case "destroy": return others.some(o => o.properties.some(c => canTake(me, o, c, true)));
         case "bank_robber": return others.some(o => o.bank.length > 0);

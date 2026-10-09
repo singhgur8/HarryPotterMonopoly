@@ -13,7 +13,7 @@ import {
   createInitialGameState, drawCards, playCard, bankCard, endTurn,
   flipWild, payWithCards, playProtego, playChargeback, playReverse, declineProtego, chooseTarget,
   harryProtectColor, tharkiShortcutColor, kanjarChooseFriend, cedricChooseSource, luchaChoose, timeTurnerChoose, paySilencio,
-  discardCards, sanitizeStateForPlayer, putToSleep, wakeUp, botStep, getWaitingOn, autoDraw,
+  discardCards, sanitizeStateForPlayer, vegasGamble, guessCard, putToSleep, wakeUp, botStep, getWaitingOn, autoDraw,
   cancelChoice, forfeit, sleepForDisconnect, settleWilds,
 } from "./gameEngine";
 import { parseMessage, MessageRateLimiter, MAX_SOCKETS_PER_ROOM, MAX_SOCKETS_PER_VISITOR } from "./security";
@@ -675,6 +675,7 @@ const GAME_ACTIONS = new Set([
   "play_protego", "decline_protego", "choose_target", "harry_protect_color",
   "cedric_choose_source", "time_turner_choose", "pay_silencio", "discard_cards", "cancel_action",
   "lucha_choose", "play_chargeback", "play_reverse", "tharki_shortcut_color", "kanjar_choose_friend",
+  "vegas_gamble", "guess_card",
 ]);
 
 // ========== MAIN ROUTER ==========
@@ -752,6 +753,19 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
       const result = kanjarChooseFriend(room.gameState, client.visitorId, friendId);
       if (!result.success) return sendError(room, client, result.error!);
       room.gameState.turnTimer = freshTurnTimer(room.gameState);
+      return broadcastGameState(room);
+    }
+    case "vegas_gamble": case "guess_card": {
+      if (!room.gameState) return;
+      const result = type === "vegas_gamble"
+        ? vegasGamble(room.gameState, client.visitorId, payload?.choice, payload?.targetPlayerId, payload?.cardDefIds)
+        : guessCard(room.gameState, client.visitorId, payload?.guess);
+      if (!result.success) return sendError(room, client, result.error!);
+      // After the gamble the short draw timer starts afresh (the same player is still up, so it isn't reset for us)
+      if (type === "vegas_gamble" && inDrawStep(room.gameState)) {
+        room.gameState.turnTimer = freshTurnTimer(room.gameState);
+        room.timerSetAt = Date.now();
+      }
       return broadcastGameState(room);
     }
     case "lucha_choose": {
