@@ -337,7 +337,7 @@ const roleCards: CardDef[] = [
     rolePower: "Draw 3 cards at start of turn instead of 2.",
   },
   // ----- GG roles -----
-  // Their powers live in worker/gameEngine.ts (search "ganda" and "lucha").
+  // Their powers live in worker/gameEngine.ts (search the role id) and shared/rolePowers.ts.
   {
     id: "role_ganda",
     type: "role",
@@ -353,6 +353,30 @@ const roleCards: CardDef[] = [
     value: 0,
     roleType: "lucha",
     text: "At the end of each turn, copy another player's role power for your next turn. Pick someone new each time, unless it's one on one.",
+  },
+  {
+    id: "role_gandu",
+    type: "role",
+    name: "Gandu",
+    value: 0,
+    roleType: "gandu",
+    text: "Pay half of any rent charged to you, rounded up (1M stays 1M, 3M becomes 2M).",
+  },
+  {
+    id: "role_tharki",
+    type: "role",
+    name: "Tharki",
+    value: 0,
+    roleType: "tharki",
+    text: "Shortcut one colour: its set is complete with one fewer card. It stays until you move it at the end of one of your turns.",
+  },
+  {
+    id: "role_kanjar",
+    type: "role",
+    name: "Kanjar",
+    value: 0,
+    roleType: "kanjar",
+    text: "At the end of each turn, pick a friend. Until your next pick they can't charge you rent or play anything against you. Needs 3 or more players.",
   },
 ];
 

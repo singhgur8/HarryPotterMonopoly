@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { GameCard as Card, PlayerState, PropertyColor, PaymentResult } from "@shared/schema";
 import { GameCard } from "@/components/GameCard";
-import { SET_SIZES, inDrawStep } from "@shared/schema";
+import { inDrawStep } from "@shared/schema";
 import { countCompleteSets } from "@shared/cardDefs";
+import { setSizesFor } from "@shared/rolePowers";
 import { useGame } from "./context";
 import { CardInfo, DiscardLink, DiscardPile } from "./DiscardPile";
 import {
   CARD_DEF_MAP, COLORS, label, fillOf, valueOf, sumValue, nameOf, groupSets, canTake, isComplete, shieldOf, roleName, roleNames,
   payableCards, playerName, waitingText, isPayment, hasProtego, hasAction, drawCount, tileFill, colorOnTable, looseWilds, cardBlurb, outOfMoves,
+  sparedBy, setSizeFor, canShortcut,
   type PaySelection,
 } from "./helpers";
 
@@ -111,7 +113,7 @@ function Tracker() {
           let cls = "", text = "Waiting";
           if (r) {
             cls = r.outcome === "paid" ? "paid" : "blocked";
-            text = r.outcome === "paid" ? `Paid ${r.amount}M` : r.outcome === "nothing" ? "Had nothing" : r.outcome === "shielded" ? "Shielded" : "Blocked";
+            text = r.outcome === "paid" ? `Paid ${r.amount}M` : r.outcome === "nothing" ? "Had nothing" : r.outcome === "shielded" ? "Shielded" : r.outcome === "friend" ? "Kanjar's friend" : "Blocked";
           } else if (id === p.targetPlayerId) { cls = "now"; text = "Paying now"; }
           else if (remaining[0] === id) text = "Up next";
           return <span key={id} className={`hp-tchip ${cls}`}>{emoji} <b>{name}</b> {text}</span>;
@@ -131,6 +133,8 @@ function TargetPicker() {
   if (!me) return null;
   // A Reverse can only be played back on whoever played the action
   const others = s.players.filter(x => x.visitorId !== me.visitorId && (!p.data?.onlyTarget || x.visitorId === p.data.onlyTarget));
+  // Kanjar's friend can't aim at him: say so instead of offering buttons
+  const friendNote = () => <span className="hp-muted">Kanjar's friend this round, so you can't target them</span>;
   const pick = (target: string, targetCardDefId?: string, ownCardDefId?: string) =>
     send("choose_target", { targetPlayerId: target, targetCardDefId, ownCardDefId });
   const card = nameOf(p.cardDefId ?? "");
@@ -167,7 +171,8 @@ function TargetPicker() {
 
       {(p.type !== "choose_swap" || own) && others.map(o => {
         let body: React.ReactNode = null;
-        if (p.type === "choose_steal" || p.type === "choose_swap" || p.type === "choose_reducto" || p.type === "choose_destroy") {
+        if (sparedBy(me, o)) body = friendNote();
+        else if (p.type === "choose_steal" || p.type === "choose_swap" || p.type === "choose_reducto" || p.type === "choose_destroy") {
           const any = p.type === "choose_destroy";
           body = o.properties.length ? o.properties.map(c => cardButton(o, c, canTake(me, o, c, any), () => pick(o.visitorId, c.defId, own ?? undefined))) : <span className="hp-muted">No properties</span>;
         } else if (p.type === "choose_steal_set") {
@@ -303,7 +308,7 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
         <div style={{ fontSize: 40 }}>🏆</div>
         <h2 style={{ font: "800 24px var(--display)" }}>{winner.visitorId === meId ? "You win!" : `${winner.animal.name} wins!`}</h2>
         <p className="hp-muted" style={{ margin: 0 }}>
-          {countCompleteSets(winner.properties, SET_SIZES) >= 3 ? "Three complete sets." : "Won by forfeit."} Head back to the start page to play again.
+          {countCompleteSets(winner.properties, setSizesFor(winner)) >= 3 ? "Three complete sets." : "Won by forfeit."} Head back to the start page to play again.
         </p>
         <a className="hp-btn gold" href="#/">New game</a>
       </div>
@@ -342,7 +347,7 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
             <PaymentPicker
               pay={pay}
               amount={p.amount ?? 0}
-              title={<><b>{source} {why}.</b> You owe {p.amount}M. Pick what to pay with{answers.length ? `, or answer with ${answers.join(" or ")}` : ""}. Cards you give go to {source}.</>}
+              title={<><b>{source} {why}.</b> You owe {p.amount}M{p.type === "pay_rent" && (p.data?.baseAmount ?? p.amount) > (p.amount ?? 0) ? ` (half of ${p.data.baseAmount}M as Gandu, rounded up)` : ""}. Pick what to pay with{answers.length ? `, or answer with ${answers.join(" or ")}` : ""}. Cards you give go to {source}.</>}
               payLabel={n => `Pay ${n}M`}
               onPay={ids => send("pay_with_cards", { cardDefIds: ids })}
               onProtego={hasProtego(me) ? () => send("play_protego") : undefined}
@@ -413,7 +418,7 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
         // Older saves have no data: that was always Cedric's deck-or-discard choice
         const opts = p.data ?? { discard: true, opponent: false };
         const top = opts.discard ? s.discardPile.slice(-2).reverse() : [];
-        const victims = opts.opponent ? s.players.filter(o => o.visitorId !== me.visitorId && o.hand.length > 0) : [];
+        const victims = opts.opponent ? s.players.filter(o => o.visitorId !== me.visitorId && o.hand.length > 0 && !sparedBy(me, o)) : [];
         const ways = [`draw ${drawCount(me)} from the deck`];
         if (top.length) ways.push(`take the top ${top.length} of the discard pile`);
         if (victims.length) ways.push("take one random card from another player's hand");
@@ -448,6 +453,56 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
               {others.map(o => (
                 <button key={o.visitorId} className="hp-btn ghost" disabled={o.visitorId === blocked} onClick={() => send("lucha_choose", { targetPlayerId: o.visitorId })} data-testid={`lucha-copy-${o.seatIndex}`}>
                   {o.animal.emoji} {o.animal.name} · {o.roles.filter(r => r !== "lucha").map(r => roleName(r)).join(" + ") || "no power"}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+        break;
+      }
+      case "tharki_shortcut": {
+        const owned = groupSets(me.properties).map(g => g.color).filter(canShortcut);
+        const current = me.shortcutColor;
+        const moveTo = owned.filter(c => c !== current);
+        const need = (c: PropertyColor) => `${setSizeFor({ ...me, shortcutColor: c }, c)} cards`;
+        prompt = (
+          <div className="hp-prompt wait" data-testid="tharki-prompt">
+            <div className="head"><p>
+              <b>Tharki's Shortcut.</b>{" "}
+              {current
+                ? <>Your Shortcut is on {label(current)}, so it needs {need(current)} for a full set. Keep it there or move it?</>
+                : <>Pick one colour to need one fewer card for a full set. It stays until you move it.</>}
+            </p></div>
+            <div className="hp-row">
+              {current && (
+                <button className="hp-swatch-btn" onClick={() => send("tharki_shortcut_color", {})}>
+                  <span className="sq" style={{ background: fillOf(current) }} />Keep on {label(current)}
+                </button>
+              )}
+              {moveTo.map(c => (
+                <button key={c} className="hp-swatch-btn" onClick={() => send("tharki_shortcut_color", { color: c })}>
+                  <span className="sq" style={{ background: fillOf(c) }} />{current ? "Move to" : "Shortcut"} {label(c)} ({need(c)})
+                </button>
+              ))}
+              {current
+                ? <button className="hp-btn ghost" onClick={() => send("tharki_shortcut_color", { color: null })}>Drop Shortcut</button>
+                : <button className="hp-btn ghost" onClick={() => send("tharki_shortcut_color", {})}>No Shortcut</button>}
+            </div>
+          </div>
+        );
+        break;
+      }
+      case "kanjar_friend": {
+        const others = s.players.filter(o => o.visitorId !== me.visitorId);
+        const current = me.friendId;
+        prompt = (
+          <div className="hp-prompt wait" data-testid="kanjar-prompt">
+            <div className="head"><p><b>Kanjar's friend.</b> Until your next pick, your friend can't charge you rent or play anything against you. Who do you pick?</p></div>
+            <div className="hp-row">
+              {others.map(o => (
+                <button key={o.visitorId} className={`hp-btn ${o.visitorId === current ? "gold" : "ghost"}`}
+                  onClick={() => send("kanjar_choose_friend", { targetPlayerId: o.visitorId })} data-testid={`kanjar-friend-${o.seatIndex}`}>
+                  {o.animal.emoji} {o.visitorId === current ? `Stay friends with ${o.animal.name}` : `Befriend ${o.animal.name}`}
                 </button>
               ))}
             </div>

@@ -8,7 +8,7 @@ import {
   createInitialGameState, botStep, payWithCards, playProtego, declineProtego,
   chooseTarget, playCard, drawCards, paySilencio, getWaitingOn, flipWild,
   harryProtectColor, endTurn, luchaChoose, roleActive, timeTurnerChoose, bankCard, cancelChoice, cedricChooseSource, wakeUp, forfeit, autoDraw,
-  sleepForDisconnect, settleWilds, playChargeback, playReverse,
+  sleepForDisconnect, settleWilds, playChargeback, playReverse, tharkiShortcutColor, kanjarChooseFriend, calculateRent,
 } from "../worker/gameEngine";
 import { ANIMALS, SET_SIZES, DRAW_SECONDS, inDrawStep, freshTurnTimer } from "../shared/schema";
 import type { GameState, PlayerState, RoleType } from "../shared/schema";
@@ -925,5 +925,146 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   }
   console.log("prime: ok");
 }
+
+// ---------- Gandu: pays half of any rent, rounded up ----------
+{
+  const s = setup(3);
+  const [a, b, c] = s.players;
+  a.roles = []; b.roles = ["gandu"]; c.roles = [];
+  give(s, a, "properties", "prop_orange_1"); give(s, a, "properties", "prop_orange_2"); give(s, a, "properties", "prop_orange_3");
+  give(s, a, "hand", "rent_pink_orange_1"); give(s, a, "hand", "action_yule_1");
+  give(s, b, "bank", "money_5g_1"); give(s, c, "bank", "money_5g_2");
+  assert.ok(playCard(s, "p0", "rent_pink_orange_1", false, "orange").success);
+  assert.equal(s.pendingAction?.targetPlayerId, "p1");
+  assert.equal(s.pendingAction?.amount, 3, "half of 5M rounds up to 3M");
+  assert.ok(payWithCards(s, "p1", ["money_5g_1"]).success);
+  assert.equal(s.pendingAction?.targetPlayerId, "p2");
+  assert.equal(s.pendingAction?.amount, 5, "everyone else pays the full rent");
+  assert.ok(payWithCards(s, "p2", ["money_5g_2"]).success);
+  // Only rent is halved: It's My Birthday is still 2M
+  assert.ok(playCard(s, "p0", "action_yule_1").success);
+  assert.equal(s.pendingAction?.amount, 2);
+  // 1M stays 1M
+  const t = setup(2);
+  t.players[1].roles = ["gandu"];
+  give(t, t.players[0], "properties", "prop_brown_1"); give(t, t.players[0], "hand", "rent_brown_lb_1");
+  assert.ok(playCard(t, "p0", "rent_brown_lb_1", false, "brown").success);
+  assert.equal(t.pendingAction?.amount, 1);
+  console.log("gandu: ok");
+}
+
+// ---------- Tharki: one colour needs one fewer card ----------
+{
+  const s = setup(2);
+  const [a, b] = s.players;
+  a.roles = ["tharki"]; b.roles = [];
+  give(s, a, "properties", "prop_orange_1"); give(s, a, "properties", "prop_orange_2");
+  give(s, a, "properties", "prop_brown_1");
+  assert.equal(calculateRent(a, "orange"), 3);
+  assert.ok(endTurn(s, "p0").success);
+  assert.equal(s.pendingAction?.type, "tharki_shortcut");
+  assert.equal(tharkiShortcutColor(s, "p0", "brown").success, false, "brown already needs only 2");
+  assert.ok(tharkiShortcutColor(s, "p0", "orange").success);
+  assert.equal(a.shortcutColor, "orange");
+  assert.equal(calculateRent(a, "orange"), 5, "a Shortcut set earns full-set rent");
+  // Complete now: Sly Deal can't touch it, Deal Breaker can
+  s.currentTurnIndex = 1; s.pendingAction = null; s.drawnThisTurn = true;
+  give(s, b, "hand", "action_accio_1");
+  assert.equal(playCard(s, "p1", "action_accio_1").success, true, "brown is still takeable");
+  assert.equal(chooseTarget(s, "p1", "p0", "prop_orange_1").success, false, "orange is a complete set");
+  // No answer keeps it; null drops it
+  s.currentTurnIndex = 0; s.pendingAction = null; s.drawnThisTurn = true;
+  assert.ok(endTurn(s, "p0").success);
+  assert.ok(tharkiShortcutColor(s, "p0").success);
+  assert.equal(a.shortcutColor, "orange");
+  s.currentTurnIndex = 0; s.pendingAction = null; s.drawnThisTurn = true;
+  assert.ok(endTurn(s, "p0").success);
+  assert.ok(tharkiShortcutColor(s, "p0", null).success);
+  assert.equal(a.shortcutColor, undefined);
+  // Moving the Shortcut can win the game
+  const w = setup(2);
+  const t = w.players[0]; t.roles = ["tharki"]; w.players[1].roles = [];
+  for (const id of ["prop_brown_1", "prop_brown_2", "prop_darkblue_1", "prop_darkblue_2", "prop_red_1", "prop_red_2"]) give(w, t, "properties", id);
+  assert.equal(w.status, "playing");
+  assert.ok(endTurn(w, "p0").success);
+  assert.ok(tharkiShortcutColor(w, "p0", "red").success);
+  assert.equal(w.status, "finished");
+  assert.equal(w.winnerId, "p0");
+  // Silenced Tharki loses the Shortcut's effect
+  a.shortcutColor = "orange"; a.isSilenced = true;
+  assert.equal(calculateRent(a, "orange"), 3);
+  console.log("tharki: ok");
+}
+
+// ---------- Kanjar: his friend can't charge him or act against him ----------
+{
+  const s = setup(3);
+  const [a, b, c] = s.players;
+  a.roles = ["kanjar"]; b.roles = []; c.roles = [];
+  give(s, a, "properties", "prop_brown_1"); give(s, a, "bank", "money_5g_1"); give(s, a, "hand", "money_1g_1");
+  assert.ok(endTurn(s, "p0").success);
+  assert.equal(s.pendingAction?.type, "kanjar_friend");
+  assert.ok(kanjarChooseFriend(s, "p0", "p1").success);
+  assert.equal(a.friendId, "p1");
+  assert.equal(s.currentTurnIndex, 1);
+  s.drawnThisTurn = true;
+  // Rent from the friend skips Kanjar
+  give(s, b, "properties", "prop_red_1"); give(s, b, "hand", "rent_red_yellow_1");
+  give(s, c, "bank", "money_1g_2");
+  assert.ok(playCard(s, "p1", "rent_red_yellow_1", false, "red").success);
+  assert.equal(s.pendingAction?.targetPlayerId, "p2", "Kanjar is skipped");
+  assert.deepEqual(s.pendingAction?.data.results, [{ playerId: "p0", outcome: "friend", amount: 0 }]);
+  assert.ok(payWithCards(s, "p2", ["money_1g_2"]).success);
+  // Steals, Debt Collector and Hand Steal can't pick him
+  give(s, b, "hand", "action_accio_1");
+  assert.equal(playCard(s, "p1", "action_accio_1").success, false, "nobody else has a property to take");
+  give(s, c, "properties", "prop_green_1");
+  assert.ok(playCard(s, "p1", "action_accio_1").success);
+  assert.equal(chooseTarget(s, "p1", "p0", "prop_brown_1").success, false);
+  assert.ok(chooseTarget(s, "p1", "p2", "prop_green_1").success);
+  assert.ok(declineProtego(s, "p2").success);
+  give(s, b, "hand", "action_goblin_1");
+  assert.ok(playCard(s, "p1", "action_goblin_1").success);
+  assert.equal(chooseTarget(s, "p1", "p0").success, false);
+  // Someone else can still charge Kanjar
+  s.pendingAction = null; s.currentTurnIndex = 2; s.drawnThisTurn = true; s.actionsUsed = 0;
+  give(s, c, "hand", "action_goblin_3");
+  assert.ok(playCard(s, "p2", "action_goblin_3").success);
+  assert.ok(chooseTarget(s, "p2", "p0").success, "only the friend is held back");
+  // Kanjar's power is off when silenced
+  a.isSilenced = true;
+  s.pendingAction = null; s.currentTurnIndex = 1; s.actionsUsed = 0;
+  give(s, b, "hand", "action_goblin_2");
+  assert.ok(playCard(s, "p1", "action_goblin_2").success);
+  assert.ok(chooseTarget(s, "p1", "p0").success, "a silenced Kanjar has no friend");
+  a.isSilenced = false;
+  // No answer keeps the friend
+  s.pendingAction = null; s.currentTurnIndex = 0; s.drawnThisTurn = true;
+  assert.ok(endTurn(s, "p0").success);
+  assert.ok(kanjarChooseFriend(s, "p0").success);
+  assert.equal(a.friendId, "p1");
+  // Not dealt one on one; friendships end when it drops to two players
+  for (let g = 0; g < 30; g++) {
+    const players = Array.from({ length: 2 }, (_, i) => ({ visitorId: `p${i}`, seatIndex: i, animal: ANIMALS[i] }));
+    const two = createInitialGameState("TEST", players, 60, "gg");
+    assert.ok(two.players.every(p => !p.roles.includes("kanjar")));
+  }
+  assert.ok(forfeit(s, "p2").success);
+  assert.equal(a.friendId, undefined);
+  console.log("kanjar: ok");
+}
+
+// ---------- GG bot games with every GG role keep their cards ----------
+for (let g = 0; g < 60; g++) {
+  const players = Array.from({ length: 3 + (g % 3) }, (_, i) => ({ visitorId: `p${i}`, seatIndex: i, animal: ANIMALS[i], isBot: true }));
+  const s = createInitialGameState("TEST", players, 60, "gg");
+  s.players.forEach((p, i) => { p.isSleeping = true; p.isBot = true; p.roles = [(["gandu", "tharki", "kanjar", "lucha", "ganda"] as RoleType[])[i % 5]]; });
+  const total = countCards(s);
+  for (let i = 0; i < 3000 && s.status === "playing"; i++) {
+    assert.ok(botStep(s), `gg bot stuck: ${JSON.stringify(s.pendingAction)}`);
+    assert.equal(countCards(s), total);
+  }
+}
+console.log("gg roles bot games: ok");
 
 console.log("all engine checks passed");

@@ -1,6 +1,9 @@
 import type { GameCard, GameRules, GameState, PlayerState, PropertyColor, PendingAction, RoleType } from "@shared/schema";
 import { SET_SIZES, RENT_TABLE, SET_STYLE, PROPERTY_COLORS } from "@shared/schema";
 import { CARD_DEF_MAP, getEffectiveColor, colorOnTable, isAnyColourWild, roleDef } from "@shared/cardDefs";
+import { roleActive, setSizeFor, shortcutOf, sparedBy, friendOf, rentOwedBy, canShortcut } from "@shared/rolePowers";
+
+export { roleActive, setSizeFor, shortcutOf, sparedBy, friendOf, rentOwedBy, canShortcut };
 
 export const COLORS = PROPERTY_COLORS as readonly PropertyColor[];
 export const label = (c: PropertyColor) => SET_STYLE[c].label;
@@ -38,25 +41,24 @@ export const looseWilds = (properties: GameCard[]) => properties.filter(c => !co
 export const joinableColors = (p: PlayerState) => groupSets(p.properties).map(g => g.color);
 
 export const countOf = (p: PlayerState, c: PropertyColor) => p.properties.filter(x => colorOnTable(x, p.properties) === c).length;
-export const isComplete = (p: PlayerState, c: PropertyColor) => countOf(p, c) >= SET_SIZES[c];
+export const isComplete = (p: PlayerState, c: PropertyColor) => countOf(p, c) >= setSizeFor(p, c);
 export const completeSets = (p: PlayerState) => COLORS.filter(c => isComplete(p, c)).length;
 
 export function rentFor(p: PlayerState, c: PropertyColor): number {
   const n = countOf(p, c);
   if (!n) return 0;
   const t = RENT_TABLE[c];
+  if (isComplete(p, c)) return t[t.length - 1]; // a full set (Shortcut too) earns the full-set rent
   return t[Math.min(n, t.length) - 1];
 }
 
 /** What rent becomes if one more card joins the set, e.g. "Red rent 3M → 6M". */
 export function rentStep(p: PlayerState, c: PropertyColor): string {
   const n = countOf(p, c);
-  if (n >= SET_SIZES[c]) return `${label(c)} is already complete`;
-  return `${label(c)} rent ${n ? RENT_TABLE[c][n - 1] : 0}M → ${RENT_TABLE[c][n]}M`;
+  if (isComplete(p, c)) return `${label(c)} is already complete`;
+  const next = n + 1 >= setSizeFor(p, c) ? RENT_TABLE[c][RENT_TABLE[c].length - 1] : RENT_TABLE[c][n];
+  return `${label(c)} rent ${rentFor(p, c)}M → ${next}M`;
 }
-
-export const roleActive = (p: PlayerState | undefined, role: string) => !!p && !p.isSilenced &&
-  ((p.roles ?? []).includes(role as RoleType) || ((p.roles ?? []).includes("lucha") && !!p.borrowedRoles?.includes(role as RoleType)));
 
 /** What Lucha is copying right now, e.g. "Copying Fox: Harry Potter", or "" if nothing yet. */
 export function borrowedText(s: GameState, p: PlayerState): string {
@@ -67,9 +69,16 @@ export function borrowedText(s: GameState, p: PlayerState): string {
 }
 export const shieldOf = (p: PlayerState) => (roleActive(p, "harry") ? p.protectedColor : undefined);
 
+/** Name of Kanjar's friend this round, if he has one. */
+export const friendName = (s: GameState, p: PlayerState) => {
+  const id = friendOf(p);
+  return id ? s.players.find(x => x.visitorId === id)?.animal.name : undefined;
+};
+
 /** Mirrors the server's rule for Accio, Confundus and Reducto. */
 /** `allowComplete`: Destroy can hit a complete set. */
 export function canTake(attacker: PlayerState, target: PlayerState, card: GameCard, allowComplete = false): boolean {
+  if (sparedBy(attacker, target)) return false; // Kanjar's friend can't touch him
   const c = colorOnTable(card, target.properties);
   if (!c) return true; // a wild on its own is in no set, so nothing protects it
   if (shieldOf(target) === c) return false;
@@ -117,6 +126,8 @@ export function waitingText(s: GameState, meId: string): string {
     case "harry_protect": return `Waiting on ${who} to keep or move Harry's shield`;
     case "cedric_draw_choice": return `Waiting on ${who} to choose where to draw from`;
     case "lucha_choose": return `Waiting on ${who} to pick whose power Lucha copies`;
+    case "tharki_shortcut": return `Waiting on ${who} to keep or move Tharki's Shortcut`;
+    case "kanjar_friend": return `Waiting on ${who} to pick Kanjar's friend`;
     case "discard_excess": return `Waiting on ${who} to discard down to 7`;
     case "time_turner_play": return `Waiting on ${who} to pick a card with Rewind`;
     default: return `Waiting on ${who} to choose a target for ${card}`;
@@ -151,7 +162,7 @@ export function cardBlurb(defId: string, rules: GameRules = {}): string {
   const both = (cs: PropertyColor[]) => cs.map(label).join(" or ");
   switch (def.type) {
     case "money": return `Money. Bank it for ${def.value}M.`;
-    case "property": return `${label(def.color!)} property. ${SET_SIZES[def.color!]} make a full set.`;
+    case "property": return `${label(def.color!)} property. ${SET_SIZES[def.color!]} make a full set.`; // printed size, Shortcut aside
     case "wild": return def.wildColors === "rainbow" ? "Wild property. Joins a colour you already have. Alone it has no colour and earns no rent." : `Wild property. Counts as ${both(def.wildColors as PropertyColor[])}.`;
     case "rent": return def.rentColors === "rainbow" ? `Rent. Charge ${rules.wildRentOneTarget ? "one player" : "everyone"} for any one of your sets.` : `Rent. Charge everyone for ${both(def.rentColors as PropertyColor[])}.`;
     default: return def.text ?? "";
@@ -164,7 +175,7 @@ export function cardBlurb(defId: string, rules: GameRules = {}): string {
 export function usefulToPlay(s: GameState, me: PlayerState, defId: string): boolean {
   const def = CARD_DEF_MAP[defId];
   if (!def) return false;
-  const others = s.players.filter(p => p.visitorId !== me.visitorId);
+  const others = s.players.filter(p => p.visitorId !== me.visitorId && !sparedBy(me, p));
   const anyTakeable = others.some(o => o.properties.some(c => canTake(me, o, c)));
   switch (def.type) {
     case "property": case "wild": return true;

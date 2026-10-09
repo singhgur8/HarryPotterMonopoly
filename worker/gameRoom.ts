@@ -12,7 +12,7 @@ import { DEFAULT_VARIATION, DEFAULT_CUSTOM_RULES, isVariationId, updateCustomRul
 import {
   createInitialGameState, drawCards, playCard, bankCard, endTurn,
   flipWild, payWithCards, playProtego, playChargeback, playReverse, declineProtego, chooseTarget,
-  harryProtectColor, cedricChooseSource, luchaChoose, timeTurnerChoose, paySilencio,
+  harryProtectColor, tharkiShortcutColor, kanjarChooseFriend, cedricChooseSource, luchaChoose, timeTurnerChoose, paySilencio,
   discardCards, sanitizeStateForPlayer, putToSleep, wakeUp, botStep, getWaitingOn, autoDraw,
   cancelChoice, forfeit, sleepForDisconnect, settleWilds,
 } from "./gameEngine";
@@ -601,7 +601,7 @@ const GAME_ACTIONS = new Set([
   "draw_cards", "play_card", "bank_card", "end_turn", "flip_wild", "pay_with_cards",
   "play_protego", "decline_protego", "choose_target", "harry_protect_color",
   "cedric_choose_source", "time_turner_choose", "pay_silencio", "discard_cards", "cancel_action",
-  "lucha_choose", "play_chargeback", "play_reverse",
+  "lucha_choose", "play_chargeback", "play_reverse", "tharki_shortcut_color", "kanjar_choose_friend",
 ]);
 
 // ========== MAIN ROUTER ==========
@@ -660,6 +660,24 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
     case "decline_protego": return handleDeclineProtego(room, client);
     case "choose_target": return handleChooseTarget(room, client, payload);
     case "harry_protect_color": return handleHarryProtectColor(room, client, payload);
+    case "tharki_shortcut_color": {
+      if (!room.gameState) return;
+      // No colour keeps the Shortcut where it is; null drops it
+      const color = payload?.color;
+      const result = tharkiShortcutColor(room.gameState, client.visitorId, color === null ? null : color || undefined);
+      if (!result.success) return sendError(room, client, result.error!);
+      room.gameState.turnTimer = freshTurnTimer(room.gameState);
+      return broadcastGameState(room);
+    }
+    case "kanjar_choose_friend": {
+      if (!room.gameState) return;
+      // No one keeps the current friend
+      const friendId = typeof payload?.targetPlayerId === "string" ? payload.targetPlayerId : undefined;
+      const result = kanjarChooseFriend(room.gameState, client.visitorId, friendId);
+      if (!result.success) return sendError(room, client, result.error!);
+      room.gameState.turnTimer = freshTurnTimer(room.gameState);
+      return broadcastGameState(room);
+    }
     case "lucha_choose": {
       if (!room.gameState) return;
       const result = luchaChoose(room.gameState, client.visitorId, payload?.targetPlayerId);
