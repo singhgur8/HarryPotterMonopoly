@@ -897,13 +897,17 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
     return s;
   };
 
-  // Hand 7 draws up to 7
+  // Refresh discards the whole hand and draws 5 fresh cards
   {
     const s = primeSetup();
     const a = s.players[0];
     give(s, a, "hand", "action_hand_seven_1"); give(s, a, "hand", "money_1g_1");
+    for (let i = 0; i < 6; i++) give(s, a, "hand", s.drawPile[0].defId);
+    const before = s.discardPile.length;
     assert.ok(playCard(s, "p0", "action_hand_seven_1").success);
-    assert.equal(a.hand.length, 7);
+    assert.equal(a.hand.length, 5);
+    assert.equal(s.discardPile.length, before + 8);
+    assert.ok(s.discardPile.some(c => c.defId === "money_1g_1"));
   }
   // Hand Steal takes a random card; the target is asked first
   {

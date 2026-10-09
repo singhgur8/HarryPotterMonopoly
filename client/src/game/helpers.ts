@@ -199,7 +199,7 @@ export function usefulToPlay(s: GameState, me: PlayerState, defId: string): bool
         case "silencio": return others.some(o => !o.isSilenced);
         case "time_turner": return s.discardPile.some(c => CARD_DEF_MAP[c.defId]?.actionType !== "time_turner");
         case "protego": case "chargeback": case "reverse": return false; // they answer attacks; on your turn they can just be banked
-        case "hand_seven": return me.hand.length - 1 < 7;
+        case "hand_seven": return true;
         case "all_in": return s.players.every(p => sumValue([...p.bank, ...p.properties]) > 0);
         case "hand_steal": return others.some(o => o.hand.length > 0);
         case "destroy": return others.some(o => o.properties.some(c => canTake(me, o, c, true)));

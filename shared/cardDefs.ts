@@ -267,7 +267,7 @@ const primeCards: CardDef[] = [
   { id: "wild_red_yellow_3", type: "wild", name: "Property Wild Card (Red / Yellow)", value: 3, wildColors: ["red", "yellow"] },
   { id: "wild_green_trans_2", type: "wild", name: "Property Wild Card (Green / Railroad)", value: 4, wildColors: ["green", "transport"] },
   { id: "action_protego_4", type: "action", name: "Just Say No", value: 4, actionType: "protego", text: "Cancel an action played against you.", target: "reaction" },
-  { id: "action_hand_seven_1", type: "action", name: "Hand 7", value: 1, actionType: "hand_seven", text: "Draw until you have 7 cards in your hand.", target: "self" },
+  { id: "action_hand_seven_1", type: "action", name: "Refresh", value: 1, actionType: "hand_seven", text: "Discard your whole hand, then draw 5 fresh cards.", target: "self" },
   ...Array.from({ length: 2 }, (_, i) => ({
     id: `action_hand_steal_${i + 1}`, type: "action" as const, name: "Hand Steal", value: 3, actionType: "hand_steal" as const,
     text: "Take a random card from another player's hand.", target: "one" as const,
