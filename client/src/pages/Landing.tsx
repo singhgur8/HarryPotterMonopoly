@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { HowToWin } from "@/game/Lobby";
 import { Crest, SetStripe, forgetRoom, lastRoom } from "@/game/Brand";
+import { ThemeToggle } from "@/game/ThemeToggle";
 import "@/game/table.css";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -58,6 +59,7 @@ export default function Landing() {
     <div className="hp">
       <div className="hp-page hp-home-page" data-testid="landing-page">
         <div className="hp-lob hp-hero">
+          <ThemeToggle className="hp-theme-corner" />
           <Crest big />
           <SetStripe />
           <p className="hp-tag">Collect three full property sets before anyone else. Charge rent, steal deals and say no.</p>

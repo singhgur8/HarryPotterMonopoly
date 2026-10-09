@@ -5,6 +5,7 @@ import { VARIATIONS, VARIATION_IDS, variationOf, DEFAULT_CUSTOM_RULES } from "@s
 import { ANIMALS, type CustomRules } from "@shared/schema";
 import { CustomSetup, PickRoles } from "./CustomSetup";
 import { Crest, HomeButton } from "./Brand";
+import { ThemeToggle } from "./ThemeToggle";
 import { ChatBody, chatEntries } from "./Chat";
 
 const SPEEDS = [
@@ -123,6 +124,7 @@ export function Lobby() {
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Crest />
           <span style={{ flex: 1 }} />
+          <ThemeToggle />
           <HomeButton />
         </div>
 
