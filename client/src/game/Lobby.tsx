@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { useRoom } from "./context";
 import { roleInfo } from "./helpers";
 import { VARIATIONS, VARIATION_IDS, variationOf, DEFAULT_CUSTOM_RULES } from "@shared/variations";
@@ -18,6 +19,60 @@ export function HowToWin() {
       <span>Draw 2, play up to 3</span>
       <span>Max 7 cards in hand</span>
     </div>
+  );
+}
+
+// The name this person last typed, so it comes with them to every room
+const NAME_KEY = "hp-name";
+const MAX_NAME = 16;
+function savedName(): string {
+  try { return localStorage.getItem(NAME_KEY) ?? ""; } catch { return ""; }
+}
+function saveName(name: string) {
+  try { name ? localStorage.setItem(NAME_KEY, name) : localStorage.removeItem(NAME_KEY); } catch { /* storage blocked */ }
+}
+
+/** Your own name, shown with the icon you pick. */
+function NameField() {
+  const { myAnimal, send } = useRoom();
+  const [draft, setDraft] = useState(savedName);
+  const sentFor = useRef<string | null>(null);
+
+  // Bring the saved name into this room once; a clash shows an error and isn't retried
+  useEffect(() => {
+    const name = savedName();
+    if (!myAnimal || !name || myAnimal.name === name || sentFor.current === name) return;
+    sentFor.current = name;
+    send("set_name", { name });
+  }, [myAnimal, send]);
+
+  const commit = () => {
+    const name = draft.replace(/\s+/g, " ").trim().slice(0, MAX_NAME);
+    setDraft(name);
+    saveName(name);
+    // An empty box goes back to the icon's name; only tell the room once
+    if (name ? name !== myAnimal?.name : sentFor.current !== "") {
+      sentFor.current = name;
+      send("set_name", { name });
+    }
+  };
+
+  return (
+    <form className="hp-namerow" onSubmit={e => { e.preventDefault(); commit(); (document.activeElement as HTMLElement | null)?.blur(); }}>
+      <span className="big" aria-hidden>{myAnimal?.emoji}</span>
+      <input
+        className="hp-name"
+        value={draft}
+        maxLength={MAX_NAME}
+        placeholder={myAnimal?.name ? `Your name (now ${myAnimal.name})` : "Your name"}
+        aria-label="Your name"
+        autoComplete="nickname"
+        enterKeyHint="done"
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        data-testid="input-name"
+      />
+    </form>
   );
 }
 
@@ -119,10 +174,11 @@ export function Lobby() {
         </div>
 
         <div style={{ display: "grid", gap: 8 }}>
-          <div className="hp-label">Your character · tap to change</div>
+          <div className="hp-label">Your name and icon · tap an icon to change it</div>
+          <NameField />
           <div className="hp-chars">
             {ANIMALS.map(a => {
-              const mine = myAnimal?.name === a.name;
+              const mine = myAnimal?.emoji === a.emoji;
               const isTaken = !mine && taken.has(a.name);
               return (
                 <button key={a.name} className="hp-char" aria-pressed={mine} disabled={isTaken} onClick={() => !mine && send("pick_animal", { name: a.name })} data-testid={`character-${a.name}`}>
