@@ -10,7 +10,7 @@ import type {
 import { SET_SIZES, RENT_TABLE, PROPERTY_COLORS, freshTurnTimer } from "../shared/schema";
 import { CARD_DEF_MAP, getEffectiveColor, countCompleteSets, colorOnTable, isAnyColourWild } from "../shared/cardDefs";
 import { gameSetup, type GameSetup } from "../shared/variations";
-import { roleActive, canShortcut, setSizeFor, setSizesFor, sparedBy, rentOwedBy, KANJAR_MIN_PLAYERS } from "../shared/rolePowers";
+import { roleActive, setSizeFor, setSizesFor, sparedBy, rentOwedBy, KANJAR_MIN_PLAYERS } from "../shared/rolePowers";
 
 export { roleActive };
 
@@ -1258,9 +1258,9 @@ export function harryProtectColor(state: GameState, visitorId: string, color?: P
   return nextEndOfTurnChoice(state, visitorId, "harry_protect");
 }
 
-/** Colours Tharki can put his Shortcut on: ones he has a card of that need 3 or more for a set. */
+/** Colours Tharki can put his Shortcut on: any he has a card of (a 2-card colour then needs just 1). */
 export function shortcutChoices(player: PlayerState): PropertyColor[] {
-  return ownedColors(player).filter(canShortcut);
+  return ownedColors(player);
 }
 
 // Tharki's Shortcut stays put until he moves it, like Harry's shield. At the
