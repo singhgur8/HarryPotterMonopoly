@@ -90,12 +90,13 @@ export function GuessPrompt() {
 }
 
 const ROLL_MS = 1100;
-const SHOW_MS = 3600;
+const SHOW_MS = 8000;
 
 /**
  * Shows each new dice roll, duel, coin toss, card guess or All In roll-off to
  * everyone at the table: a short tumble, then the result. Players it involves
- * keep the result up until they tap it; everyone else sees it close by itself.
+ * keep the result up until they tap it; everyone else sees it for 8 seconds
+ * (or until they tap it).
  * Rolls that happened before the page loaded aren't replayed.
  */
 export function GambleOverlay() {
