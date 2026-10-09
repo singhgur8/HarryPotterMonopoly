@@ -126,7 +126,7 @@ export const VARIATIONS: Record<VariationId, Variation> = {
   prime: {
     id: "prime",
     name: "Prime",
-    description: "Monopoly Deal plus 19 Prime cards: Hand 7, Hand Steal, Chargeback, Reverse, Destroy and Bank Robber.",
+    description: "Monopoly Deal plus 19 Prime cards: Refresh, Hand Steal, Chargeback, Reverse, Destroy and Bank Robber.",
     roles: [],
     deck: PRIME_DECK,
     rules: { wildRentOneTarget: true },

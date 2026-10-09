@@ -630,16 +630,19 @@ function playActionCard(state: GameState, player: PlayerState, cardDefId: string
     }
 
     case "hand_seven": {
-      if (player.hand.length - 1 >= 7) return fail("You already have 7 cards in your hand");
+      // Refresh: discard the rest of your hand, then draw 5 fresh cards
       discardIt();
+      const tossed = player.hand.length;
+      state.discardPile.push(...player.hand);
+      player.hand = [];
       let drawn = 0;
-      while (player.hand.length < 7) {
+      while (drawn < 5) {
         const card = drawFromPile(state);
         if (!card) break;
         player.hand.push(card);
         drawn++;
       }
-      log(state, player, `played Hand 7 and drew ${drawn} card${drawn === 1 ? "" : "s"}`, def.id);
+      log(state, player, `played Refresh, discarded ${tossed} card${tossed === 1 ? "" : "s"} and drew ${drawn} fresh card${drawn === 1 ? "" : "s"}`, def.id);
       return ok;
     }
 
@@ -1749,7 +1752,9 @@ function botAttack(state: GameState, bot: PlayerState): boolean {
       const best = [...colors].sort((a, b) => calculateRent(bot, b) - calculateRent(bot, a))[0];
       if (best && calculateRent(bot, best) > 0 && playCard(state, id, card.defId, false, best).success) return true;
     }
-    if (def?.type === "action" && ["yule_ball", "gringotts_goblin", "felix_felicis", "double_rent", "hand_seven", "guess_draw", "all_in"].includes(def.actionType!)) {
+    if (def?.type === "action" && ["yule_ball", "gringotts_goblin", "felix_felicis", "double_rent", "guess_draw", "all_in"].includes(def.actionType!)
+      // Bots only Refresh a short hand, so they never throw away more than they get back
+      || (def?.actionType === "hand_seven" && bot.hand.length - 1 < 5)) {
       if (playCard(state, id, card.defId).success) return true;
     }
   }
