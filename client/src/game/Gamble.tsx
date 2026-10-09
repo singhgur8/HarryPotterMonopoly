@@ -24,7 +24,7 @@ export function GamblePrompt() {
       <div className="hp-gambles">
         <div className="hp-gamble">
           <b>🎲 Roll the dice</b>
-          <span className="hp-muted">3 keeps your turn. 1 or 2 loses it. 4, 5 or 6 gives you an extra turn after this one.</span>
+          <span className="hp-muted">Sets your plays this turn: 1 or 2 gives you 2, a 3 keeps 3, and 4, 5 or 6 gives you 4.</span>
           <div className="hp-row"><button className="hp-btn gold" onClick={() => send("vegas_gamble", { choice: "dice" })} data-testid="gamble-dice">Roll</button></div>
         </div>
         <div className="hp-gamble">
@@ -94,11 +94,12 @@ const SHOW_MS = 3600;
 
 /**
  * Shows each new dice roll, duel, coin toss, card guess or All In roll-off to
- * everyone at the table: a short tumble, then the result. Tap to close it.
+ * everyone at the table: a short tumble, then the result. Players it involves
+ * keep the result up until they tap it; everyone else sees it close by itself.
  * Rolls that happened before the page loaded aren't replayed.
  */
 export function GambleOverlay() {
-  const { s } = useGame();
+  const { s, me } = useGame();
   const g = s.gamble;
   const seen = useRef<string | null | undefined>(g?.id);
   const [shown, setShown] = useState<GambleRoll | null>(null);
@@ -112,7 +113,8 @@ export function GambleOverlay() {
     setRolling(true);
     const tumble = window.setInterval(() => setSpin(n => n + 1), 90);
     const stop = window.setTimeout(() => { setRolling(false); clearInterval(tumble); }, ROLL_MS);
-    const hide = window.setTimeout(() => setShown(null), SHOW_MS);
+    const mine = !!me && (g.playerId === me.visitorId || !!g.rolls?.some(r => r.playerId === me.visitorId));
+    const hide = mine ? undefined : window.setTimeout(() => setShown(null), SHOW_MS);
     return () => { clearInterval(tumble); clearTimeout(stop); clearTimeout(hide); };
   }, [g?.id]);
 
@@ -157,4 +159,4 @@ export function GambleOverlay() {
 }
 
 // Log text marks card names as [[colour|name]]; show just the name here
-const plain = (text: string) => text.replace(/\[\[[a-z_]+\|([^\]]+)\]\]/g, "$1").replace(/\[\[([a-z_]+)\]\]/g, "$1");
+const plain = (text: string) => text.replace(/\[\[hidden\]\]/g, "a hidden card").replace(/\[\[[a-z_]+\|([^\]]+)\]\]/g, "$1").replace(/\[\[([a-z_]+)\]\]/g, "$1");

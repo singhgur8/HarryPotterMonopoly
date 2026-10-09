@@ -15,6 +15,8 @@ function LogText({ text }: { text: string }) {
   return <>{parts.map((p, i) => {
     if (i % 3 === 0) return p;
     if (i % 3 === 2) return null;
+    // A card taken from someone's hand that only those two players get to see
+    if (p === "hidden") return <span key={i} className="hp-logchip hidden" title="Only the two players involved see which card">? card</span>;
     const st = SET_STYLE[p as PropertyColor];
     if (!st) return p;
     const name = parts[i + 1];

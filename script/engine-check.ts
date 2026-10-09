@@ -10,7 +10,7 @@ import {
   chooseTarget, playCard, drawCards, paySilencio, getWaitingOn, flipWild,
   harryProtectColor, endTurn, luchaChoose, roleActive, timeTurnerChoose, bankCard, cancelChoice, cedricChooseSource, wakeUp, forfeit, autoDraw,
   sleepForDisconnect, settleWilds, playChargeback, playReverse, tharkiShortcutColor, kanjarChooseFriend, calculateRent,
-  vegasGamble, guessCard, guessKindOf,
+  vegasGamble, guessCard, guessKindOf, sanitizeStateForPlayer,
 } from "../worker/gameEngine";
 import { ANIMALS, SET_SIZES, DRAW_SECONDS, inDrawStep, freshTurnTimer, PLAYS_USED_UP_SECONDS } from "../shared/schema";
 import type { GameState, PlayerState, RoleType } from "../shared/schema";
@@ -1221,14 +1221,10 @@ console.log("gg roles bot games: ok");
     const g = vegasGame(3);
     assert.ok(vegasGamble(g, "p0", "dice").success);
     const roll = g.gamble!.rolls![0].dice[0];
-    if (roll < 3) { seen.add("lose"); assert.equal(g.currentTurnIndex, 1, "1-2 loses the turn"); assert.equal(g.pendingAction?.type, "vegas_gamble"); }
-    else {
-      assert.equal(g.currentTurnIndex, 0); assert.equal(g.pendingAction, null, "then the draw");
-      assert.ok(drawCards(g, "p0").success);
-      assert.ok(endTurn(g, "p0").success);
-      if (roll > 3) { seen.add("extra"); assert.equal(g.currentTurnIndex, 0, "4-6 plays again"); assert.equal(g.pendingAction?.type, "vegas_gamble"); }
-      else { seen.add("keep"); assert.equal(g.currentTurnIndex, 1); }
-    }
+    seen.add(String(g.maxActions));
+    assert.equal(g.maxActions, roll < 3 ? 2 : roll === 3 ? 3 : 4, "the roll sets this turn's plays");
+    assert.equal(g.currentTurnIndex, 0); assert.equal(g.pendingAction, null, "then the draw");
+    assert.ok(drawCards(g, "p0").success);
   }
   assert.equal(seen.size, 3);
 
@@ -1334,6 +1330,24 @@ console.log("gg roles bot games: ok");
     }
   }
   console.log("vegas: ok");
+}
+
+// ---------- Stolen card: only the taker and the loser see which card ----------
+{
+  const s = setup();
+  const [a, b] = s.players;
+  a.roles = []; b.roles = []; s.players[2].roles = [];
+  a.hand.push({ defId: "action_hand_steal_1" });
+  give(s, b, "hand", "prop_green_1");
+  assert.ok(playCard(s, "p0", "action_hand_steal_1").success);
+  assert.ok(chooseTarget(s, "p0", "p1").success);
+  assert.ok(declineProtego(s, "p1").success);
+  assert.ok(a.hand.some(c => c.defId === "prop_green_1"));
+  const last = (id: string) => sanitizeStateForPlayer(s, id).eventLog.filter(e => e.message.includes("Hand Steal to take")).pop()!;
+  for (const id of ["p0", "p1"]) assert.ok(last(id).message.includes(CARD_DEF_MAP.prop_green_1.name), `${id} sees the card`);
+  assert.ok(last("p2").message.includes("[[hidden]]") && !last("p2").message.includes(CARD_DEF_MAP.prop_green_1.name), "others see a hidden card");
+  assert.ok(!("secret" in last("p2")), "the secret isn't sent to others");
+  console.log("secret steal log: ok");
 }
 
 console.log("all engine checks passed");

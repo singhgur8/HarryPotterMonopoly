@@ -263,6 +263,7 @@ export interface GambleRoll {
   defId?: string;                               // Guess and Draw: the card turned over
   guess?: GuessKind;
   result: string;                               // one sentence on what happened
+  secret?: { to: string[]; result: string };    // server only: what these players see instead (the card that changed hands)
 }
 
 // Vegas All In: the pot while everyone stakes
@@ -281,6 +282,7 @@ export interface EventLogEntry {
   playerColor: string;
   message: string;
   cardDefId?: string;
+  secret?: { to: string[]; message: string }; // server only: what these players see instead (the card stolen from one and taken by the other)
 }
 
 // Chat message
@@ -317,7 +319,6 @@ export interface GameState {
   rules?: GameRules;           // Rule switches for this version (missing = Harry Potter rules)
   rentMultiplier?: number;     // Double the Rent played this turn: the next rent is multiplied by this
   gamble?: GambleRoll | null;  // Vegas: the latest roll, toss or guess
-  extraTurnFor?: string | null; // Vegas: this player goes again when their turn ends
   poker?: PokerPot | null;     // Vegas: an All In in progress
   // Sent to clients only
   drawPileCount?: number;

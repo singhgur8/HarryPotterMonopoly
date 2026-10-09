@@ -48,7 +48,9 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-function addEvent(state: GameState, playerEmoji: string, playerName: string, playerColor: string, message: string, cardDefId?: string) {
+type Secret = { to: string[]; message: string };
+
+function addEvent(state: GameState, playerEmoji: string, playerName: string, playerColor: string, message: string, cardDefId?: string, secret?: Secret) {
   state.eventLog.push({
     id: uuidv4(),
     timestamp: Date.now(),
@@ -57,6 +59,7 @@ function addEvent(state: GameState, playerEmoji: string, playerName: string, pla
     playerColor,
     message,
     cardDefId,
+    ...(secret ? { secret } : {}),
   });
   // Keep last 100 events
   if (state.eventLog.length > 100) {
@@ -64,8 +67,18 @@ function addEvent(state: GameState, playerEmoji: string, playerName: string, pla
   }
 }
 
-function log(state: GameState, player: PlayerState, message: string, cardDefId?: string) {
-  addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass, message, cardDefId);
+function log(state: GameState, player: PlayerState, message: string, cardDefId?: string, secret?: Secret) {
+  addEvent(state, player.animal.emoji, player.animal.name, player.animal.colorClass, message, cardDefId, secret);
+}
+
+// A card taken at random from a hand: the taker and the player who lost it see
+// which card it was; everyone else sees a hidden card ([[hidden]] draws a "?" card).
+function tookCard(taker: PlayerState, loser: PlayerState, card: GameCard, message: string): { message: string; secret: Secret } {
+  const name = CARD_DEF_MAP[card.defId]?.name ?? "a card";
+  return {
+    message: message.replace("a random card", "[[hidden]]"),
+    secret: { to: [taker.visitorId, loser.visitorId], message: message.replace("a random card", name) },
+  };
 }
 
 function getPlayer(state: GameState, visitorId: string): PlayerState | undefined {
@@ -328,7 +341,8 @@ export function cedricChooseSource(state: GameState, visitorId: string, source: 
     const [card] = target.hand.splice(Math.floor(Math.random() * target.hand.length), 1);
     player.hand.push(card);
     state.drawnThisTurn = true;
-    log(state, player, `used Ganda's power to take a random card from ${target.animal.name}'s hand`);
+    const took = tookCard(player, target, card, `used Ganda's power to take a random card from ${target.animal.name}'s hand`);
+    log(state, player, took.message, undefined, took.secret);
     return ok;
   }
   return drawCards(state, visitorId);
@@ -787,11 +801,7 @@ function advanceTurn(state: GameState) {
   const currentPlayer = getCurrentPlayer(state);
   if (currentPlayer) log(state, currentPlayer, "ended their turn");
 
-  // Vegas: a roll of 4 to 6 earns the same player another turn
-  const again = !!currentPlayer && state.extraTurnFor === currentPlayer.visitorId;
-  state.extraTurnFor = null;
-  if (again) log(state, currentPlayer!, "takes their extra turn");
-  else state.currentTurnIndex = (state.currentTurnIndex + 1) % state.players.length;
+  state.currentTurnIndex = (state.currentTurnIndex + 1) % state.players.length;
   beginTurn(state);
 }
 
@@ -1159,7 +1169,8 @@ function executeAction(state: GameState, action: PendingAction) {
       if (target.hand.length === 0) { log(state, attacker, "'s Hand Steal fizzled: their hand is empty"); return; }
       const card = target.hand.splice(Math.floor(Math.random() * target.hand.length), 1)[0];
       attacker.hand.push(card);
-      log(state, attacker, `used Hand Steal to take a random card from ${target.animal.name}'s hand`);
+      const took = tookCard(attacker, target, card, `used Hand Steal to take a random card from ${target.animal.name}'s hand`);
+      log(state, attacker, took.message, undefined, took.secret);
       return;
     }
     case "choose_bank_robber": {
@@ -1526,7 +1537,6 @@ export function forfeit(state: GameState, visitorId: string): Result {
   addEvent(state, "🏳️", player.animal.name, player.animal.colorClass,
     `forfeited. Their ${returned.length} cards were shuffled back into the draw pile`);
 
-  state.extraTurnFor = null;
   if (state.poker) state.poker.players = state.poker.players.filter(id => id !== visitorId);
   const left = state.players;
   // One on one, Kanjar's friend would be everyone, so friendships end
@@ -1748,7 +1758,7 @@ function botAttack(state: GameState, bot: PlayerState): boolean {
 
 // ========== VEGAS ==========
 // Every turn starts with a gamble the player picks:
-// - Dice: 3 keeps the turn, 1 or 2 loses it, 4 to 6 adds an extra turn after this one.
+// - Dice: sets this turn's plays. 1 or 2: one fewer (2), 3: as usual (3), 4 to 6: one more (4).
 // - Duel: pick a player; you both roll a die and the higher roll takes a random
 //   card from the other's hand (a tie does nothing). They can Just Say No.
 // - Bet: stake money from your bank on a coin toss. Heads, the house pays you the
@@ -1772,14 +1782,8 @@ export function vegasGamble(state: GameState, visitorId: string, choice: string,
   if (choice === "dice") {
     const roll = rollDie();
     state.pendingAction = null;
-    if (roll < 3) {
-      const result = `rolled ${roll} and loses this turn`;
-      log(state, player, result);
-      showGamble(state, { kind: "dice", playerId: visitorId, rolls: [{ playerId: visitorId, dice: [roll] }], result });
-      return nextEndOfTurnChoice(state, visitorId);
-    }
-    const result = roll === 3 ? "rolled 3 and keeps their turn" : `rolled ${roll} and gets an extra turn after this one`;
-    if (roll > 3) state.extraTurnFor = visitorId;
+    state.maxActions = maxActionsFor(player) + (roll < 3 ? -1 : roll > 3 ? 1 : 0);
+    const result = `rolled ${roll} and gets ${state.maxActions} plays this turn`;
     log(state, player, result);
     showGamble(state, { kind: "dice", playerId: visitorId, rolls: [{ playerId: visitorId, dice: [roll] }], result });
     openDrawChoice(state, player);
@@ -1833,6 +1837,7 @@ function runDuel(state: GameState, challenger: PlayerState, rival: PlayerState) 
   const a = rollDie(), b = rollDie();
   const rolls = [{ playerId: challenger.visitorId, dice: [a] }, { playerId: rival.visitorId, dice: [b] }];
   let result: string;
+  let secret: Secret | undefined;
   if (a === b) {
     result = `and ${rival.animal.name} both rolled ${a}. The duel is a draw`;
   } else {
@@ -1841,12 +1846,17 @@ function runDuel(state: GameState, challenger: PlayerState, rival: PlayerState) 
     if (loser.hand.length === 0) {
       result = winner === challenger ? `beat ${rival.animal.name} ${score}, but their hand is empty` : `lost to ${rival.animal.name} ${score}, but has no cards to give`;
     } else {
-      winner.hand.push(loser.hand.splice(Math.floor(Math.random() * loser.hand.length), 1)[0]);
-      result = winner === challenger ? `beat ${rival.animal.name} ${score} and took a random card from their hand` : `lost to ${rival.animal.name} ${score}, who took a random card from their hand`;
+      const card = loser.hand.splice(Math.floor(Math.random() * loser.hand.length), 1)[0];
+      winner.hand.push(card);
+      const took = tookCard(winner, loser, card, winner === challenger
+        ? `beat ${rival.animal.name} ${score} and took a random card from their hand`
+        : `lost to ${rival.animal.name} ${score}, who took a random card from their hand`);
+      result = took.message;
+      secret = took.secret;
     }
   }
-  log(state, challenger, result);
-  showGamble(state, { kind: "duel", playerId: challenger.visitorId, rolls, result });
+  log(state, challenger, result, undefined, secret);
+  showGamble(state, { kind: "duel", playerId: challenger.visitorId, rolls, result, ...(secret ? { secret: { to: secret.to, result: secret.message } } : {}) });
   openDrawChoice(state, challenger);
 }
 
@@ -1959,6 +1969,9 @@ export function sanitizeStateForPlayer(state: GameState, visitorId: string): Gam
     drawPileCount: state.drawPile.length,
     drawPile: [],
     waitingOn: getWaitingOn(state),
+    // Secret versions (a stolen card's name) go only to the player they're for
+    eventLog: state.eventLog.map(({ secret, ...e }) => secret?.to.includes(visitorId) ? { ...e, message: secret.message } : e),
+    gamble: state.gamble && (({ secret, ...g }) => secret?.to.includes(visitorId) ? { ...g, result: secret.result } : g)(state.gamble),
     players: state.players.map(p => ({
       ...p,
       hand: p.visitorId === visitorId ? p.hand : p.hand.map(() => ({ defId: "__hidden__" })),
