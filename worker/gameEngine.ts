@@ -5,7 +5,7 @@
 import { v4 as uuidv4 } from "uuid";
 import type {
   GameState, PlayerState, GameCard, PendingAction, PaymentResult,
-  PropertyColor, RoleType, AnimalProfile, VariationId, CustomRules,
+  PropertyColor, RoleType, AnimalProfile, VariationId, CustomRules, StartSeat,
 } from "../shared/schema";
 import { SET_SIZES, RENT_TABLE, PROPERTY_COLORS, freshTurnTimer } from "../shared/schema";
 import { CARD_DEF_MAP, getEffectiveColor, countCompleteSets, colorOnTable, isAnyColourWild } from "../shared/cardDefs";
@@ -166,6 +166,7 @@ export function createInitialGameState(
   gameSpeed: number,
   variationId?: VariationId,
   custom?: CustomRules,
+  startSeat: StartSeat = "first",
 ): GameState {
   const setup = gameSetup(variationId, custom);
   const drawPile: GameCard[] = shuffle(setup.deck).map(id => ({ defId: id }));
@@ -192,7 +193,7 @@ export function createInitialGameState(
     status: "playing",
     players: playerStates,
     spectators: [],
-    currentTurnIndex: 0,
+    currentTurnIndex: startSeat === "first" ? 0 : Math.floor(Math.random() * playerStates.length),
     actionsUsed: 0,
     maxActions: 3,
     drawnThisTurn: false,
@@ -224,25 +225,26 @@ export function createInitialGameState(
 }
 
 /**
- * Roles for each player. When players choose, they keep their picks from the
- * roles in play (bots get one at random). Otherwise each player is dealt
- * rolesPerPlayer different roles, spread so no role repeats until all are out.
+ * Roles for each player: rolesPerPlayer different roles each, spread so no
+ * role repeats until all are out. When players choose, they keep their own
+ * picks (two players may pick the same role) and any they left open are dealt
+ * at random, as are bots' roles.
  */
 function dealRoles(setup: GameSetup, players: { isBot?: boolean; pickedRoles?: RoleType[] }[]): RoleType[][] {
   // Kanjar needs 3 or more players: one on one his friend would be everyone
   const pool = setup.roles.filter(r => r !== "kanjar" || players.length >= KANJAR_MIN_PLAYERS);
   if (pool.length === 0) return players.map(() => []);
+  const each = Math.min(setup.rolesPerPlayer, pool.length);
   const used = new Map<RoleType, number>(pool.map(r => [r, 0]));
-  const take = (n: number): RoleType[] => {
-    const order = shuffle(pool).sort((a, b) => used.get(a)! - used.get(b)!);
-    const picked = order.slice(0, Math.min(n, pool.length));
+  const take = (n: number, have: RoleType[] = []): RoleType[] => {
+    const order = shuffle(pool.filter(r => !have.includes(r))).sort((a, b) => used.get(a)! - used.get(b)!);
+    const picked = order.slice(0, Math.max(0, n));
     for (const r of picked) used.set(r, used.get(r)! + 1);
     return picked;
   };
-  return players.map(p => {
-    if (setup.roleMode === "choose" && !p.isBot) return pool.filter(r => p.pickedRoles?.includes(r));
-    return take(setup.roleMode === "choose" ? 1 : setup.rolesPerPlayer);
-  });
+  const chosen = players.map(p => setup.roleMode === "choose" && !p.isBot ? pool.filter(r => p.pickedRoles?.includes(r)).slice(0, each) : []);
+  for (const picks of chosen) for (const r of picks) used.set(r, used.get(r)! + 1);
+  return chosen.map(picks => [...picks, ...take(each - picks.length, picks)]);
 }
 
 // ========== WHO THE GAME IS WAITING ON ==========
@@ -1493,7 +1495,7 @@ export function forfeit(state: GameState, visitorId: string): Result {
     state.pendingAction = null;
     state.winnerId = winner?.visitorId ?? null;
     if (winner) addEvent(state, "🏆", winner.animal.name, winner.animal.colorClass,
-      left.length === 1 ? "won the game. Everyone else forfeited!" : "won the game as the bot closest to three sets");
+      left.length === 1 ? "won the game. Everyone else forfeited!" : "won the game as the bot closest to winning");
   }
   return ok;
 }
@@ -1691,12 +1693,15 @@ function botAttack(state: GameState, bot: PlayerState): boolean {
 
 // ========== WIN CONDITION ==========
 
+/** Complete sets needed to win this game. */
+export const setsToWin = (state: GameState) => state.rules?.setsToWin ?? 3;
+
 function checkWinCondition(state: GameState, visitorId: string) {
   if (state.status !== "playing") return;
   const player = getPlayer(state, visitorId);
   if (!player) return;
   const completeSets = completeSetCount(player);
-  if (completeSets >= 3) {
+  if (completeSets >= setsToWin(state)) {
     state.winnerId = visitorId;
     state.status = "finished";
     state.pendingAction = null;
