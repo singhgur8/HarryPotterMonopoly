@@ -4,6 +4,7 @@ import { GameCard } from "@/components/GameCard";
 import { inDrawStep } from "@shared/schema";
 import { countCompleteSets } from "@shared/cardDefs";
 import { setSizesFor } from "@shared/rolePowers";
+import { cheapestCover } from "@shared/payment";
 import { useGame } from "./context";
 import { CardInfo, DiscardLink, DiscardPile } from "./DiscardPile";
 import {
@@ -16,21 +17,11 @@ import {
 // ---------- paying with cards ----------
 
 function cheapestPick(p: PlayerState, amount: number): string[] {
-  const payable = payableCards(p).filter(c => valueOf(c) > 0);
-  const bank = payable.filter(c => p.bank.includes(c)).sort((a, b) => valueOf(a) - valueOf(b));
-  const props = payable.filter(c => !p.bank.includes(c)).sort((a, b) => {
-    const ca = colorOnTable(a, p.properties), cb = colorOnTable(b, p.properties);
-    const fa = ca && isComplete(p, ca) ? 1 : 0, fb = cb && isComplete(p, cb) ? 1 : 0;
-    return fa - fb || valueOf(a) - valueOf(b);
+  const options = payableCards(p).map(c => {
+    const color = p.bank.includes(c) ? undefined : colorOnTable(c, p.properties);
+    return { id: c.defId, value: valueOf(c), keep: p.bank.includes(c) ? 0 : color && isComplete(p, color) ? 2 : 1 };
   });
-  const out: string[] = [];
-  let total = 0;
-  for (const c of [...bank, ...props]) {
-    if (total >= amount) break;
-    out.push(c.defId);
-    total += valueOf(c);
-  }
-  return total >= amount ? out : payableCards(p).map(c => c.defId);
+  return cheapestCover(options, amount) ?? payableCards(p).map(c => c.defId);
 }
 
 function PaymentPicker({ pay, amount, title, payLabel, onPay, onProtego, onChargeback, onReverse, onCancel, mustCover }: {
@@ -326,7 +317,7 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
         pay={pay}
         amount={10}
         mustCover
-        title={<><b>End the Power Outage.</b> Pay 10M from your bank or properties. The cards are discarded, your role power comes back, and it doesn't use up a play.</>}
+        title={<><b>End the Power Outage.</b> Pay <span className="hp-owe">10M</span> from your bank or properties. The cards are discarded, your role power comes back, and it doesn't use up a play.</>}
         payLabel={n => `Pay ${n}M`}
         onPay={ids => { send("pay_silencio", { cardDefIds: ids }); setSilencioOpen(false); }}
         onCancel={() => setSilencioOpen(false)}
@@ -347,7 +338,7 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
             <PaymentPicker
               pay={pay}
               amount={p.amount ?? 0}
-              title={<><b>{source} {why}.</b> You owe {p.amount}M{p.type === "pay_rent" && (p.data?.baseAmount ?? p.amount) > (p.amount ?? 0) ? ` (half of ${p.data.baseAmount}M as Gandu, rounded up)` : ""}. Pick what to pay with{answers.length ? `, or answer with ${answers.join(" or ")}` : ""}. Cards you give go to {source}.</>}
+              title={<><b>{source} {why}.</b> You owe <span className="hp-owe" data-testid="amount-owed">{p.amount}M</span>{(p.data?.baseAmount ?? p.amount) > (p.amount ?? 0) ? ` (half of ${p.data.baseAmount}M as Gandu, rounded up)` : ""}. Pick what to pay with{answers.length ? `, or answer with ${answers.join(" or ")}` : ""}. Cards you give go to {source}.</>}
               payLabel={n => `Pay ${n}M`}
               onPay={ids => send("pay_with_cards", { cardDefIds: ids })}
               onProtego={hasProtego(me) ? () => send("play_protego") : undefined}

@@ -3,6 +3,7 @@
  * Plays full bot-vs-bot games and walks through the tricky rules
  * (payments, Protego chains, Silencio, Harry's shield, Time-Turner).
  */
+import { cheapestCover } from "../shared/payment";
 import assert from "node:assert/strict";
 import {
   createInitialGameState, botStep, payWithCards, playProtego, declineProtego,
@@ -926,7 +927,7 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   console.log("prime: ok");
 }
 
-// ---------- Gandu: pays half of any rent, rounded up ----------
+// ---------- Gandu: pays half of any charge, rounded up ----------
 {
   const s = setup(3);
   const [a, b, c] = s.players;
@@ -941,9 +942,10 @@ const give = (s: GameState, p: PlayerState, zone: "hand" | "bank" | "properties"
   assert.equal(s.pendingAction?.targetPlayerId, "p2");
   assert.equal(s.pendingAction?.amount, 5, "everyone else pays the full rent");
   assert.ok(payWithCards(s, "p2", ["money_5g_2"]).success);
-  // Only rent is halved: It's My Birthday is still 2M
+  // Every charge is halved: It's My Birthday's 2M becomes 1M for Gandu only
   assert.ok(playCard(s, "p0", "action_yule_1").success);
-  assert.equal(s.pendingAction?.amount, 2);
+  assert.equal(s.pendingAction?.targetPlayerId, "p1");
+  assert.equal(s.pendingAction?.amount, 1, "Gandu pays half of a birthday");
   // 1M stays 1M
   const t = setup(2);
   t.players[1].roles = ["gandu"];
@@ -1068,3 +1070,15 @@ for (let g = 0; g < 60; g++) {
 console.log("gg roles bot games: ok");
 
 console.log("all engine checks passed");
+
+// ---------- Pick cheapest: the smallest total that covers the charge ----------
+{
+  const opt = (id: string, value: number, keep = 0) => ({ id, value, keep });
+  assert.deepEqual(cheapestCover([opt("a", 1), opt("b", 1), opt("c", 2)], 3)?.sort(), ["a", "c"], "owing 3M with 1,1,2 pays 1+2");
+  assert.deepEqual(cheapestCover([opt("a", 1), opt("b", 2), opt("c", 5)], 5), ["c"], "an exact 5M beats 1+2+... overpaying");
+  assert.deepEqual(cheapestCover([opt("a", 3), opt("p", 2, 1)], 2), ["p"], "a 2M property beats overpaying with 3M");
+  assert.deepEqual(cheapestCover([opt("m", 2), opt("p", 2, 1)], 2), ["m"], "bank before property at the same total");
+  assert.deepEqual(cheapestCover([opt("set", 2, 2), opt("p", 1, 1), opt("q", 1, 1)], 2)?.sort(), ["p", "q"], "full sets are a last resort");
+  assert.equal(cheapestCover([opt("a", 1)], 3), null, "can't cover");
+  console.log("cheapest: ok");
+}

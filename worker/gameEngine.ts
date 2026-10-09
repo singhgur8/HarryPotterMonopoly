@@ -10,7 +10,8 @@ import type {
 import { SET_SIZES, RENT_TABLE, PROPERTY_COLORS, freshTurnTimer } from "../shared/schema";
 import { CARD_DEF_MAP, getEffectiveColor, countCompleteSets, colorOnTable, isAnyColourWild } from "../shared/cardDefs";
 import { gameSetup, type GameSetup } from "../shared/variations";
-import { roleActive, canShortcut, setSizeFor, setSizesFor, sparedBy, rentOwedBy, KANJAR_MIN_PLAYERS } from "../shared/rolePowers";
+import { cheapestCover } from "../shared/payment";
+import { roleActive, canShortcut, setSizeFor, setSizesFor, sparedBy, chargeOwedBy, KANJAR_MIN_PLAYERS } from "../shared/rolePowers";
 
 export { roleActive };
 
@@ -502,10 +503,10 @@ function nextPayer(state: GameState, payment: PendingAction) {
       data.results.push({ playerId: nextId, outcome: "friend", amount: 0 });
       continue;
     }
-    // Each payer's amount starts from the full charge (Gandu pays half of a rent)
+    // Each payer's amount starts from the full charge (Gandu pays half of any charge)
     const base: number = data.baseAmount ?? payment.amount ?? 0;
-    const amount = payment.type === "pay_rent" ? rentOwedBy(next, base) : base;
-    if (amount < base) log(state, next, `pays half rent as Gandu: ${amount}M instead of ${base}M`);
+    const amount = chargeOwedBy(next, base);
+    if (amount < base) log(state, next, `pays half as Gandu: ${amount}M instead of ${base}M`);
     state.pendingAction = { ...payment, amount, targetPlayerId: nextId, data: { ...data } };
     return;
   }
@@ -1500,29 +1501,15 @@ function dropFromPending(state: GameState, visitorId: string) {
   if (original.targetPlayerId === visitorId) state.pendingAction = null;
 }
 
-// The bot pays with the cheapest cards: bank first, then loose properties,
-// then complete sets. It never pays with Harry's shielded colour.
+// The bot pays the smallest total that covers the debt, preferring bank,
+// then loose properties, then complete sets. It never pays with Harry's shielded colour.
 function botPayment(state: GameState, player: PlayerState, amount: number): string[] {
-  const shield = shieldOf(player);
-  const bank = [...player.bank].sort((a, b) => cardValue(a) - cardValue(b));
-  const props = player.properties
-    .filter(c => !shield || colorOnTable(c, player.properties) !== shield)
-    .sort((a, b) => {
-      const ca = colorOnTable(a, player.properties), cb = colorOnTable(b, player.properties);
-      const fa = ca && isSetComplete(player, ca) ? 1 : 0, fb = cb && isSetComplete(player, cb) ? 1 : 0;
-      return fa - fb || cardValue(a) - cardValue(b);
-    });
-  const picked: string[] = [];
-  let total = 0;
-  for (const card of [...bank, ...props]) {
-    if (total >= amount) break;
-    if (cardValue(card) === 0) continue;
-    picked.push(card.defId);
-    total += cardValue(card);
-  }
-  // If it still can't cover the debt it must hand over everything payable
-  if (total < amount) return payableCards(player).map(c => c.defId);
-  return picked;
+  const options = payableCards(player).map(c => {
+    const color = player.bank.includes(c) ? undefined : colorOnTable(c, player.properties);
+    return { id: c.defId, value: cardValue(c), keep: player.bank.includes(c) ? 0 : color && isSetComplete(player, color) ? 2 : 1 };
+  });
+  // If it can't cover the debt it must hand over everything payable
+  return cheapestCover(options, amount) ?? payableCards(player).map(c => c.defId);
 }
 
 function bestColorFor(player: PlayerState, colors: PropertyColor[]): PropertyColor {
