@@ -4,7 +4,7 @@ import { useGame } from "./context";
 import { SET_STYLE } from "@shared/schema";
 import {
   groupSets, SET_SIZES, RENT_TABLE, label, fillOf, sumValue, valueOf, nameOf, otherColor, RAINBOW,
-  completeSets, roleInfo, roleNames, borrowedText, setSizeFor, shortcutOf, friendName, rentFor, canEndOutage, shieldOf, STACK_STEP, looseWilds, movableWilds, type PaySelection,
+  completeSets, roleInfo, roleNames, borrowedText, setSizeFor, shortcutOf, friendName, rentFor, canEndOutage, shieldOf, roleCut, allRolesCut, outageLabel, STACK_STEP, looseWilds, movableWilds, type PaySelection,
 } from "./helpers";
 import { TimerAvatar } from "./Opponents";
 
@@ -31,7 +31,7 @@ export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
   const loose = looseWilds(me.properties);
   const movable = movableWilds(me);
   const coins = [...me.bank].sort((a, b) => valueOf(b) - valueOf(a));
-  const roles = (me.roles ?? []).map(r => roleInfo(r)!).filter(Boolean);
+  const roles = (me.roles ?? []).map(r => roleInfo(r) && { ...roleInfo(r)!, cut: roleCut(me, r) }).filter(Boolean) as { name: string; power: string; cut: boolean }[];
   const shield = shieldOf(me);
 
   const area = (
@@ -163,7 +163,7 @@ export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
           <div className="hp-myrole">
             {roles.map(role => (
               <div key={role.name} style={{ display: "grid", gap: 2 }}>
-                <b style={me.isSilenced ? { textDecoration: "line-through" } : undefined}>{role.name}</b>
+                <b style={role.cut ? { textDecoration: "line-through" } : undefined}>{role.name}</b>
                 <span>{role.power}</span>
               </div>
             ))}
@@ -172,7 +172,7 @@ export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
             {friendName(s, me) && <span className="hp-chip gold" style={{ justifySelf: "start", whiteSpace: "normal" }}>🤝 Friends with {friendName(s, me)}: they can't act against you</span>}
             {me.isSilenced && (
               <>
-                <span className="hp-chip late" style={{ justifySelf: "start" }}>Power Outage · power off</span>
+                <span className="hp-chip late" style={{ justifySelf: "start" }}>Power Outage · {outageLabel(me).toLowerCase()}</span>
                 {canEndOutage(s, me)
                   ? <button className="hp-btn ghost" onClick={onPaySilencio}>Pay 10M to end the Power Outage</button>
                   : <span className="hp-muted" style={{ fontSize: 12.5 }}>{isMyTurn && !s.drawnThisTurn ? "Draw first, then you can pay 10M to end it." : "You can pay 10M to end it on your turn, after you draw."}</span>}
@@ -188,7 +188,7 @@ export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
       <div className="hp-mehead" data-testid="my-name">
         <span aria-hidden>{me.animal.emoji}</span>
         <span className="nm">{me.animal.name} (you)</span>
-        {me.roles.length > 0 && <span className={`hp-role ${me.isSilenced ? "off" : ""}`}>{roleNames(me)}</span>}
+        {me.roles.length > 0 && <span className={`hp-role ${allRolesCut(me) ? "off" : ""}`}>{roleNames(me)}</span>}
       </div>
       {area}
     </>
@@ -200,7 +200,7 @@ export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
       <div className="hp-zone-head">
         <TimerAvatar p={me} />
         <span className="nm">{me.animal.name} (you)</span>
-        {me.roles.length > 0 && <span className={`hp-role ${me.isSilenced ? "off" : ""}`}>{roleNames(me)}</span>}
+        {me.roles.length > 0 && <span className={`hp-role ${allRolesCut(me) ? "off" : ""}`}>{roleNames(me)}</span>}
         {isMyTurn && <span className="hp-chip solid">Your turn</span>}
         {waited && <span className="hp-chip gold">Your move</span>}
         {me.isSleeping && <span className="hp-chip zz">💤 Bot playing</span>}

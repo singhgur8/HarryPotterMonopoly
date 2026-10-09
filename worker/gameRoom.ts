@@ -742,7 +742,8 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
     }
     case "lucha_choose": {
       if (!room.gameState) return;
-      const result = luchaChoose(room.gameState, client.visitorId, payload?.targetPlayerId);
+      const role = typeof payload?.role === "string" ? payload.role as RoleType : undefined;
+      const result = luchaChoose(room.gameState, client.visitorId, payload?.targetPlayerId, role);
       if (!result.success) return sendError(room, client, result.error!);
       return broadcastGameState(room);
     }

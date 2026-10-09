@@ -6,12 +6,18 @@
 import type { PlayerState, PropertyColor, RoleType } from "./schema";
 import { SET_SIZES, PROPERTY_COLORS } from "./schema";
 
-// A role power only works while the player isn't silenced
+/** True when Power Outage has cut this role. It cuts the one role the attacker picked (older games: all of them). */
+export function roleCut(player: PlayerState | undefined, role: RoleType | string): boolean {
+  return !!player?.isSilenced && (!player.silencedRole || player.silencedRole === role);
+}
+
+// A role power only works while Power Outage hasn't cut it
 export function roleActive(player: PlayerState | undefined, role: RoleType | string): boolean {
-  if (!player || player.isSilenced) return false;
+  if (!player || roleCut(player, role)) return false;
   const roles = player.roles ?? [];
-  // Lucha also has whichever powers he copied at the end of his last turn
-  return roles.includes(role as RoleType) || (roles.includes("lucha") && !!player.borrowedRoles?.includes(role as RoleType));
+  if (roles.includes(role as RoleType)) return true;
+  // Lucha also has the power he copied at the end of his last turn, unless Lucha himself is cut
+  return roles.includes("lucha") && !roleCut(player, "lucha") && !!player.borrowedRoles?.includes(role as RoleType);
 }
 
 /** Tharki's Shortcut colour, only while his power is switched on. */
@@ -19,10 +25,13 @@ export function shortcutOf(player: PlayerState | undefined): PropertyColor | und
   return roleActive(player, "tharki") ? player!.shortcutColor : undefined;
 }
 
+/** Colours a Shortcut works on: only ones that need 3 or more cards (Gurjot: 2-card colours made Tharki too strong). */
+export const canShortcut = (color: PropertyColor) => SET_SIZES[color] > 2;
+
 /** Cards this player needs for a full set of a colour (one fewer on Tharki's Shortcut colour). */
 export function setSizeFor(player: PlayerState | undefined, color: PropertyColor): number {
   const size = SET_SIZES[color];
-  return shortcutOf(player) === color ? size - 1 : size;
+  return shortcutOf(player) === color && canShortcut(color) ? size - 1 : size;
 }
 
 /** Set sizes for every colour, for countCompleteSets. */
