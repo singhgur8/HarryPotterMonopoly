@@ -11,9 +11,11 @@ import { SET_SIZES, RENT_TABLE, PROPERTY_COLORS, freshTurnTimer } from "../share
 import { CARD_DEF_MAP, getEffectiveColor, countCompleteSets, colorOnTable, isAnyColourWild } from "../shared/cardDefs";
 import { gameSetup, type GameSetup } from "../shared/variations";
 import { cheapestCover } from "../shared/payment";
-import { roleActive, setSizeFor, setSizesFor, sparedBy, chargeOwedBy, KANJAR_MIN_PLAYERS } from "../shared/rolePowers";
+import { roleActive, canShortcut, setSizeFor, setSizesFor, sparedBy, chargeOwedBy, KANJAR_MIN_PLAYERS } from "../shared/rolePowers";
 
 export { roleActive };
+
+const roleTitle = (r: RoleType) => CARD_DEF_MAP[`role_${r}`]?.name ?? r;
 
 type Result = { success: boolean; error?: string };
 const ok: Result = { success: true };
@@ -721,20 +723,27 @@ export function luchaChoices(state: GameState, lucha: PlayerState): PlayerState[
   return others.length > 1 ? others.filter(p => p.visitorId !== lucha.borrowedFrom) : others;
 }
 
-export function luchaChoose(state: GameState, visitorId: string, targetId: string): Result {
+/** Powers Lucha can copy from a player: their roles, except Lucha's own. */
+export const copyableRoles = (target: PlayerState): RoleType[] => (target.roles ?? []).filter(r => r !== "lucha");
+
+/** Lucha copies ONE power per pick: from someone with several roles he picks which. */
+export function luchaChoose(state: GameState, visitorId: string, targetId: string, role?: RoleType): Result {
   const pending = state.pendingAction;
   if (!pending || pending.type !== "lucha_choose" || pending.targetPlayerId !== visitorId) return fail("Nothing to copy right now");
   const player = getPlayer(state, visitorId)!;
   const target = luchaChoices(state, player).find(p => p.visitorId === targetId);
   if (!target) return fail("Pick someone you didn't copy last time");
+  const copyable = copyableRoles(target);
+  const copied = copyable.length > 1 ? copyable.find(r => r === role) : copyable[0];
+  if (copyable.length > 1 && !copied) return fail("Pick which of their powers to copy");
 
-  player.borrowedRoles = target.roles.filter(r => r !== "lucha");
+  player.borrowedRoles = copied ? [copied] : [];
   player.borrowedFrom = target.visitorId;
   // A shield, Shortcut or friend only lasts while Lucha has that power
   if (!roleActive(player, "harry")) player.protectedColor = undefined;
   if (!roleActive(player, "tharki")) player.shortcutColor = undefined;
   if (!roleActive(player, "kanjar")) player.friendId = undefined;
-  const names = player.borrowedRoles.map(r => CARD_DEF_MAP[`role_${r}`]?.name ?? r).join(" and ");
+  const names = player.borrowedRoles.map(roleTitle).join(" and ");
   log(state, player, names
     ? `copied ${target.animal.name}'s power (${names}) for their next turn`
     : `copied ${target.animal.name}, who has no power to copy, for their next turn`);
@@ -1020,7 +1029,8 @@ function reversePlan(state: GameState, original: PendingAction, me: PlayerState,
       return PROPERTY_COLORS.some(c => isSetComplete(attacker, c) && shieldOf(attacker) !== c) ? pick(original.type) : null;
     case "choose_hand_steal": return attacker.hand.length > 0 ? direct(original.type) : null;
     case "choose_bank_robber": return attacker.bank.length > 0 ? direct(original.type) : null;
-    case "choose_silencio": return !attacker.isSilenced ? direct(original.type) : null;
+    // Someone with several roles: the reverser picks which one to cut
+    case "choose_silencio": return attacker.isSilenced ? null : (attacker.roles ?? []).length > 1 ? pick(original.type) : direct(original.type);
     default: return null;
   }
 }
@@ -1118,7 +1128,12 @@ function executeAction(state: GameState, action: PendingAction) {
     }
     case "choose_silencio": {
       target.isSilenced = true;
-      log(state, attacker, `cut ${target.animal.name}'s power. Their role power is off until they pay 10M`);
+      // From a Reverse on someone with one role (or none) there's no pick to make
+      const role: RoleType | undefined = d.role ?? ((target.roles ?? []).length === 1 ? target.roles[0] : undefined);
+      target.silencedRole = role;
+      log(state, attacker, role && target.roles.length > 1
+        ? `cut ${target.animal.name}'s ${roleTitle(role)} power. It's off until they pay 10M`
+        : `cut ${target.animal.name}'s power. Their role power is off until they pay 10M`);
       // Silencing the current player mid-turn would only happen through odd timing, but keep actions consistent
       if (isCurrentTurn(state, target.visitorId)) state.maxActions = maxActionsFor(target);
       return;
@@ -1220,8 +1235,12 @@ export function chooseTarget(state: GameState, visitorId: string, targetPlayerId
     }
     case "choose_silencio": {
       if (target.isSilenced) return fail("Their power is already off");
-      log(state, attacker, `aims Power Outage at ${target.animal.name}`);
-      offerProtego(state, action("choose_silencio", {}));
+      // A player with several roles loses just one: the attacker picks which (its role card id comes in this field)
+      const roles = target.roles ?? [];
+      const role = roles.length > 1 ? roles.find(r => `role_${r}` === targetCardDefId) : roles[0];
+      if (roles.length > 1 && !role) return fail("Pick which of their roles to cut");
+      log(state, attacker, `aims Power Outage at ${target.animal.name}${role && roles.length > 1 ? `'s ${roleTitle(role)}` : ""}`);
+      offerProtego(state, action("choose_silencio", { role }));
       return ok;
     }
     case "choose_rent_target": {
@@ -1249,9 +1268,11 @@ export function harryProtectColor(state: GameState, visitorId: string, color?: P
   if (!pending || pending.type !== "harry_protect" || pending.targetPlayerId !== visitorId) return fail("Nothing to shield right now");
   const player = getPlayer(state, visitorId)!;
   if (!roleActive(player, "harry")) return fail("Only Harry can shield a colour");
-  if (color && !PROPERTY_COLORS.includes(color)) return fail("Invalid colour");
+  // Only colours on his table right now: a shield on a colour he no longer has guards nothing
+  const owned = ownedColors(player);
+  if (color && !owned.includes(color)) return fail("Pick a colour you have on the table");
 
-  if (color === null) {
+  if (color === null || (!color && player.protectedColor && !owned.includes(player.protectedColor))) {
     if (player.protectedColor) log(state, player, `dropped their shield on ${colorTag(player.protectedColor)}`);
     player.protectedColor = undefined;
   } else if (color && color !== player.protectedColor) {
@@ -1261,9 +1282,9 @@ export function harryProtectColor(state: GameState, visitorId: string, color?: P
   return nextEndOfTurnChoice(state, visitorId, "harry_protect");
 }
 
-/** Colours Tharki can put his Shortcut on: any he has a card of (a 2-card colour then needs just 1). */
+/** Colours Tharki can put his Shortcut on: ones he has a card of that need 3 or more for a set. */
 export function shortcutChoices(player: PlayerState): PropertyColor[] {
-  return ownedColors(player);
+  return ownedColors(player).filter(canShortcut);
 }
 
 // Tharki's Shortcut stays put until he moves it, like Harry's shield. At the
@@ -1273,9 +1294,11 @@ export function tharkiShortcutColor(state: GameState, visitorId: string, color?:
   if (!pending || pending.type !== "tharki_shortcut" || pending.targetPlayerId !== visitorId) return fail("Nothing to shortcut right now");
   const player = getPlayer(state, visitorId)!;
   if (!roleActive(player, "tharki")) return fail("Only Tharki can shortcut a colour");
-  if (color && !shortcutChoices(player).includes(color)) return fail("Pick a colour you have that needs 3 or more cards");
+  const choices = shortcutChoices(player);
+  if (color && !choices.includes(color)) return fail("Pick a colour you have that needs 3 or more cards");
 
-  if (color === null) {
+  // Keeping a Shortcut on a colour he no longer has (or a 2-card colour from older games) drops it
+  if (color === null || (!color && player.shortcutColor && !choices.includes(player.shortcutColor))) {
     if (player.shortcutColor) log(state, player, `dropped their Shortcut on ${colorTag(player.shortcutColor)}`);
     player.shortcutColor = undefined;
   } else if (color && color !== player.shortcutColor) {
@@ -1351,6 +1374,7 @@ export function paySilencio(state: GameState, visitorId: string, cardDefIds: str
     state.discardPile.push({ defId: card.defId });
   }
   player.isSilenced = false;
+  player.silencedRole = undefined;
   if (isCurrentTurn(state, visitorId)) state.maxActions = maxActionsFor(player);
   log(state, player, `paid ${total}M to end the Power Outage. Their role power is back`);
   return ok;
@@ -1591,9 +1615,9 @@ export function botStep(state: GameState): boolean {
       case "cedric_draw_choice":
         return cedricChooseSource(state, id, "deck").success;
       case "lucha_choose": {
-        // Copy whoever has the most powers
-        const pick = [...luchaChoices(state, bot)].sort((a, b) => b.roles.length - a.roles.length)[0];
-        return luchaChoose(state, id, pick.visitorId).success;
+        // Copy someone with a power, and the first of theirs
+        const pick = [...luchaChoices(state, bot)].sort((a, b) => copyableRoles(b).length - copyableRoles(a).length)[0];
+        return luchaChoose(state, id, pick.visitorId, copyableRoles(pick)[0]).success;
       }
       case "discard_excess": {
         const n = pending.data?.mustDiscard ?? 0;
