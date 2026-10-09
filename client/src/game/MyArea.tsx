@@ -4,7 +4,7 @@ import { useGame } from "./context";
 import { SET_STYLE } from "@shared/schema";
 import {
   groupSets, SET_SIZES, RENT_TABLE, label, fillOf, sumValue, valueOf, nameOf, otherColor, RAINBOW,
-  completeSets, roleInfo, borrowedText, setSizeFor, shortcutOf, friendName, rentFor, canEndOutage, shieldOf, STACK_STEP, looseWilds, movableWilds, type PaySelection,
+  completeSets, roleInfo, roleNames, borrowedText, setSizeFor, shortcutOf, friendName, rentFor, canEndOutage, shieldOf, STACK_STEP, looseWilds, movableWilds, type PaySelection,
 } from "./helpers";
 import { TimerAvatar } from "./Opponents";
 
@@ -183,7 +183,16 @@ export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
       </div>
     </div>
   );
-  if (!full) return area;
+  if (!full) return (
+    <>
+      <div className="hp-mehead" data-testid="my-name">
+        <span aria-hidden>{me.animal.emoji}</span>
+        <span className="nm">{me.animal.name} (you)</span>
+        {me.roles.length > 0 && <span className={`hp-role ${me.isSilenced ? "off" : ""}`}>{roleNames(me)}</span>}
+      </div>
+      {area}
+    </>
+  );
   // Full view: my cards get the same bordered row as everyone else's
   const waited = s.waitingOn === me.visitorId && !isMyTurn;
   return (
@@ -191,6 +200,7 @@ export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
       <div className="hp-zone-head">
         <TimerAvatar p={me} />
         <span className="nm">{me.animal.name} (you)</span>
+        {me.roles.length > 0 && <span className={`hp-role ${me.isSilenced ? "off" : ""}`}>{roleNames(me)}</span>}
         {isMyTurn && <span className="hp-chip solid">Your turn</span>}
         {waited && <span className="hp-chip gold">Your move</span>}
         {me.isSleeping && <span className="hp-chip zz">💤 Bot playing</span>}

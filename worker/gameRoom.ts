@@ -49,6 +49,8 @@ interface RoomClient {
   seatIndex: number | null; // null = spectator
   isReady: boolean;
   pickedRoles?: RoleType[]; // roles this player chose, when a Custom game lets players choose
+  customName?: string; // the name this person typed; without one they go by their icon's name
+  forfeitedSeat?: number; // the seat they gave up by forfeiting, back for the next game in this room
 }
 
 interface Room {
@@ -85,9 +87,22 @@ function withRoleLists(state: GameState): GameState {
   return state;
 }
 
+/** Icon a client has, by its ANIMALS name (the client's own name may be one they typed). */
+function iconName(c: RoomClient): string {
+  return ANIMALS.find(a => a.emoji === c.animal.emoji)?.name ?? c.animal.name;
+}
+
 /** Characters someone in the room already has, optionally ignoring one visitor. */
 function takenAnimals(room: Room, except?: string): Set<string> {
-  return new Set([...room.clients.values()].filter(c => c.visitorId !== except).map(c => c.animal.name));
+  return new Set([...room.clients.values()].filter(c => c.visitorId !== except).map(iconName));
+}
+
+const MAX_NAME_LENGTH = 16;
+
+/** A typed name made safe to show: printable, single-spaced, not too long. */
+function cleanName(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  return raw.replace(/[\u0000-\u001f\u007f<>]/g, "").replace(/\s+/g, " ").trim().slice(0, MAX_NAME_LENGTH).trim();
 }
 
 /** A character nobody in the room has yet, for newcomers and bots. */
@@ -317,8 +332,52 @@ function handlePickAnimal(room: Room, client: RoomClient, payload: any) {
   if (takenAnimals(room, client.visitorId).has(animal.name)) {
     return sendError(room, client, `${animal.name} is already taken`);
   }
-  client.animal = animal;
-  sendToClient(room, client, { type: "player_joined", payload: { visitorId: client.visitorId, animal } });
+  client.animal = { ...animal, name: client.customName ?? animal.name };
+  sendToClient(room, client, { type: "player_joined", payload: { visitorId: client.visitorId, animal: client.animal } });
+  broadcastLobbyState(room);
+}
+
+/** Type your own name in the lobby; it shows next to your icon. Empty goes back to the icon's name. */
+function handleSetName(room: Room, client: RoomClient, payload: any) {
+  if (room.gameState) return sendError(room, client, "Change your name in the lobby");
+  const name = cleanName(payload?.name);
+  const lower = name.toLowerCase();
+  const clash = name && [...room.clients.values()].some(c => c.visitorId !== client.visitorId && c.animal.name.toLowerCase() === lower);
+  if (clash) return sendError(room, client, `Someone here is already called ${name}`);
+  client.customName = name || undefined;
+  const icon = ANIMALS.find(a => a.name === iconName(client));
+  client.animal = { ...client.animal, name: name || icon?.name || client.animal.name };
+  sendToClient(room, client, { type: "player_joined", payload: { visitorId: client.visitorId, animal: client.animal } });
+  broadcastLobbyState(room);
+}
+
+/**
+ * After a game ends, take everyone back to the lobby to play again in the same
+ * room: players keep their seats, the host can change the game and roles, and
+ * everyone gets ready again. Anyone still in the room can ask for it.
+ */
+function handleNewGame(room: Room, client: RoomClient) {
+  if (!room.gameState) return;
+  if (room.gameState.status !== "finished") return sendError(room, client, "The game isn't over yet");
+  const online = new Set(room.sockets().map(s => s.visitorId));
+  for (const [vid, c] of room.clients) {
+    // People who left during the game give up their seat, as they would in the lobby
+    if (!isBotId(vid) && !online.has(vid)) room.clients.delete(vid);
+    else c.isReady = isBotId(vid);
+  }
+  // Players who forfeited were watching; they get their seat back too
+  const seated = new Set([...room.clients.values()].map(c => c.seatIndex));
+  for (const c of room.clients.values()) {
+    if (c.seatIndex === null && c.forfeitedSeat !== undefined && !seated.has(c.forfeitedSeat)) c.seatIndex = c.forfeitedSeat;
+    delete c.forfeitedSeat;
+  }
+  if (!online.has(room.hostVisitorId)) room.hostVisitorId = client.visitorId;
+  room.gameState = null;
+  room.finishedAt = null;
+  room.botDueAt = null;
+  room.lastWaitingOn = null;
+  room.moveBonuses = 0;
+  room.dropDeadlines = {};
   broadcastLobbyState(room);
 }
 
@@ -533,6 +592,7 @@ function handleForfeit(room: Room, client: RoomClient) {
   if (!room.gameState) return;
   const result = forfeit(room.gameState, client.visitorId);
   if (!result.success) return sendError(room, client, result.error!);
+  client.forfeitedSeat = client.seatIndex ?? undefined;
   client.seatIndex = null;
   client.isReady = false;
   broadcastGameState(room);
@@ -640,6 +700,8 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
     case "set_custom_rules": return handleSetCustomRules(room, client, payload);
     case "pick_roles": return handlePickRoles(room, client, payload);
     case "pick_animal": return handlePickAnimal(room, client, payload);
+    case "set_name": return handleSetName(room, client, payload);
+    case "new_game": return handleNewGame(room, client);
     case "start_game": return handleStartGame(room, client);
     case "add_bot": return handleAddBot(room, client);
     case "remove_bot": return handleRemoveBot(room, client, payload);
