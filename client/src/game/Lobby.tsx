@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRoom } from "./context";
 import { roleInfo } from "./helpers";
 import { VARIATIONS, VARIATION_IDS, variationOf, DEFAULT_CUSTOM_RULES } from "@shared/variations";
 import { ANIMALS, type CustomRules } from "@shared/schema";
 import { CustomSetup, PickRoles } from "./CustomSetup";
 import { Crest, HomeButton } from "./Brand";
+import { ChatBody, chatEntries } from "./Chat";
 
 const SPEEDS = [
   { s: 30, label: "Fast" },
@@ -78,6 +79,8 @@ function NameField() {
 
 export function Lobby() {
   const { gameState, myVisitorId, myAnimal, connected, send } = useRoom();
+  const chatMessages = gameState?.chatMessages;
+  const chat = useMemo(() => chatEntries(chatMessages), [chatMessages]);
 
   if (!gameState || !myVisitorId) {
     return (
@@ -173,6 +176,11 @@ export function Lobby() {
             })}
           </div>
         </div>
+
+        <section className="hp-lobchat" aria-label="Lobby chat" data-testid="lobby-chat">
+          <div className="hp-label">💬 Room chat · everyone here can see it</div>
+          <ChatBody chat={chat} placeholder="Say hi, or ask who wants to play" />
+        </section>
 
         <div style={{ display: "grid", gap: 8 }}>
           <div className="hp-label">Your name and icon · tap an icon to change it</div>

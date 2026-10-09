@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ChatMessage, EventLogEntry, PropertyColor } from "@shared/schema";
-import { SET_STYLE, inDrawStep } from "@shared/schema";
+import type { EventLogEntry } from "@shared/schema";
+import { inDrawStep } from "@shared/schema";
 import { variationOf } from "@shared/variations";
 import { useGame } from "./context";
 import { Opponents } from "./Opponents";
@@ -11,25 +11,11 @@ import { usePhone, useTableView } from "./useMedia";
 import { isPayment, canEndOutage, roleNames, allRolesCut } from "./helpers";
 import { useGameSounds } from "./sounds";
 import { HomeButton } from "./Brand";
+import { ChatBody, Feed, chatEntries, type Entry } from "./Chat";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-
-type Entry = { id: string; ts: number; who: string; text: string; chat: boolean };
-
-/** Event text with [[colour]] / [[colour|card name]] tokens drawn as small colour chips. */
-function LogText({ text }: { text: string }) {
-  const parts = text.split(/\[\[([a-z_]+)(?:\|([^\]]*))?\]\]/);
-  return <>{parts.map((p, i) => {
-    if (i % 3 === 0) return p;
-    if (i % 3 === 2) return null;
-    const st = SET_STYLE[p as PropertyColor];
-    if (!st) return p;
-    const name = parts[i + 1];
-    return <span key={i} className="hp-logchip" style={{ background: st.fill, color: st.on }} title={name || undefined}>{st.label}</span>;
-  })}</>;
-}
 
 /** Give up the game: your cards go back into the draw pile and you watch from then on. */
 function ForfeitButton() {
@@ -71,48 +57,12 @@ function useEntries(): { log: Entry[]; chat: Entry[] } {
   const { s } = useGame();
   return useMemo(() => ({
     log: (s.eventLog || []).map((e: EventLogEntry) => ({ id: e.id, ts: e.timestamp, who: `${e.playerEmoji} ${e.playerName}`, text: e.message, chat: false })),
-    chat: (s.chatMessages || []).map((m: ChatMessage) => ({ id: m.id, ts: m.timestamp, who: `${m.playerEmoji} ${m.playerName}`, text: m.message, chat: true })),
+    chat: chatEntries(s.chatMessages),
   }), [s.eventLog, s.chatMessages]);
 }
 
-/** A list that stays pinned to its newest line. */
-function Feed({ entries, empty, live }: { entries: Entry[]; empty: string; live?: boolean }) {
-  const listRef = useRef<HTMLUListElement>(null);
-  useEffect(() => {
-    const el = listRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [entries.length]);
-  return (
-    <ul className="hp-log" ref={listRef} aria-live={live ? "polite" : undefined}>
-      {entries.map(e => <li key={e.id} className={e.chat ? "chat" : ""}><b>{e.who}</b> {e.chat ? e.text : <LogText text={e.text} />}</li>)}
-      {entries.length === 0 && <li>{empty}</li>}
-    </ul>
-  );
-}
-
-/** Chat messages and the message box. */
-function ChatBody({ chat }: { chat: Entry[] }) {
-  const { send } = useGame();
-  const [text, setText] = useState("");
-  const submit = () => {
-    const t = text.trim();
-    if (!t) return;
-    send("send_chat", { message: t });
-    setText("");
-  };
-  return (
-    <>
-      <Feed entries={chat} empty="No messages yet. Say hi." live />
-      <form className="hp-chatin" onSubmit={e => { e.preventDefault(); submit(); }}>
-        <input value={text} onChange={e => setText(e.target.value)} placeholder="Message the table" maxLength={200} aria-label="Chat message" data-testid="input-chat" />
-        <button type="submit" className="hp-btn gold" disabled={!text.trim()}>Send</button>
-      </form>
-    </>
-  );
-}
-
 export function GameTable() {
-  const { s, me, connected, isMyTurn } = useGame();
+  const { s, me, myAnimal, connected, isMyTurn } = useGame();
   const mobile = usePhone();
   const [view, setView] = useTableView();
   // Full view needs the room of a desktop screen; phones always get the compact table
@@ -146,7 +96,7 @@ export function GameTable() {
   useEffect(() => {
     if (chatCount > lastChat.current && !chatOpen) {
       const latest = entries.chat[entries.chat.length - 1] ?? null;
-      if (latest && latest.who !== `${me?.animal.emoji} ${me?.animal.name}`) {
+      if (latest && latest.who !== `${myAnimal?.emoji} ${myAnimal?.name}`) {
         setPeek(latest);
         const t = setTimeout(() => setPeek(null), 5000);
         lastChat.current = chatCount;
@@ -154,7 +104,7 @@ export function GameTable() {
       }
     }
     lastChat.current = chatCount;
-  }, [chatCount, chatOpen, entries, me]);
+  }, [chatCount, chatOpen, entries, myAnimal]);
   useEffect(() => { if (chatOpen) setPeek(null); }, [chatOpen]);
 
   // Selections go stale when the table changes under them
@@ -189,6 +139,7 @@ export function GameTable() {
   const setRail = (open: boolean) => { setRailOpen(open); saveRail(open); };
 
   const watchers = s.spectators?.length ?? 0;
+  const chatHint = me ? "Message the table" : "Chat with the table while you watch";
   const t = Math.max(0, s.turnTimer);
   const timer = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
   const drawStep = inDrawStep(s);
@@ -257,7 +208,7 @@ export function GameTable() {
               <div className="hp-panel-head">
                 <span className="hp-label" style={{ flex: 1 }}>💬 Chat</span>
               </div>
-              <ChatBody chat={entries.chat} />
+              <ChatBody chat={entries.chat} placeholder={chatHint} />
             </section>
           </aside>
         ) : (
@@ -296,7 +247,7 @@ export function GameTable() {
               <button className="hp-btn ghost" style={{ padding: "2px 10px" }} onClick={() => setSheet(null)}>Close</button>
             </div>
             {sheet === "chat"
-              ? <ChatBody chat={entries.chat} />
+              ? <ChatBody chat={entries.chat} placeholder={chatHint} />
               : <Feed entries={entries.log} empty="Nothing has happened yet." />}
           </div>
         </>
