@@ -5,6 +5,7 @@ import { variationOf } from "@shared/variations";
 import { useGame } from "./context";
 import { Opponents } from "./Opponents";
 import { ActionPanel } from "./ActionPanel";
+import { GambleOverlay } from "./Gamble";
 import { MyArea } from "./MyArea";
 import { HandDock } from "./HandDock";
 import { usePhone, useTableView } from "./useMedia";
@@ -278,6 +279,7 @@ export function GameTable() {
         )}
       </div>
 
+      <GambleOverlay />
       {mobile && peek && !sheet && (
         <div className="hp-mpeek" onClick={() => openPanel("chat")} role="button" tabIndex={0}>
           <b>{peek.who}</b> {peek.text}

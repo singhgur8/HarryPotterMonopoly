@@ -281,6 +281,21 @@ const primeCards: CardDef[] = [
   { id: "action_bank_robber_1", type: "action", name: "Bank Robber", value: 10, actionType: "bank_robber", text: "Take all the money in another player's bank.", target: "one" },
 ];
 
+// ========== VEGAS (BETA) ==========
+// Added on top of the Monopoly Deal deck in Vegas games.
+const vegasCards: CardDef[] = [
+  ...Array.from({ length: 2 }, (_, i) => ({
+    id: `action_guess_draw_${i + 1}`, type: "action" as const, name: "Guess and Draw", value: 2, actionType: "guess_draw" as const,
+    text: "Guess if the top card of the deck is a Property, Cash or Action. Right: keep it and guess again. Wrong: it's discarded and you stop.",
+    target: "self" as const,
+  })),
+  ...Array.from({ length: 2 }, (_, i) => ({
+    id: `action_all_in_${i + 1}`, type: "action" as const, name: "All In", value: 3, actionType: "all_in" as const,
+    text: "Everyone stakes cards worth the poorest player's bank and properties. Everyone rolls two dice: the highest roll takes the whole pot.",
+    target: "all" as const,
+  })),
+];
+
 /** Prime's extra copy of a card every deck already has: Custom games leave it out. */
 export const PRIME_EXTRA_COPIES = ["action_protego_4"];
 
@@ -389,6 +404,7 @@ export const ALL_CARD_DEFS: CardDef[] = [
   ...actionCards,
   ...extraActionCards,
   ...primeCards,
+  ...vegasCards,
   ...roleCards,
 ];
 
@@ -415,6 +431,9 @@ export const MONOPOLY_DEAL_DECK: string[] = [
 
 // Prime: the Monopoly Deal deck plus the Prime cards
 export const PRIME_DECK: string[] = [...MONOPOLY_DEAL_DECK, ...primeCards.map((c) => c.id)];
+
+// Vegas: the Monopoly Deal deck plus Guess and Draw and All In
+export const VEGAS_DECK: string[] = [...MONOPOLY_DEAL_DECK, ...vegasCards.map((c) => c.id)];
 
 /** The role card for a role, e.g. role_harry. */
 export const roleDef = (role: RoleType): CardDef | undefined => CARD_DEF_MAP[`role_${role}`];

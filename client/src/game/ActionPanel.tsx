@@ -7,6 +7,7 @@ import { setSizesFor } from "@shared/rolePowers";
 import { cheapestCover } from "@shared/payment";
 import { useGame } from "./context";
 import { CardInfo, DiscardLink, DiscardPile } from "./DiscardPile";
+import { GamblePrompt, GuessPrompt } from "./Gamble";
 import {
   CARD_DEF_MAP, COLORS, label, fillOf, valueOf, sumValue, nameOf, groupSets, canTake, isComplete, shieldOf, roleName, roleNames,
   payableCards, playerName, waitingText, isPayment, hasProtego, hasAction, drawCount, tileFill, colorOnTable, looseWilds, cardBlurb, outOfMoves,
@@ -93,9 +94,10 @@ function Tracker() {
   const results: PaymentResult[] = p.data?.results ?? [];
   const remaining: string[] = p.data?.remainingTargets ?? [];
   const paidCount = results.length;
+  const poker = p.type === "pay_poker";
   return (
     <div style={{ display: "grid", gap: 6 }}>
-      <span className="hp-label">{playerName(s, p.sourcePlayerId)} collects · {paidCount} of {all.length} done</span>
+      <span className="hp-label">{poker ? `All In pot ${sumValue(s.poker?.pot ?? [])}M` : `${playerName(s, p.sourcePlayerId)} collects`} · {paidCount} of {all.length} done</span>
       <div className="hp-tracker">
         {all.map(id => {
           const r = results.find(x => x.playerId === id);
@@ -104,8 +106,8 @@ function Tracker() {
           let cls = "", text = "Waiting";
           if (r) {
             cls = r.outcome === "paid" ? "paid" : "blocked";
-            text = r.outcome === "paid" ? `Paid ${r.amount}M` : r.outcome === "nothing" ? "Had nothing" : r.outcome === "shielded" ? "Shielded" : r.outcome === "friend" ? "Kanjar's friend" : "Blocked";
-          } else if (id === p.targetPlayerId) { cls = "now"; text = "Paying now"; }
+            text = r.outcome === "paid" ? `${poker ? "Staked" : "Paid"} ${r.amount}M` : r.outcome === "nothing" ? "Had nothing" : r.outcome === "shielded" ? "Shielded" : r.outcome === "friend" ? "Kanjar's friend" : "Blocked";
+          } else if (id === p.targetPlayerId) { cls = "now"; text = poker ? "Staking now" : "Paying now"; }
           else if (remaining[0] === id) text = "Up next";
           return <span key={id} className={`hp-tchip ${cls}`}>{emoji} <b>{name}</b> {text}</span>;
         })}
@@ -329,6 +331,31 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
   } else if (p && mine && me) {
     const source = playerName(s, p.sourcePlayerId);
     switch (p.type) {
+      case "pay_poker": {
+        const own = p.sourcePlayerId === meId;
+        prompt = (
+          <>
+            <PaymentPicker
+              pay={pay}
+              amount={p.amount ?? 0}
+              title={own
+                ? <><b>You went All In.</b> Stake <span className="hp-owe" data-testid="amount-owed">{p.amount}M</span>, what the poorest player has on the table. Everyone who stakes rolls two dice and the highest roll takes the whole pot.</>
+                : <><b>{source} went All In.</b> Stake <span className="hp-owe" data-testid="amount-owed">{p.amount}M</span> into the pot. Everyone who stakes rolls two dice and the highest roll takes it all.{hasProtego(me) ? " Or sit it out with Just Say No." : ""}</>}
+              payLabel={n => `Stake ${n}M`}
+              onPay={ids => send("pay_with_cards", { cardDefIds: ids })}
+              onProtego={!own && hasProtego(me) ? () => send("play_protego") : undefined}
+            />
+            <Tracker />
+          </>
+        );
+        break;
+      }
+      case "vegas_gamble":
+        prompt = <GamblePrompt />;
+        break;
+      case "guess_draw":
+        prompt = <GuessPrompt />;
+        break;
       case "pay_rent": case "pay_birthday": case "pay_debt": {
         const answer = CARD_DEF_MAP[p.cardDefId ?? ""]?.actionType;
         const why = p.type === "pay_rent" ? `charged ${p.data?.rentColor ? label(p.data.rentColor) + " " : ""}rent`
@@ -594,6 +621,8 @@ function describeAction(s: any, a: any): string {
     case "choose_bank_robber": return "is using Bank Robber to take your whole bank";
     case "pay_rent": return `charged ${a.amount}M rent`;
     case "pay_birthday": return "played It's My Birthday (2M)";
+    case "pay_poker": return `went All In (${a.amount}M stake)`;
+    case "vegas_duel": return "challenged you to a dice duel. The higher roll takes a random card from the other's hand";
     case "pay_debt": return CARD_DEF_MAP[a.cardDefId ?? ""]?.actionType === "gringotts_goblin" ? "played Debt Collector (5M)" : `charged you ${a.amount}M`;
     default: return "action";
   }

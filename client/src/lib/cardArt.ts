@@ -53,5 +53,7 @@ export const CARD_ART: Record<string, string> = {
   "Reverse": '<path d="M8 11h28M30 5l6 6-6 6M40 25H12M18 19l-6 6 6 6"/>',
   "Destroy": '<circle cx="21" cy="22" r="10"/><path d="M28 15l4-4M32 11c2-2 4-2 6 0M38 4l1-2M42 8l2-1M41 12h2"/>',
   "Bank Robber": '<path d="M18 7h12l-3 5c7 3 11 9 11 14 0 4-3 6-14 6s-14-2-14-6c0-5 4-11 11-14zM21 12h6M24 17v12M27 19c-2-2-6-1-6 1 0 4 6 2 6 6 0 2-4 3-6 1"/>',
+  "Guess and Draw": '<path d="M15 4h18v28H15zM20 13a4 4 0 1 1 6 3.5c-1.5.8-2 1.8-2 3.5M38 8v4M36 10h4M10 22v3M8.5 23.5h3"/><circle cx="24" cy="25" r=".8"/>',
+  "All In": '<ellipse cx="22" cy="12" rx="11" ry="4"/><path d="M11 12v6a11 4 0 0 0 22 0v-6M11 18v6a11 4 0 0 0 22 0v-6M11 24v4a11 4 0 0 0 22 0v-4M38 6v4M36 8h4M40 16v3M38.5 17.5h3"/>',
   "Property Wild Card": '<path d="M20 4h8M21 4v8l-8 14a4 4 0 0 0 4 6h14a4 4 0 0 0 4-6l-8-14V4M16 22h16"/>',
 };

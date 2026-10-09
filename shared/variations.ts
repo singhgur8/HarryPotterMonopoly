@@ -15,7 +15,7 @@
  * To add a variation: add its id to VariationId in schema.ts and an entry here.
  */
 import type { ActionType, CustomRules, GameRules, RoleType, VariationId } from "./schema";
-import { ALL_CARD_DEFS, CARD_DEF_MAP, CLASSIC_DECK, MONOPOLY_DEAL_DECK, PRIME_DECK, PRIME_EXTRA_COPIES } from "./cardDefs";
+import { ALL_CARD_DEFS, CARD_DEF_MAP, CLASSIC_DECK, MONOPOLY_DEAL_DECK, PRIME_DECK, PRIME_EXTRA_COPIES, VEGAS_DECK } from "./cardDefs";
 
 export interface Variation {
   id: VariationId;
@@ -44,6 +44,7 @@ for (const d of ALL_CARD_DEFS) {
 export const NON_CLASSIC_ACTIONS: ActionType[] = [
   "reducto", "silencio", "time_turner", "double_rent",
   "hand_seven", "hand_steal", "chargeback", "reverse", "destroy", "bank_robber",
+  "guess_draw", "all_in",
 ];
 
 export const DEFAULT_CUSTOM_RULES: CustomRules = {
@@ -106,6 +107,14 @@ export const VARIATIONS: Record<VariationId, Variation> = {
     description: "New roles, with more on the way.",
     roles: ["ganda", "lucha", "gandu", "tharki", "kanjar"],
     deck: [...CLASSIC_DECK],
+  },
+  vegas: {
+    id: "vegas",
+    name: "Vegas (Beta)",
+    description: "Everyone's a gambler: each turn starts with a dice roll, a dice duel or a coin-toss bet. Adds Guess and Draw and All In.",
+    roles: [],
+    deck: VEGAS_DECK,
+    rules: { wildRentOneTarget: true, vegas: true },
   },
   custom: {
     id: "custom",

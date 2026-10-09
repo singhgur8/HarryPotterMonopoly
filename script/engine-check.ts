@@ -10,6 +10,7 @@ import {
   chooseTarget, playCard, drawCards, paySilencio, getWaitingOn, flipWild,
   harryProtectColor, endTurn, luchaChoose, roleActive, timeTurnerChoose, bankCard, cancelChoice, cedricChooseSource, wakeUp, forfeit, autoDraw,
   sleepForDisconnect, settleWilds, playChargeback, playReverse, tharkiShortcutColor, kanjarChooseFriend, calculateRent,
+  vegasGamble, guessCard, guessKindOf,
 } from "../worker/gameEngine";
 import { ANIMALS, SET_SIZES, DRAW_SECONDS, inDrawStep, freshTurnTimer } from "../shared/schema";
 import type { GameState, PlayerState, RoleType } from "../shared/schema";
@@ -22,7 +23,7 @@ function newGame(n: number): GameState {
 }
 
 function countCards(s: GameState) {
-  return s.drawPile.length + s.discardPile.length +
+  return s.drawPile.length + s.discardPile.length + (s.poker?.pot.length ?? 0) +
     s.players.reduce((n, p) => n + p.hand.length + p.properties.length + p.bank.length, 0);
 }
 
@@ -1077,6 +1078,138 @@ for (let g = 0; g < 60; g++) {
   }
 }
 console.log("gg roles bot games: ok");
+
+// ---------- Vegas: start-of-turn gamble, Guess and Draw, All In ----------
+{
+  const vegasGame = (n: number) => createInitialGameState("TEST", Array.from({ length: n }, (_, i) => ({ visitorId: `p${i}`, seatIndex: i, animal: ANIMALS[i] })), 60, "vegas");
+  const withPot = countCards;
+
+  // Every turn opens with the gamble; drawing waits for it
+  const s = vegasGame(3);
+  assert.equal(s.pendingAction?.type, "vegas_gamble");
+  assert.equal(getWaitingOn(s), "p0");
+  assert.ok(!drawCards(s, "p0").success, "no drawing before the gamble");
+
+  // Dice: each outcome, many times over
+  const seen = new Set<string>();
+  for (let i = 0; i < 300; i++) {
+    const g = vegasGame(3);
+    assert.ok(vegasGamble(g, "p0", "dice").success);
+    const roll = g.gamble!.rolls![0].dice[0];
+    if (roll < 3) { seen.add("lose"); assert.equal(g.currentTurnIndex, 1, "1-2 loses the turn"); assert.equal(g.pendingAction?.type, "vegas_gamble"); }
+    else {
+      assert.equal(g.currentTurnIndex, 0); assert.equal(g.pendingAction, null, "then the draw");
+      assert.ok(drawCards(g, "p0").success);
+      assert.ok(endTurn(g, "p0").success);
+      if (roll > 3) { seen.add("extra"); assert.equal(g.currentTurnIndex, 0, "4-6 plays again"); assert.equal(g.pendingAction?.type, "vegas_gamble"); }
+      else { seen.add("keep"); assert.equal(g.currentTurnIndex, 1); }
+    }
+  }
+  assert.equal(seen.size, 3);
+
+  // Duel: the target can Just Say No; otherwise someone takes a card (or a tie)
+  for (let i = 0; i < 60; i++) {
+    const g = vegasGame(2);
+    const total = countCards(g);
+    if (i % 2) give(g, g.players[1], "hand", "action_protego_1");
+    const hand = g.players[0].hand.length;
+    assert.ok(vegasGamble(g, "p0", "duel", "p1").success);
+    assert.equal(g.pendingAction?.type, "protego_response");
+    assert.equal(getWaitingOn(g), "p1");
+    if (i % 2) {
+      assert.ok(playProtego(g, "p1").success);
+      assert.ok(declineProtego(g, "p0").success);
+      assert.equal(g.pendingAction, null, "blocked: p0 goes on to draw");
+      assert.equal(g.players[0].hand.length, hand);
+    } else {
+      assert.ok(declineProtego(g, "p1").success);
+      const [a, b] = g.gamble!.rolls!.map(r => r.dice[0]);
+      assert.equal(g.players[0].hand.length, a > b ? hand + 1 : a < b ? hand - 1 : hand);
+    }
+    assert.equal(countCards(g), total);
+    assert.ok(drawCards(g, "p0").success);
+  }
+
+  // Bet: heads doubles from the house, tails discards the stake
+  for (let i = 0; i < 40; i++) {
+    const g = vegasGame(2);
+    const total = countCards(g);
+    const p0 = g.players[0];
+    give(g, p0, "bank", "money_3g_1"); give(g, p0, "bank", "money_1g_1");
+    assert.ok(!vegasGamble(g, "p0", "bet", undefined, ["money_5g_1"]).success, "only bank money");
+    assert.ok(vegasGamble(g, "p0", "bet", undefined, ["money_3g_1"]).success);
+    const bank = p0.bank.reduce((n, c) => n + CARD_DEF_MAP[c.defId].value, 0);
+    if (g.gamble!.coin === "heads") assert.ok(bank >= 7, "won at least 3M more");
+    else { assert.equal(bank, 1); assert.ok(g.discardPile.some(c => c.defId === "money_3g_1")); }
+    assert.equal(countCards(g), total);
+    assert.equal(g.pendingAction, null);
+  }
+
+  // Guess and Draw: right guesses keep coming, a wrong one discards and stops
+  {
+    const g = vegasGame(2);
+    vegasGamble(g, "p0", "duel", "p1"); declineProtego(g, "p1");
+    drawCards(g, "p0");
+    const p0 = g.players[0];
+    give(g, p0, "hand", "action_guess_draw_1");
+    assert.ok(playCard(g, "p0", "action_guess_draw_1").success);
+    assert.equal(g.pendingAction?.type, "guess_draw");
+    g.drawPile.push(take(g, "money_2g_1"), take(g, "prop_red_1"));
+    const hand = p0.hand.length;
+    assert.ok(guessCard(g, "p0", "property").success);
+    assert.equal(p0.hand.length, hand + 1);
+    assert.equal(g.pendingAction?.type, "guess_draw");
+    assert.ok(guessCard(g, "p0", "action").success);
+    assert.equal(p0.hand.length, hand + 1, "wrong guess keeps nothing");
+    assert.equal(g.discardPile.at(-1)?.defId, "money_2g_1");
+    assert.equal(g.pendingAction, null);
+    assert.equal(guessKindOf("rent_red_yellow_1"), "action");
+    assert.equal(guessKindOf("wild_rainbow_1"), "property");
+  }
+
+  // All In: the stake is the poorest player's worth; blockers sit out; the winner takes the pot
+  for (let i = 0; i < 40; i++) {
+    const g = vegasGame(3);
+    vegasGamble(g, "p0", "dice"); // whatever happens, set the turn up by hand below
+    g.currentTurnIndex = 0; g.pendingAction = null; g.drawnThisTurn = true; g.actionsUsed = 0;
+    const [a, b, c] = g.players;
+    const total = withPot(g);
+    give(g, a, "bank", "money_5g_1"); give(g, b, "bank", "money_2g_1"); give(g, b, "properties", "prop_red_1");
+    give(g, c, "bank", "money_4g_1");
+    give(g, a, "hand", "action_all_in_1");
+    assert.ok(playCard(g, "p0", "action_all_in_1").success);
+    assert.equal(g.poker!.stake, 4, "the poorest player (p2, 4M) sets the stake");
+    assert.equal(g.pendingAction?.type, "pay_poker");
+    assert.ok(!playProtego(g, "p0").success, "can't block your own All In");
+    assert.ok(payWithCards(g, "p0", ["money_5g_1"]).success);
+    if (i % 2) {
+      give(g, b, "hand", "action_protego_1");
+      assert.ok(playProtego(g, "p1").success);
+      assert.ok(declineProtego(g, "p0").success);
+    } else {
+      assert.ok(payWithCards(g, "p1", ["money_2g_1", "prop_red_1"]).success);
+    }
+    assert.ok(payWithCards(g, "p2", ["money_4g_1"]).success);
+    assert.equal(g.poker, null, "settled");
+    assert.equal(g.pendingAction, null);
+    const winner = g.players.find(p => p.visitorId === g.gamble!.playerId)!;
+    assert.ok(winner.bank.some(c => c.defId === "money_4g_1") && winner.bank.some(c => c.defId === "money_5g_1"));
+    if (i % 2 === 0) assert.ok(winner.properties.some(c => c.defId === "prop_red_1"), "properties go to the winner's table");
+    assert.equal(withPot(g), total);
+  }
+
+  // Bot games in Vegas keep every card
+  for (let gi = 0; gi < 80; gi++) {
+    const g = vegasGame(2 + (gi % 4));
+    g.players.forEach(p => { p.isSleeping = true; p.isBot = gi % 2 === 1; });
+    const total = withPot(g);
+    for (let i = 0; i < 3000 && g.status === "playing"; i++) {
+      assert.ok(botStep(g), `vegas bot stuck: ${JSON.stringify(g.pendingAction)}`);
+      assert.equal(withPot(g), total);
+    }
+  }
+  console.log("vegas: ok");
+}
 
 console.log("all engine checks passed");
 
