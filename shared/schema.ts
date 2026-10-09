@@ -164,7 +164,7 @@ export const GAME_SPEEDS = {
 // out the cards are drawn automatically. That only happens when drawing is
 // the one thing the player can do: Cedric choosing between the deck and the
 // discard pile has a real choice, so he gets the full turn time and no auto-draw.
-export const DRAW_SECONDS = 5;
+export const DRAW_SECONDS = 10;
 
 /** True while the current player's only move is to draw. */
 export function inDrawStep(state: Pick<GameState, "status" | "drawnThisTurn" | "pendingAction">): boolean {
