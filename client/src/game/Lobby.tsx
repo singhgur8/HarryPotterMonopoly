@@ -157,6 +157,10 @@ export function Lobby() {
               const me = s.visitorId === myVisitorId;
               return (
                 <div key={i} className={`hp-seat ${me ? "me" : ""}`} data-testid={`seat-${i}`}>
+                  {(me || isHost) && (
+                    <button className="hp-seat-x" onClick={() => send("remove_seat", { visitorId: s.visitorId })}
+                      aria-label={me ? "Leave seat" : `Remove ${s.animal.name} from seat`} title={me ? "Leave seat" : "Remove from seat"} data-testid={`seat-x-${i}`}>×</button>
+                  )}
                   <span className="big">{s.animal.emoji}</span>
                   <b>{s.animal.name}{me ? " (you)" : ""}</b>
                   <span style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "center" }}>
@@ -169,9 +173,6 @@ export function Lobby() {
                     <span className="hp-muted" style={{ fontSize: 12 }}>
                       {s.pickedRoles?.length ? s.pickedRoles.map((r: string) => roleInfo(r)?.name.split(" ")[0]).join(" + ") : "No roles picked"}
                     </span>
-                  )}
-                  {s.isBot && isHost && (
-                    <button className="hp-linkbtn" style={{ fontSize: 12 }} onClick={() => send("remove_bot", { visitorId: s.visitorId })}>Remove</button>
                   )}
                 </div>
               );
@@ -260,7 +261,6 @@ export function Lobby() {
             <span className="hp-muted" style={{ fontSize: 13 }}>{startHint}</span>
             {mySeat >= 0 && (
               <>
-                <button className="hp-btn ghost" onClick={() => send("stand_up")}>Leave seat</button>
                 <button className={`hp-btn ${seats[mySeat]?.isReady ? "ghost" : "gold"}`} onClick={() => send("toggle_ready")} data-testid="button-ready">
                   {seats[mySeat]?.isReady ? "Not ready" : "I'm ready"}
                 </button>
