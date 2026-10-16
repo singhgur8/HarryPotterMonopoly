@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import type { GameCard as Card, PlayerState, PropertyColor } from "@shared/schema";
 import { freshTurnTimer } from "@shared/schema";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -6,7 +6,7 @@ import { GameCard } from "@/components/GameCard";
 import { useGame } from "./context";
 import {
   groupSets, SET_SIZES, tileFill, valueOf, sumValue, label, fillOf, roleName, roleNames, roleInfo, borrowedText, roleCut, allRolesCut, outageLabel, shieldOf, setSizeFor, shortcutOf, friendName, rentFor, sparedBy, nameOf, otherColor, completeSets, looseWilds, colorOnTable, RAINBOW,
-  CARD_DEF_MAP, canTake, isComplete, RENT_TABLE, STACK_STEP,
+  CARD_DEF_MAP, canTake, isComplete, RENT_TABLE,
 } from "./helpers";
 
 /** Avatar with a ring that empties as the player the game waits on runs out of time. */
@@ -148,7 +148,7 @@ export function Opponents({ full }: { full: boolean }) {
   const shown = s.players.find(p => p.visitorId === open);
   if (full) {
     return (
-      <div className="hp-rows" data-testid="opponent-rows">
+      <div className={`hp-rows ${others.length >= 3 ? "two" : ""}`} data-testid="opponent-rows">
         {others.map(p => <OpponentRow key={p.visitorId} p={p} />)}
       </div>
     );
@@ -243,9 +243,9 @@ function OpponentRow({ p }: { p: PlayerState }) {
       <div className="hp-zone-head">
         <TimerAvatar p={p} />
         <span className="nm">{p.animal.name}</span>
-        {p.roles.length > 0 && <span className={`hp-role ${allRolesCut(p) ? "off" : ""}`}>{roleNames(p)}</span>}
+        {p.roles.length > 0 && <span className={`hp-role ${allRolesCut(p) ? "off" : ""}`} title={p.roles.map(r => `${roleName(r)}: ${roleInfo(r)?.power}`).join("\n")}>{roleNames(p)}</span>}
         <SeatChips p={p} target={target} />
-        <span className="hand">Hand <b>{p.hand.length}</b></span>
+        <span className="hand">Hand <b>{p.hand.length}</b><span className="sets"> · Sets <b>{completeSets(p)}/{s.rules?.setsToWin ?? 3}</b></span></span>
       </div>
       <div className="hp-mine">
         <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
@@ -266,9 +266,9 @@ function OpponentRow({ p }: { p: PlayerState }) {
                       Deal Breaker
                     </button>
                   )}
-                  <div className="hp-stack" style={{ height: 134 + (n - 1) * STACK_STEP }}>
+                  <div className="hp-stack" style={{ "--n": n } as CSSProperties}>
                     {cards.map((c, i) => {
-                      const style = { top: i * STACK_STEP, zIndex: i + 1 };
+                      const style = { "--i": i, zIndex: i + 1 } as CSSProperties;
                       const card = <GameCard defId={c.defId} size="md" color={color} label={`${nameOf(c.defId)}, worth ${valueOf(c)}M`} />;
                       if (!st.usable(c.defId)) return <div key={c.defId} style={style}>{card}</div>;
                       const sel = st.picked === c.defId;
@@ -293,9 +293,9 @@ function OpponentRow({ p }: { p: PlayerState }) {
               <div className="hp-set">
                 <div className="hp-set-head"><span className="hp-dot" style={{ background: RAINBOW }} />No colour yet</div>
                 <div className="rent">No rent</div>
-                <div className="hp-stack" style={{ height: 134 + (loose.length - 1) * STACK_STEP }}>
+                <div className="hp-stack" style={{ "--n": loose.length } as CSSProperties}>
                   {loose.map((c, i) => {
-                    const style = { top: i * STACK_STEP, zIndex: i + 1 };
+                    const style = { "--i": i, zIndex: i + 1 } as CSSProperties;
                     const card = <GameCard defId={c.defId} size="md" label={`${nameOf(c.defId)}, no colour yet, worth ${valueOf(c)}M`} />;
                     if (!st.usable(c.defId)) return <div key={c.defId} style={style}>{card}</div>;
                     const sel = st.picked === c.defId;

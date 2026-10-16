@@ -183,7 +183,7 @@ export function GameTable() {
 
       <div className="hp-main">
         <div className="hp-table">
-          <div className="hp-scroll">
+          <div className={`hp-scroll ${full ? "full" : ""}`}>
             <Opponents full={full} />
             <ActionPanel discardPicked={picked} silencioOpen={silencioOpen} setSilencioOpen={setSilencioOpen} pay={pay} />
             <MyArea full={full} flipId={flipId} onFlip={id => { setSel(null); setFlipId(id); }} onPaySilencio={() => setSilencioOpen(true)} pay={pay} />
