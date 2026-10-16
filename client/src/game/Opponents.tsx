@@ -140,7 +140,11 @@ export function OpponentSeat({ p, onOpen }: { p: PlayerState; onOpen: () => void
 export function Opponents({ full }: { full: boolean }) {
   const { s, me } = useGame();
   const [open, setOpen] = useState<string | null>(null);
-  const others = s.players.filter(p => p.visitorId !== me?.visitorId);
+  // Turn order, starting with whoever plays after me and ending with whoever plays
+  // right before me. Spectators (no seat) see plain seat order.
+  const mine = s.players.findIndex(p => p.visitorId === me?.visitorId);
+  const others = mine < 0 ? s.players
+    : [...s.players.slice(mine + 1), ...s.players.slice(0, mine)];
   const shown = s.players.find(p => p.visitorId === open);
   if (full) {
     return (
