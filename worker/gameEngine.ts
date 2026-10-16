@@ -1566,6 +1566,7 @@ export function forfeit(state: GameState, visitorId: string): Result {
 function dropFromPending(state: GameState, visitorId: string) {
   const pending = state.pendingAction;
   if (!pending) return;
+  if (pending.type === "vegas_roll") return dropRoller(state, visitorId);
   const original: PendingAction = pending.type === "protego_response" ? pending.data.originalAction : pending;
   if (original.sourcePlayerId === visitorId) {
     state.pendingAction = null;
@@ -1652,6 +1653,8 @@ export function botStep(state: GameState): boolean {
       case "vegas_gamble":
         // The bot always rolls the dice: it never aims a duel or bets for a player
         return vegasGamble(state, id, "dice").success;
+      case "vegas_roll":
+        return rollDice(state, id).success;
       case "guess_draw":
         // Action is the most common kind of card in the deck
         return guessCard(state, id, "action").success;
@@ -1766,8 +1769,11 @@ function botAttack(state: GameState, bot: PlayerState): boolean {
 // - Dice: sets this turn's plays. 1 or 2: one fewer (2), 3: as usual (3), 4 to 6: one more (4).
 // - Duel: pick a player; you both roll a die and the higher roll takes a random
 //   card from the other's hand (a tie does nothing). They can Just Say No.
-// - Bet: stake money from your bank on a coin toss. Heads, the house pays you the
-//   same again (money cards from the discard pile, then the deck); tails, it's discarded.
+// - Bet: stake money from your bank and call heads or tails. Call it right and the
+//   house pays you the same again (money cards from the discard pile, then the
+//   deck); call it wrong and the stake is discarded.
+// Every die is rolled by the player's own tap (a vegas_roll step): the dice, both
+// sides of a duel one after the other, and each player in an All In roll-off.
 
 const rollDie = () => 1 + Math.floor(Math.random() * 6);
 
@@ -1779,19 +1785,13 @@ function askGamble(state: GameState, player: PlayerState) {
   state.pendingAction = { type: "vegas_gamble", sourcePlayerId: player.visitorId, targetPlayerId: player.visitorId };
 }
 
-export function vegasGamble(state: GameState, visitorId: string, choice: string, targetId?: string, cardDefIds?: string[]): Result {
+export function vegasGamble(state: GameState, visitorId: string, choice: string, targetId?: string, cardDefIds?: string[], call?: string): Result {
   const pending = state.pendingAction;
   if (!pending || pending.type !== "vegas_gamble" || pending.targetPlayerId !== visitorId) return fail("Nothing to gamble on right now");
   const player = getPlayer(state, visitorId)!;
 
   if (choice === "dice") {
-    const roll = rollDie();
-    state.pendingAction = null;
-    state.maxActions = maxActionsFor(player) + (roll < 3 ? -1 : roll > 3 ? 1 : 0);
-    const result = `rolled ${roll} and gets ${state.maxActions} plays this turn`;
-    log(state, player, result);
-    showGamble(state, { kind: "dice", playerId: visitorId, rolls: [{ playerId: visitorId, dice: [roll] }], result });
-    openDrawChoice(state, player);
+    askRoll(state, player, "dice", [visitorId]);
     return ok;
   }
 
@@ -1807,23 +1807,24 @@ export function vegasGamble(state: GameState, visitorId: string, choice: string,
   if (choice === "bet") {
     const ids = Array.from(new Set(cardDefIds ?? []));
     if (ids.length === 0) return fail("Pick the money from your bank you want to bet");
+    if (call !== "heads" && call !== "tails") return fail("Call heads or tails");
     if (!ids.every(id => player.bank.some(c => c.defId === id))) return fail("You can only bet money from your bank");
     const stake = ids.map(id => removeCard(player.bank, id)!);
     const bet = totalValue(stake);
-    const heads = Math.random() < 0.5;
+    const coin = Math.random() < 0.5 ? "heads" : "tails";
     let result: string;
-    if (heads) {
+    if (coin === call) {
       const won = housePays(state, bet);
       player.bank.push(...stake, ...won);
       const paid = totalValue(won);
-      result = paid >= bet ? `bet ${bet}M, tossed heads and won ${paid}M` : `bet ${bet}M and tossed heads, but the house only had ${paid}M to pay`;
+      result = paid >= bet ? `bet ${bet}M on ${call}, tossed ${coin} and won ${paid}M` : `bet ${bet}M on ${call} and tossed ${coin}, but the house only had ${paid}M to pay`;
     } else {
       state.discardPile.push(...stake);
-      result = `bet ${bet}M, tossed tails and lost it`;
+      result = `bet ${bet}M on ${call}, tossed ${coin} and lost it`;
     }
     state.pendingAction = null;
     log(state, player, result);
-    showGamble(state, { kind: "coin", playerId: visitorId, coin: heads ? "heads" : "tails", result });
+    showGamble(state, { kind: "coin", playerId: visitorId, coin, result });
     openDrawChoice(state, player);
     return ok;
   }
@@ -1839,7 +1840,100 @@ function housePays(state: GameState, amount: number): GameCard[] {
 }
 
 function runDuel(state: GameState, challenger: PlayerState, rival: PlayerState) {
-  const a = rollDie(), b = rollDie();
+  askRoll(state, challenger, "duel", [challenger.visitorId, rival.visitorId]);
+}
+
+/** The dice step: each player in order taps Roll (two dice each in an All In roll-off). */
+type RollStep = { kind: "dice" | "duel" | "poker"; order: string[]; rolls: { playerId: string; dice: number[] }[]; ties?: number };
+
+function askRoll(state: GameState, gambler: PlayerState, kind: RollStep["kind"], order: string[]) {
+  const data: RollStep = { kind, order, rolls: [] };
+  state.pendingAction = { type: "vegas_roll", sourcePlayerId: gambler.visitorId, targetPlayerId: order[0], data };
+}
+
+const ROLL_FOR = { dice: "", duel: " in the duel", poker: " in the All In roll-off" };
+const pips = (dice: number[]) => dice.reduce((a, b) => a + b, 0);
+
+export function rollDice(state: GameState, visitorId: string): Result {
+  const pending = state.pendingAction;
+  if (!pending || pending.type !== "vegas_roll" || pending.targetPlayerId !== visitorId) return fail("It isn't your roll");
+  const data = pending.data as RollStep;
+  const roller = getPlayer(state, visitorId)!;
+  const dice = data.kind === "poker" ? [rollDie(), rollDie()] : [rollDie()];
+  data.rolls.push({ playerId: visitorId, dice });
+  const next = data.order.find(id => !data.rolls.some(r => r.playerId === id));
+  if (!next) return finishRolls(state), ok;
+  pending.targetPlayerId = next;
+  log(state, roller, `rolled ${pips(dice)}${ROLL_FOR[data.kind]}`);
+  showGamble(state, { kind: data.kind, playerId: visitorId, rolls: [{ playerId: visitorId, dice }], next,
+    result: `rolled ${pips(dice)}. ${getPlayer(state, next)?.animal.name ?? "The next player"} rolls next` });
+  return ok;
+}
+
+/** Everyone in the step has rolled: settle the dice, the duel or the All In (ties roll again). */
+function finishRolls(state: GameState) {
+  const pending = state.pendingAction!;
+  const data = pending.data as RollStep;
+  const gambler = getPlayer(state, pending.sourcePlayerId);
+  state.pendingAction = null;
+  if (data.kind === "dice") {
+    if (gambler) diceResult(state, gambler, data.rolls[0].dice[0]);
+    return;
+  }
+  if (data.kind === "duel") {
+    const rival = getPlayer(state, data.order[1]);
+    if (gambler && rival) duelResult(state, gambler, rival, data.rolls[0].dice[0], data.rolls[1].dice[0]);
+    else if (gambler) openDrawChoice(state, gambler);
+    return;
+  }
+  const best = Math.max(...data.rolls.map(r => pips(r.dice)));
+  const top = data.rolls.filter(r => pips(r.dice) === best).map(r => r.playerId);
+  if (top.length > 1) {
+    const ties = (data.ties ?? 0) + 1;
+    state.pendingAction = { ...pending, targetPlayerId: top[0], data: { kind: "poker", order: top, rolls: [], ties } satisfies RollStep };
+    const names = top.map(id => getPlayer(state, id)?.animal.name ?? "?");
+    addEvent(state, "🎲", "All In", "#888", `${names.join(" and ")} tied on ${best} and roll again`);
+    showGamble(state, { kind: "poker", playerId: top[0], rolls: data.rolls, next: top[0], result: `tied with ${names.slice(1).join(" and ")} on ${best}. They roll again` });
+    return;
+  }
+  const winner = getPlayer(state, top[0]);
+  if (winner) payPot(state, winner, data.rolls, data.ties ?? 0);
+}
+
+/** Someone left in the middle of a dice step: take them out of it. */
+function dropRoller(state: GameState, visitorId: string) {
+  const pending = state.pendingAction!;
+  const data = pending.data as RollStep;
+  data.order = data.order.filter(id => id !== visitorId);
+  data.rolls = data.rolls.filter(r => r.playerId !== visitorId);
+  if (data.kind !== "poker") {
+    // The duel is off; the challenger carries on to their draw
+    state.pendingAction = null;
+    const gambler = getPlayer(state, pending.sourcePlayerId);
+    if (gambler && data.kind === "duel") openDrawChoice(state, gambler);
+    return;
+  }
+  if (data.order.length <= 1) {
+    state.pendingAction = null;
+    const last = getPlayer(state, data.order[0] ?? "");
+    if (last) payPot(state, last, data.rolls, data.ties ?? 0);
+    else if (state.poker) { state.discardPile.push(...state.poker.pot); state.poker = null; }
+    return;
+  }
+  const next = data.order.find(id => !data.rolls.some(r => r.playerId === id));
+  if (next) pending.targetPlayerId = next;
+  else finishRolls(state);
+}
+
+function diceResult(state: GameState, player: PlayerState, roll: number) {
+  state.maxActions = maxActionsFor(player) + (roll < 3 ? -1 : roll > 3 ? 1 : 0);
+  const result = `rolled ${roll} and gets ${state.maxActions} plays this turn`;
+  log(state, player, result);
+  showGamble(state, { kind: "dice", playerId: player.visitorId, rolls: [{ playerId: player.visitorId, dice: [roll] }], result });
+  openDrawChoice(state, player);
+}
+
+function duelResult(state: GameState, challenger: PlayerState, rival: PlayerState, a: number, b: number) {
   const rolls = [{ playerId: challenger.visitorId, dice: [a] }, { playerId: rival.visitorId, dice: [b] }];
   let result: string;
   let secret: Secret | undefined;
@@ -1906,29 +2000,40 @@ export function guessCard(state: GameState, visitorId: string, guess: string): R
 /** True while an All In is still collecting stakes (or waiting on a Just Say No about one). */
 function pokerRunning(state: GameState): boolean {
   const p = state.pendingAction;
-  return !!p && (p.type === "pay_poker" || (p.type === "protego_response" && p.data?.originalAction?.type === "pay_poker"));
+  return !!p && (p.type === "pay_poker" || (p.type === "protego_response" && p.data?.originalAction?.type === "pay_poker")
+    || (p.type === "vegas_roll" && p.data?.kind === "poker"));
 }
 
-/** Everyone who staked rolls two dice; ties roll again. The highest roll takes the whole pot. */
+/** Everyone who staked rolls two dice, each with their own tap; ties roll again. The highest roll takes the whole pot. */
 function settlePoker(state: GameState) {
   const poker = state.poker;
-  state.poker = null;
-  if (!poker || poker.pot.length === 0) return;
+  if (!poker || poker.pot.length === 0) { state.poker = null; return; }
   const contenders = poker.players.map(id => getPlayer(state, id)).filter((p): p is PlayerState => !!p);
   if (contenders.length === 0) {
     state.discardPile.push(...poker.pot);
+    state.poker = null;
     return;
   }
+  if (contenders.length === 1) return payPot(state, contenders[0], [], 0);
+  const current = getCurrentPlayer(state);
+  if (!state.pendingAction && current) return askRoll(state, current, "poker", contenders.map(p => p.visitorId));
+  // Something else is already under way (the All In player left mid-way): roll for everyone at once
   let rolls: { playerId: string; dice: number[] }[] = [];
   let left = contenders;
   let ties = 0;
   while (left.length > 1) {
     rolls = left.map(p => ({ playerId: p.visitorId, dice: [rollDie(), rollDie()] }));
-    const best = Math.max(...rolls.map(r => r.dice[0] + r.dice[1]));
-    left = left.filter((_, i) => rolls[i].dice[0] + rolls[i].dice[1] === best);
+    const best = Math.max(...rolls.map(r => pips(r.dice)));
+    left = left.filter((_, i) => pips(rolls[i].dice) === best);
     if (left.length > 1) ties++;
   }
-  const winner = left[0];
+  payPot(state, left[0], rolls, ties);
+}
+
+function payPot(state: GameState, winner: PlayerState, rolls: { playerId: string; dice: number[] }[], ties: number) {
+  const poker = state.poker;
+  state.poker = null;
+  if (!poker) return;
   for (const card of poker.pot) {
     const type = CARD_DEF_MAP[card.defId]?.type;
     if (type === "property" || type === "wild") winner.properties.push(card);
@@ -1936,7 +2041,7 @@ function settlePoker(state: GameState) {
   }
   settleWilds(state);
   const total = totalValue(poker.pot);
-  const result = contenders.length === 1
+  const result = rolls.length === 0
     ? `was the only one in the All In and takes back the ${total}M pot`
     : `rolled highest${ties ? ` after ${ties} tie${ties === 1 ? "" : "s"}` : ""} and wins the ${total}M All In pot`;
   log(state, winner, result);

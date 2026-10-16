@@ -7,7 +7,7 @@ import { setSizesFor } from "@shared/rolePowers";
 import { cheapestCover } from "@shared/payment";
 import { useGame } from "./context";
 import { CardInfo, DiscardLink, DiscardPile } from "./DiscardPile";
-import { GamblePrompt, GuessPrompt } from "./Gamble";
+import { GamblePrompt, RollPrompt, GuessPrompt } from "./Gamble";
 import {
   CARD_DEF_MAP, COLORS, label, fillOf, valueOf, sumValue, nameOf, groupSets, canTake, isComplete, shieldOf, roleName, roleNames,
   payableCards, playerName, waitingText, isPayment, hasProtego, hasAction, drawCount, tileFill, colorOnTable, looseWilds, cardBlurb, outOfMoves,
@@ -357,6 +357,9 @@ export function ActionPanel({ discardPicked, silencioOpen, setSilencioOpen, pay 
       }
       case "vegas_gamble":
         prompt = <GamblePrompt />;
+        break;
+      case "vegas_roll":
+        prompt = <RollPrompt />;
         break;
       case "guess_draw":
         prompt = <GuessPrompt />;

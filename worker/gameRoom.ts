@@ -13,7 +13,7 @@ import {
   createInitialGameState, drawCards, playCard, bankCard, endTurn,
   flipWild, payWithCards, playProtego, playChargeback, playReverse, declineProtego, chooseTarget,
   harryProtectColor, tharkiShortcutColor, kanjarChooseFriend, cedricChooseSource, luchaChoose, timeTurnerChoose, paySilencio,
-  discardCards, sanitizeStateForPlayer, vegasGamble, guessCard, putToSleep, wakeUp, botStep, getWaitingOn, autoDraw,
+  discardCards, sanitizeStateForPlayer, vegasGamble, rollDice, guessCard, putToSleep, wakeUp, botStep, getWaitingOn, autoDraw,
   cancelChoice, forfeit, sleepForDisconnect, settleWilds,
 } from "./gameEngine";
 import { parseMessage, MessageRateLimiter, MAX_SOCKETS_PER_ROOM, MAX_SOCKETS_PER_VISITOR } from "./security";
@@ -696,7 +696,7 @@ const GAME_ACTIONS = new Set([
   "play_protego", "decline_protego", "choose_target", "harry_protect_color",
   "cedric_choose_source", "time_turner_choose", "pay_silencio", "discard_cards", "cancel_action",
   "lucha_choose", "play_chargeback", "play_reverse", "tharki_shortcut_color", "kanjar_choose_friend",
-  "vegas_gamble", "guess_card",
+  "vegas_gamble", "vegas_roll", "guess_card",
 ]);
 
 // ========== MAIN ROUTER ==========
@@ -777,14 +777,15 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
       room.gameState.turnTimer = freshTurnTimer(room.gameState);
       return broadcastGameState(room);
     }
-    case "vegas_gamble": case "guess_card": {
+    case "vegas_gamble": case "vegas_roll": case "guess_card": {
       if (!room.gameState) return;
       const result = type === "vegas_gamble"
-        ? vegasGamble(room.gameState, client.visitorId, payload?.choice, payload?.targetPlayerId, payload?.cardDefIds)
+        ? vegasGamble(room.gameState, client.visitorId, payload?.choice, payload?.targetPlayerId, payload?.cardDefIds, payload?.call)
+        : type === "vegas_roll" ? rollDice(room.gameState, client.visitorId)
         : guessCard(room.gameState, client.visitorId, payload?.guess);
       if (!result.success) return sendError(room, client, result.error!);
-      // After the gamble the short draw timer starts afresh (the same player is still up, so it isn't reset for us)
-      if (type === "vegas_gamble" && inDrawStep(room.gameState)) {
+      // After the gamble or a roll the short timer starts afresh (the same player may still be up, so it isn't reset for us)
+      if (type !== "guess_card" && (inDrawStep(room.gameState) || room.gameState.pendingAction?.type === "vegas_roll")) {
         room.gameState.turnTimer = freshTurnTimer(room.gameState);
         room.timerSetAt = Date.now();
       }
@@ -1106,6 +1107,15 @@ export class GameRoom extends DurableObject<Env> {
     } else if (room.gameState && inDrawStep(room.gameState) && room.gameState.turnTimer <= 0) {
       // Draw timer ran out: draw for them so the turn gets going
       if (autoDraw(room.gameState).success) broadcastGameState(room);
+      afterGameChange(room);
+    } else if (timerDue !== null && now >= timerDue && room.gameState?.pendingAction?.type === "vegas_roll") {
+      // Nobody tapped Roll in time: roll for them so the game keeps moving
+      const waitingOn = getWaitingOn(room.gameState);
+      if (waitingOn && rollDice(room.gameState, waitingOn).success) {
+        room.gameState.turnTimer = freshTurnTimer(room.gameState);
+        room.timerSetAt = Date.now();
+        broadcastGameState(room);
+      }
       afterGameChange(room);
     } else if (timerDue !== null && now >= timerDue && room.gameState?.pendingAction?.type === "protego_response") {
       // Nobody answered the Just Say No question in time: the action goes ahead

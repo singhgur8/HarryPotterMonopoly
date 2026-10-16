@@ -13,6 +13,7 @@ const face = (n: number) => FACES[Math.min(6, Math.max(1, n)) - 1];
 export function GamblePrompt() {
   const { s, me, send } = useGame();
   const [bet, setBet] = useState<string[]>([]);
+  const [call, setCall] = useState<"heads" | "tails" | null>(null);
   if (!me) return null;
   const rivals = s.players.filter(o => o.visitorId !== me.visitorId && !sparedBy(me, o));
   const total = bet.reduce((n, id) => n + valueOf(id), 0);
@@ -25,11 +26,11 @@ export function GamblePrompt() {
         <div className="hp-gamble">
           <b>🎲 Roll the dice</b>
           <span className="hp-muted">Sets your plays this turn: 1 or 2 gives you 2, a 3 keeps 3, and 4, 5 or 6 gives you 4.</span>
-          <div className="hp-row"><button className="hp-btn gold" onClick={() => send("vegas_gamble", { choice: "dice" })} data-testid="gamble-dice">Roll</button></div>
+          <div className="hp-row"><button className="hp-btn gold" onClick={() => send("vegas_gamble", { choice: "dice" })} data-testid="gamble-dice">Pick the dice</button></div>
         </div>
         <div className="hp-gamble">
           <b>⚔️ Dice duel</b>
-          <span className="hp-muted">You and another player each roll a die. The higher roll takes a random card from the other's hand. A tie does nothing. They can Just Say No.</span>
+          <span className="hp-muted">You and another player each roll a die, one after the other. The higher roll takes a random card from the other's hand. A tie does nothing. They can Just Say No.</span>
           <div className="hp-row">
             {rivals.map(o => (
               <button key={o.visitorId} className="hp-btn ghost" onClick={() => send("vegas_gamble", { choice: "duel", targetPlayerId: o.visitorId })} data-testid={`gamble-duel-${o.seatIndex}`}>
@@ -40,7 +41,7 @@ export function GamblePrompt() {
         </div>
         <div className="hp-gamble">
           <b>🪙 Coin toss bet</b>
-          <span className="hp-muted">Bet money from your bank. Heads, the house pays you the same again. Tails, you lose it.</span>
+          <span className="hp-muted">Bet money from your bank and call heads or tails. Call it right and the house pays you the same again. Call it wrong and you lose it.</span>
           <div className="hp-row">
             {me.bank.length
               ? [...me.bank].sort((a, b) => valueOf(a) - valueOf(b)).map(c => (
@@ -52,13 +53,68 @@ export function GamblePrompt() {
           </div>
           {me.bank.length > 0 && (
             <div className="hp-row">
-              <button className="hp-btn gold" disabled={total === 0} onClick={() => { send("vegas_gamble", { choice: "bet", cardDefIds: bet }); setBet([]); }} data-testid="gamble-bet">
-                {total ? `Bet ${total}M` : "Pick money to bet"}
+              <span className="hp-muted">Call it:</span>
+              {(["heads", "tails"] as const).map(c => (
+                <button key={c} className="hp-pick" aria-pressed={call === c} onClick={() => setCall(c)} data-testid={`call-${c}`}>
+                  <span className="hp-coin">{c === "heads" ? "H" : "T"}</span>{c === "heads" ? "Heads" : "Tails"}
+                </button>
+              ))}
+            </div>
+          )}
+          {me.bank.length > 0 && (
+            <div className="hp-row">
+              <button className="hp-btn gold" disabled={total === 0 || !call} onClick={() => { send("vegas_gamble", { choice: "bet", cardDefIds: bet, call }); setBet([]); setCall(null); }} data-testid="gamble-bet">
+                {!total ? "Pick money to bet" : !call ? "Call heads or tails" : `Flip coin: ${total}M on ${call}`}
               </button>
               {total > 0 && total < sumValue(me.bank) && <button className="hp-btn ghost" onClick={() => setBet(me.bank.map(c => c.defId))}>Bet it all</button>}
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+type RollStep = { kind: "dice" | "duel" | "poker"; order: string[]; rolls: { playerId: string; dice: number[] }[]; ties?: number };
+
+/** A dice step waiting on me: the dice sit there until I tap Roll. */
+export function RollPrompt() {
+  const { s, me, send } = useGame();
+  const data = s.pendingAction?.data as RollStep | undefined;
+  const [sent, setSent] = useState(false);
+  const step = `${data?.ties ?? 0}-${data?.rolls.length ?? 0}`;
+  useEffect(() => setSent(false), [step]);
+  if (!me || !data) return null;
+  const two = data.kind === "poker";
+  const rival = data.order.find(id => id !== me.visitorId);
+  const title = data.kind === "dice" ? "Roll for your plays."
+    : data.kind === "duel" ? `Dice duel with ${playerName(s, rival ?? "")}.`
+    : data.ties ? "Tied! Roll again." : "All In roll-off.";
+  const hint = data.kind === "dice" ? "1 or 2 gives you 2 plays, a 3 keeps 3, and 4, 5 or 6 gives you 4."
+    : data.kind === "duel" ? "The higher roll takes a random card from the other's hand. A tie does nothing."
+    : "Everyone who staked rolls two dice. The highest total takes the whole pot.";
+  const roll = () => { if (!sent) { setSent(true); send("vegas_roll"); } };
+  const who = (id: string) => (s.players.find(p => p.visitorId === id)?.animal.emoji ?? "") + " " + playerName(s, id);
+
+  return (
+    <div className="hp-prompt wait" data-testid="roll-prompt">
+      <div className="head"><p><b>{title}</b> {hint}</p></div>
+      {data.rolls.length > 0 && (
+        <div className="hp-dice-rows">
+          {data.rolls.map(r => (
+            <div key={r.playerId} className="hp-dice-row small">
+              <span className="who">{who(r.playerId)}</span>
+              <span className="hp-dice" aria-label={`Rolled ${r.dice.join(" and ")}`}>{r.dice.map((d, j) => <span key={j}>{face(d)}</span>)}</span>
+              <b className="sum">{r.dice.reduce((a, b) => a + b, 0)}</b>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="hp-roll">
+        <button className="hp-dice idle" onClick={roll} disabled={sent} aria-label="Roll the dice">
+          {(two ? [6, 6] : [6]).map((d, j) => <span key={j}>{face(d)}</span>)}
+        </button>
+        <button className="hp-btn gold" onClick={roll} disabled={sent} data-testid="roll-dice">{sent ? "Rolling…" : two ? "Roll both dice" : "Roll"}</button>
       </div>
     </div>
   );
@@ -91,6 +147,7 @@ export function GuessPrompt() {
 
 const ROLL_MS = 1100;
 const SHOW_MS = 8000;
+const NEXT_MS = 1800;
 
 /**
  * Shows each new dice roll, duel, coin toss, card guess or All In roll-off to
@@ -115,7 +172,9 @@ export function GambleOverlay() {
     const tumble = window.setInterval(() => setSpin(n => n + 1), 90);
     const stop = window.setTimeout(() => { setRolling(false); clearInterval(tumble); }, ROLL_MS);
     const mine = !!me && (g.playerId === me.visitorId || !!g.rolls?.some(r => r.playerId === me.visitorId));
-    const hide = mine ? undefined : window.setTimeout(() => setShown(null), SHOW_MS);
+    // Whoever rolls next sees the roll land, then gets back to their own Roll button
+    const hide = me && g.next === me.visitorId ? window.setTimeout(() => setShown(null), ROLL_MS + NEXT_MS)
+      : mine ? undefined : window.setTimeout(() => setShown(null), SHOW_MS);
     return () => { clearInterval(tumble); clearTimeout(stop); clearTimeout(hide); };
   }, [g?.id]);
 
