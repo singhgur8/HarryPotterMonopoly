@@ -204,7 +204,7 @@ export function turnTimeLimit(state: TimerState): number {
 
 /** Seconds on the clock when the game starts waiting on the next step. */
 export function freshTurnTimer(state: TimerState): number {
-  return inDrawStep(state) ? DRAW_SECONDS : turnTimeLimit(state);
+  return inDrawStep(state) || state.pendingAction?.type === "vegas_roll" ? DRAW_SECONDS : turnTimeLimit(state);
 }
 
 // Pending action types (things that require a response from another player)
@@ -234,6 +234,7 @@ export type PendingActionType =
   | "discard_excess"     // Must discard down to 7 cards
   | "vegas_gamble"       // Vegas: the current player picks their start-of-turn gamble
   | "vegas_duel"         // Vegas: a dice duel aimed at another player (waits on their Just Say No answer)
+  | "vegas_roll"         // Vegas: waiting on a player to tap Roll (dice, each side of a duel, each All In staker)
   | "guess_draw";        // Guess and Draw: guess the top card's kind until a guess is wrong
 
 export interface PendingAction {
@@ -259,6 +260,7 @@ export interface GambleRoll {
   kind: "dice" | "duel" | "coin" | "guess" | "poker";
   playerId: string;                             // who gambled
   rolls?: { playerId: string; dice: number[] }[];
+  next?: string;                                // a dice step goes on: this player rolls next
   coin?: "heads" | "tails";
   defId?: string;                               // Guess and Draw: the card turned over
   guess?: GuessKind;
@@ -370,6 +372,7 @@ export type WSMessageType =
   | "cancel_action"
   | "forfeit"
   | "vegas_gamble"
+  | "vegas_roll"
   | "guess_card"
   // Server -> Client
   | "game_state"

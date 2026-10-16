@@ -127,6 +127,7 @@ export function waitingText(s: GameState, meId: string): string {
     case "pay_birthday": return `Waiting on ${who} to pay 2M for It's My Birthday`;
     case "pay_poker": return `Waiting on ${who} to stake ${p.amount}M for All In`;
     case "vegas_gamble": return `Waiting on ${who} to pick a gamble`;
+    case "vegas_roll": return `Waiting on ${who} to roll`;
     case "guess_draw": return `Waiting on ${who} to guess the next card`;
     case "pay_debt": return CARD_DEF_MAP[p.cardDefId ?? ""]?.actionType === "gringotts_goblin"
       ? `Waiting on ${who} to pay the Debt Collector 5M` : `Waiting on ${who} to pay ${p.amount}M for ${card}`;

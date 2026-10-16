@@ -10,7 +10,7 @@ import {
   chooseTarget, playCard, drawCards, paySilencio, getWaitingOn, flipWild,
   harryProtectColor, endTurn, luchaChoose, roleActive, timeTurnerChoose, bankCard, cancelChoice, cedricChooseSource, wakeUp, forfeit, autoDraw,
   sleepForDisconnect, settleWilds, playChargeback, playReverse, tharkiShortcutColor, kanjarChooseFriend, calculateRent,
-  vegasGamble, guessCard, guessKindOf, sanitizeStateForPlayer,
+  vegasGamble, rollDice, guessCard, guessKindOf, sanitizeStateForPlayer,
 } from "../worker/gameEngine";
 import { ANIMALS, SET_SIZES, DRAW_SECONDS, inDrawStep, freshTurnTimer, PLAYS_USED_UP_SECONDS } from "../shared/schema";
 import type { GameState, PlayerState, RoleType } from "../shared/schema";
@@ -1224,6 +1224,9 @@ console.log("gg roles bot games: ok");
   for (let i = 0; i < 300; i++) {
     const g = vegasGame(3);
     assert.ok(vegasGamble(g, "p0", "dice").success);
+    assert.equal(g.pendingAction?.type, "vegas_roll", "the dice wait for the player's tap");
+    assert.ok(!drawCards(g, "p0").success && !rollDice(g, "p1").success, "no drawing and nobody else rolls");
+    assert.ok(rollDice(g, "p0").success);
     const roll = g.gamble!.rolls![0].dice[0];
     seen.add(String(g.maxActions));
     assert.equal(g.maxActions, roll < 3 ? 2 : roll === 3 ? 3 : 4, "the roll sets this turn's plays");
@@ -1248,6 +1251,12 @@ console.log("gg roles bot games: ok");
       assert.equal(g.players[0].hand.length, hand);
     } else {
       assert.ok(declineProtego(g, "p1").success);
+      assert.equal(g.pendingAction?.type, "vegas_roll"); assert.equal(getWaitingOn(g), "p0", "the challenger rolls first");
+      assert.ok(!rollDice(g, "p1").success);
+      assert.ok(rollDice(g, "p0").success);
+      assert.equal(getWaitingOn(g), "p1", "then the target rolls");
+      assert.equal(g.gamble!.next, "p1");
+      assert.ok(rollDice(g, "p1").success);
       const [a, b] = g.gamble!.rolls!.map(r => r.dice[0]);
       assert.equal(g.players[0].hand.length, a > b ? hand + 1 : a < b ? hand - 1 : hand);
     }
@@ -1261,10 +1270,12 @@ console.log("gg roles bot games: ok");
     const total = countCards(g);
     const p0 = g.players[0];
     give(g, p0, "bank", "money_3g_1"); give(g, p0, "bank", "money_1g_1");
-    assert.ok(!vegasGamble(g, "p0", "bet", undefined, ["money_5g_1"]).success, "only bank money");
-    assert.ok(vegasGamble(g, "p0", "bet", undefined, ["money_3g_1"]).success);
+    const call = i % 2 ? "heads" : "tails";
+    assert.ok(!vegasGamble(g, "p0", "bet", undefined, ["money_5g_1"], call).success, "only bank money");
+    assert.ok(!vegasGamble(g, "p0", "bet", undefined, ["money_3g_1"]).success, "heads or tails must be called");
+    assert.ok(vegasGamble(g, "p0", "bet", undefined, ["money_3g_1"], call).success);
     const bank = p0.bank.reduce((n, c) => n + CARD_DEF_MAP[c.defId].value, 0);
-    if (g.gamble!.coin === "heads") assert.ok(bank >= 7, "won at least 3M more");
+    if (g.gamble!.coin === call) assert.ok(bank >= 7, "won at least 3M more");
     else { assert.equal(bank, 1); assert.ok(g.discardPile.some(c => c.defId === "money_3g_1")); }
     assert.equal(countCards(g), total);
     assert.equal(g.pendingAction, null);
@@ -1273,8 +1284,8 @@ console.log("gg roles bot games: ok");
   // Guess and Draw: right guesses keep coming, a wrong one discards and stops
   {
     const g = vegasGame(2);
-    vegasGamble(g, "p0", "duel", "p1"); declineProtego(g, "p1");
-    drawCards(g, "p0");
+    vegasGamble(g, "p0", "duel", "p1"); declineProtego(g, "p1"); rollDice(g, "p0"); rollDice(g, "p1");
+    assert.ok(drawCards(g, "p0").success);
     const p0 = g.players[0];
     give(g, p0, "hand", "action_guess_draw_1");
     assert.ok(playCard(g, "p0", "action_guess_draw_1").success);
@@ -1315,12 +1326,28 @@ console.log("gg roles bot games: ok");
       assert.ok(payWithCards(g, "p1", ["money_2g_1", "prop_red_1"]).success);
     }
     assert.ok(payWithCards(g, "p2", ["money_4g_1"]).success);
+    // Everyone who staked taps Roll in turn; ties roll again
+    for (let r = 0; g.pendingAction?.type === "vegas_roll"; r++) {
+      assert.ok(r < 200);
+      const next = getWaitingOn(g)!;
+      assert.ok(i % 2 === 0 || next !== "p1", "whoever sat out doesn't roll");
+      assert.ok(rollDice(g, next).success);
+    }
     assert.equal(g.poker, null, "settled");
     assert.equal(g.pendingAction, null);
     const winner = g.players.find(p => p.visitorId === g.gamble!.playerId)!;
     assert.ok(winner.bank.some(c => c.defId === "money_4g_1") && winner.bank.some(c => c.defId === "money_5g_1"));
     if (i % 2 === 0) assert.ok(winner.properties.some(c => c.defId === "prop_red_1"), "properties go to the winner's table");
     assert.equal(withPot(g), total);
+  }
+
+  // Someone leaving mid-roll: the duel is off, an All In goes on without them
+  {
+    const g = vegasGame(3);
+    vegasGamble(g, "p0", "duel", "p1"); declineProtego(g, "p1"); rollDice(g, "p0");
+    assert.ok(forfeit(g, "p1").success);
+    assert.equal(g.pendingAction, null, "the challenger goes on to draw");
+    assert.ok(drawCards(g, "p0").success);
   }
 
   // Bot games in Vegas keep every card
