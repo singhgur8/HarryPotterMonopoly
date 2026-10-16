@@ -101,6 +101,11 @@
 .hp-role { font: 800 11px/1.4 var(--body); color: var(--gold); border: 1px solid var(--gold-line); background: var(--gold-soft); border-radius: 4px; padding: 0 5px; }
 .hp-mehead { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 15px; }
 .hp-mehead .nm { font-weight: 800; }
+.hp-role.tap { cursor: pointer; font: 800 11px/1.4 var(--body); }
+.hp-role.tap:hover { border-color: var(--gold); }
+.hp-rolepop.hp-rolepop { background: var(--panel); border-color: var(--line); color: var(--muted); }
+.hp-rolepop { display: grid; gap: 8px; width: 260px; font-size: 13px; color: var(--muted); }
+.hp-rolepop b { color: var(--plum); font-family: var(--label); }
 .hp-role.off { text-decoration: line-through; color: var(--muted); background: var(--sunk); border-color: var(--line); }
 .hp-opp-sets { display: grid; gap: 4px; }
 .hp-setline { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-variant-numeric: tabular-nums; flex-wrap: wrap; }
@@ -190,8 +195,8 @@
 .hp-set .rent { font-size: 11.5px; font-weight: 800; color: var(--muted); }
 .hp-set .rent.full { color: var(--gold); }
 .hp-set .worth { font-size: 11.5px; color: var(--muted); }
-.hp-stack { position: relative; width: 96px; }
-.hp-stack > * { position: absolute; left: 0; }
+.hp-stack { position: relative; width: 96px; --card-h: 134px; --step: 30px; height: calc(var(--card-h) + (var(--n, 1) - 1) * var(--step)); }
+.hp-stack > * { position: absolute; left: 0; top: calc(var(--i, 0) * var(--step)); }
 .hp-stack .tap { cursor: pointer; border-radius: 8px; transition: transform .15s; }
 .hp-stack .tap:hover { transform: translateX(3px); }
 .hp-stack .tap.sel, .hp-stack .tap.picked { outline: 3px solid var(--gold); outline-offset: 1px; }
@@ -423,3 +428,51 @@ button.hp-cn[aria-pressed="true"] { background: var(--gold); color: var(--on-gol
 @media (prefers-reduced-motion: reduce) {
   .hp-dice.rolling span, .hp-flipcoin.flipping, .hp-guess-card.flipping .back { animation: none; }
 }
+
+/* Full view on desktop: each player is one tight row, name, bank and role on the
+   left and their sets beside it, so a whole table fits without scrolling. */
+.hp-scroll.full { gap: 10px; padding: 10px 12px; }
+.hp-scroll.full .hp-rows { gap: 8px; }
+.hp-scroll.full .hp-zone { grid-template-columns: 190px minmax(0, 1fr); grid-template-rows: auto 1fr; column-gap: 14px; row-gap: 6px; padding: 8px 12px; align-items: start; }
+.hp-scroll.full .hp-zone.turn { background: linear-gradient(90deg, var(--gold-soft), var(--panel) 200px); }
+.hp-scroll.full .hp-zone-head { grid-column: 1; grid-row: 1; border: 0; padding: 0; gap: 4px 6px; }
+.hp-scroll.full .hp-zone-head .nm { font-size: 15px; }
+.hp-scroll.full .hp-zone-head .hand { margin-left: 0; width: 100%; order: 9; }
+.hp-scroll.full .hp-zone > .hp-mine { display: contents; }
+.hp-scroll.full .hp-zone > .hp-mine > :first-child { grid-column: 2; grid-row: 1 / span 2; gap: 4px !important; }
+.hp-scroll.full .hp-zone .hp-bankbox { grid-column: 1; grid-row: 2; border: 0; padding: 0; background: none; gap: 4px; }
+.hp-scroll.full .hp-zone .hp-bankbox > .hp-label { display: none; }
+.hp-scroll.full .hp-bank-total { font-size: 18px; }
+.hp-scroll.full .hp-bank-total::before { content: "Bank "; font: 700 11px var(--body); color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+.hp-scroll.full .hp-coins .hp-cn { transform: scale(.9); }
+.hp-scroll.full .hp-zone .hp-myrole { border: 0; padding: 0; font-size: 12px; }
+.hp-scroll.full .hp-zone:not(.me) .hp-myrole > div > span { display: none; }
+.hp-scroll.full .hp-zone:not(.me) .hp-myrole > div > b { display: none; }
+.hp-scroll.full .hp-zone:not(.me) .hp-myrole:not(:has(> span)) { display: none; }
+.hp-zone-head .hand .sets { display: none; }
+.hp-scroll.full .hp-zone-head .hand .sets { display: inline; }
+.hp-scroll.full .hp-zone:not(.me) .hp-mine > :first-child > .hp-label { display: none; }
+.hp-scroll.full .hp-sets { gap: 8px; padding-bottom: 2px; }
+.hp-scroll.full .hp-set { width: auto; min-width: 64px; gap: 2px; }
+.hp-scroll.full .hp-set-head { font-size: 11px; white-space: nowrap; }
+.hp-scroll.full .hp-set .rent, .hp-scroll.full .hp-set .worth { font-size: 10.5px; white-space: nowrap; }
+.hp-scroll.full .hp-zone.me .hp-set .rent { display: none; }
+.hp-scroll.full .hp-zone.me .hp-mine:not(.paying) .hp-set .worth { display: none; }
+.hp-scroll.full .hp-ladder span { min-width: 15px; padding: 0 2px; font-size: 10px; }
+.hp-scroll.full .hp-stack { width: 64px; --card-h: 90px; --step: 17px; }
+.hp-scroll.full .hp-stack .gc { width: 64px; }
+.hp-scroll.full .hp-empty-set { width: 64px; height: 90px; font-size: 11px; }
+.hp-scroll.full .hp-rows.two { grid-template-columns: 1fr 1fr; }
+.hp-scroll.full .hp-rows.two .hp-zone { grid-template-columns: minmax(0, max-content) minmax(0, 1fr); grid-template-rows: auto auto; row-gap: 4px; }
+.hp-scroll.full .hp-rows.two .hp-stack { --step: 14px; }
+.hp-scroll.full .hp-rows.two .hp-zone-head .hand { width: auto; margin-left: auto; order: 0; }
+.hp-scroll.full .hp-rows.two .hp-zone .hp-bankbox { grid-column: 2; grid-row: 1; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 8px; }
+.hp-scroll.full .hp-rows.two .hp-zone > .hp-mine > :first-child { grid-column: 1 / -1; grid-row: 2; }
+/* the turn strip shrinks to one line */
+.hp-scroll.full .hp-center { gap: 10px; }
+.hp-scroll.full .hp-pile { width: 40px; height: 56px; font-size: 10px; }
+.hp-scroll.full .hp-piles .gc { width: 40px; }
+.hp-scroll.full .hp-turn { display: flex; flex-wrap: wrap; gap: 6px 12px; justify-content: center; align-items: center; }
+.hp-scroll.full .hp-turn .t { font-size: 16px; }
+.hp-scroll.full .hp-turn-side { grid-auto-flow: column; align-items: center; gap: 10px; }
+

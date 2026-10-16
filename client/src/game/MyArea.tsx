@@ -4,7 +4,7 @@ import { useGame } from "./context";
 import { SET_STYLE } from "@shared/schema";
 import {
   groupSets, SET_SIZES, RENT_TABLE, label, fillOf, sumValue, valueOf, nameOf, otherColor, RAINBOW,
-  completeSets, roleInfo, roleNames, borrowedText, setSizeFor, shortcutOf, friendName, rentFor, canEndOutage, shieldOf, roleCut, allRolesCut, outageLabel, STACK_STEP, looseWilds, movableWilds, type PaySelection,
+  completeSets, roleInfo, roleNames, borrowedText, setSizeFor, shortcutOf, friendName, rentFor, canEndOutage, shieldOf, roleCut, allRolesCut, outageLabel, looseWilds, movableWilds, type PaySelection,
 } from "./helpers";
 import { TimerAvatar } from "./Opponents";
 
@@ -53,10 +53,10 @@ export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
                 </div>
                 <div className={`rent ${full ? "full" : ""}`}>{full ? "Locked · rent " : "Rent "}{rentNow}M{shield === color ? " · Shielded" : ""}{shortcutOf(me) === color ? " · Shortcut" : ""}</div>
                 <div className="worth">Worth {sumValue(cards)}M to pay with</div>
-                <div className="hp-stack" style={{ height: 134 + (n - 1) * STACK_STEP }}>
+                <div className="hp-stack" style={{ "--n": n } as CSSProperties}>
                   {cards.map((c, i) => {
                     const other = otherColor(c);
-                    const style: CSSProperties = { top: i * STACK_STEP, zIndex: i + 1 };
+                    const style = { "--i": i, zIndex: i + 1 } as CSSProperties;
                     const card = <GameCard defId={c.defId} size="md" color={color} label={`${nameOf(c.defId)}, worth ${valueOf(c)}M`} />;
                     if (pay.active) {
                       const on = pay.picked.includes(c.defId);
@@ -109,9 +109,9 @@ export function MyArea({ full, flipId, onFlip, onPaySilencio, pay }: {
               <div className="hp-set-head"><span className="hp-dot" style={{ background: RAINBOW }} />No colour yet</div>
               <div className="rent">No rent</div>
               <div className="worth">{movable.some(c => loose.includes(c)) ? "Tap to add it to a set" : "Joins a colour once you have one"}</div>
-              <div className="hp-stack" style={{ height: 134 + (loose.length - 1) * STACK_STEP }}>
+              <div className="hp-stack" style={{ "--n": loose.length } as CSSProperties}>
                 {loose.map((c, i) => {
-                  const style: CSSProperties = { top: i * STACK_STEP, zIndex: i + 1 };
+                  const style = { "--i": i, zIndex: i + 1 } as CSSProperties;
                   const card = <GameCard defId={c.defId} size="md" label={`${nameOf(c.defId)}, no colour yet, worth ${valueOf(c)}M`} />;
                   if (pay.active) {
                     const on = pay.picked.includes(c.defId);

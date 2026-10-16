@@ -160,9 +160,6 @@ export function drawCount(p: PlayerState) {
 
 export { SET_SIZES, RENT_TABLE, CARD_DEF_MAP, getEffectiveColor, colorOnTable, isAnyColourWild };
 
-/** How far each card in a played set sits below the one before it. */
-export const STACK_STEP = 30;
-
 /** One line on what a card does, for cards seen outside your hand (discard pile, Cedric, Time-Turner). */
 export function cardBlurb(defId: string, rules: GameRules = {}): string {
   const def = CARD_DEF_MAP[defId];
