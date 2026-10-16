@@ -101,6 +101,11 @@
 .hp-role { font: 800 11px/1.4 var(--body); color: var(--gold); border: 1px solid var(--gold-line); background: var(--gold-soft); border-radius: 4px; padding: 0 5px; }
 .hp-mehead { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 15px; }
 .hp-mehead .nm { font-weight: 800; }
+.hp-role.tap { cursor: pointer; font: 800 11px/1.4 var(--body); }
+.hp-role.tap:hover { border-color: var(--gold); }
+.hp-rolepop.hp-rolepop { background: var(--panel); border-color: var(--line); color: var(--muted); }
+.hp-rolepop { display: grid; gap: 8px; width: 260px; font-size: 13px; color: var(--muted); }
+.hp-rolepop b { color: var(--plum); font-family: var(--label); }
 .hp-role.off { text-decoration: line-through; color: var(--muted); background: var(--sunk); border-color: var(--line); }
 .hp-opp-sets { display: grid; gap: 4px; }
 .hp-setline { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-variant-numeric: tabular-nums; flex-wrap: wrap; }

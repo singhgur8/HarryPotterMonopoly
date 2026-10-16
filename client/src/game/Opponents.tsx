@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 import type { GameCard as Card, PlayerState, PropertyColor } from "@shared/schema";
 import { freshTurnTimer } from "@shared/schema";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { GameCard } from "@/components/GameCard";
 import { useGame } from "./context";
 import {
@@ -220,6 +221,28 @@ function SeatChips({ p, target }: { p: PlayerState; target: boolean }) {
   );
 }
 
+/** Their role chip; tap (or click) it to read what the powers do. */
+function RoleChip({ p }: { p: PlayerState }) {
+  const { s } = useGame();
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button type="button" className={`hp-role tap ${allRolesCut(p) ? "off" : ""}`} aria-label={`${roleNames(p)}: what the power does`}>{roleNames(p)}</button>
+      </PopoverTrigger>
+      <PopoverContent className="hp-dialog hp-rolepop" align="start">
+        {p.roles.map(r => (
+          <div key={r} style={{ display: "grid", gap: 2 }}>
+            <b style={roleCut(p, r) ? { textDecoration: "line-through" } : undefined}>{roleName(r)}</b>
+            <span>{roleInfo(r)?.power}</span>
+          </div>
+        ))}
+        {borrowedText(s, p) && <span>{borrowedText(s, p)}.</span>}
+        {p.isSilenced && <span>{outageLabel(p) === "Power off" ? "Their power is" : `Their ${roleName(p.silencedRole)} power is`} switched off right now.</span>}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 /**
  * Full view: an opponent's own row with their sets laid out like mine. On your
  * turn, tapping one of their properties (or a set's Deal Breaker button) attacks it.
@@ -243,7 +266,7 @@ function OpponentRow({ p }: { p: PlayerState }) {
       <div className="hp-zone-head">
         <TimerAvatar p={p} />
         <span className="nm">{p.animal.name}</span>
-        {p.roles.length > 0 && <span className={`hp-role ${allRolesCut(p) ? "off" : ""}`} title={p.roles.map(r => `${roleName(r)}: ${roleInfo(r)?.power}`).join("\n")}>{roleNames(p)}</span>}
+        {p.roles.length > 0 && <RoleChip p={p} />}
         <SeatChips p={p} target={target} />
         <span className="hand">Hand <b>{p.hand.length}</b><span className="sets"> · Sets <b>{completeSets(p)}/{s.rules?.setsToWin ?? 3}</b></span></span>
       </div>
