@@ -331,6 +331,7 @@ export type WSMessageType =
   | "join_room"
   | "sit_down"
   | "stand_up"
+  | "remove_seat"
   | "toggle_ready"
   | "set_game_speed"
   | "set_variation"

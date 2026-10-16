@@ -280,6 +280,20 @@ function handleStandUp(room: Room, client: RoomClient) {
   broadcastLobbyState(room);
 }
 
+/** Free a lobby seat: anyone may leave their own, only the host may clear someone else's. */
+function handleRemoveSeat(room: Room, client: RoomClient, payload: any) {
+  if (room.gameState) return sendError(room, client, "Game in progress");
+  const id = payload?.visitorId;
+  if (id === client.visitorId) return handleStandUp(room, client);
+  if (client.visitorId !== room.hostVisitorId) return sendError(room, client, "Only the host can remove players");
+  const target = typeof id === "string" ? room.clients.get(id) : undefined;
+  if (!target || target.seatIndex === null) return sendError(room, client, "That seat is already empty");
+  // Bots only exist in a seat; people go back to standing in the room
+  if (isBotId(id)) room.clients.delete(id);
+  else { target.seatIndex = null; target.isReady = false; }
+  broadcastLobbyState(room);
+}
+
 function handleToggleReady(room: Room, client: RoomClient) {
   if (room.gameState) return;
   if (client.seatIndex === null) return sendError(room, client, "Must be seated");
@@ -715,6 +729,7 @@ function routeMessage(room: Room, client: RoomClient, msg: WSMessage) {
     case "join_room": return handleJoinRoom(room, client, payload);
     case "sit_down": return handleSitDown(room, client, payload);
     case "stand_up": return handleStandUp(room, client);
+    case "remove_seat": return handleRemoveSeat(room, client, payload);
     case "toggle_ready": return handleToggleReady(room, client);
     case "set_game_speed": return handleSetGameSpeed(room, client, payload);
     case "set_variation": return handleSetVariation(room, client, payload);
